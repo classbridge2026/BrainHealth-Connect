@@ -8,11 +8,13 @@ import { StatusBadge } from "@/components/status-badge";
 import { readPageSession } from "@/lib/auth/current-user";
 import { SESSION_COOKIE } from "@/lib/auth/session";
 import { appointmentStatusLabel, paymentStatusLabel, paymentStatusTone } from "@/lib/admin/labels";
+import { expireOverdueHolds } from "@/lib/appointments/payment-holds";
 import { loadOwnedAppointment } from "@/lib/appointments/queries";
 import { canTransition } from "@/lib/appointments/transitions";
 import { prisma } from "@/lib/db/prisma";
 import { listAppointmentPayments, releasedSummaryForAppointment } from "@/lib/patient/portal";
 import { AppointmentOverview } from "@/components/consultation/overview";
+import { visitChannelLabel } from "@/lib/appointments/channel";
 import { describeVisitJoin } from "@/lib/consultations/view";
 import { readPublicContact } from "@/lib/public/landing";
 import { afrimoneyConfigured, orangeConfigured } from "@/lib/payments/mobile-money";
@@ -20,6 +22,7 @@ import { refreshVisitPayment } from "@/lib/payments/collect";
 import { afrimoneyDialHref, afrimoneySteps, loadAfrimoneyDialNumber } from "@/lib/payments/afrimoney-transfer";
 import { formatOrangeDialNumber, loadOrangeDialNumber, orangeDialHref, orangeTransferCode, ussdAmount } from "@/lib/payments/orange-transfer";
 import { CancelAppointmentForm } from "./cancel-form";
+import { VisitPreparation } from "./prepare-form";
 import { VisitPayment } from "./pay-form";
 import "@/components/consultation/consult.css";
 import "./appointment-visit.css";
@@ -47,6 +50,11 @@ export default async function PatientAppointmentPage({
   if (query.payment === "return") {
     await refreshVisitPayment({ actorUserId: user.id, appointmentId: id }, prisma).catch(() => undefined);
   }
+  const dueHold = await prisma.appointment.findFirst({
+    where: { id, status: "PENDING_PAYMENT", paymentHoldExpiresAt: { lte: new Date() } },
+    select: { doctorProfileId: true },
+  }).catch(() => null);
+  if (dueHold) await expireOverdueHolds(prisma, dueHold.doctorProfileId);
   const result = await loadOwnedAppointment(prisma, { id, userId: user.id, as: "patient" });
   if (!result.ok) {
     if (result.code === "NOT_FOUND") notFound();
@@ -91,7 +99,7 @@ export default async function PatientAppointmentPage({
 
   const holdOpen = visit.status === "PENDING_PAYMENT" && visit.paymentHoldExpiresAt && visit.paymentHoldExpiresAt > now;
   const paid = visit.paymentStatuses.includes("PAID");
-  const canPay = !paid && visit.feeAmountMinor > 0 && (visit.status === "CONFIRMED" || visit.status === "PENDING_PAYMENT");
+  const canPay = !paid && visit.feeAmountMinor > 0 && (visit.status === "CONFIRMED" || visit.status === "PENDING_PAYMENT" || visit.status === "EXPIRED_UNPAID");
   const walletApi = canPay && (orangeConfigured() || afrimoneyConfigured());
   const account = walletApi
     ? await prisma.user.findUnique({ where: { id: user.id }, select: { phoneE164: true } }).catch(() => null)
@@ -102,6 +110,17 @@ export default async function PatientAppointmentPage({
     : [null, null];
   const waiting = payments.ok ? payments.payments.find((payment) => payment.status === "REQUIRES_ACTION" || payment.status === "PENDING") : undefined;
   const online = visit.mode === "ONLINE";
+  const channelLabel = visitChannelLabel(visit.visitChannel, visit.mode);
+  const preparing = visit.status === "PENDING_PAYMENT" || visit.status === "CONFIRMED" || visit.status === "CHECKED_IN" || visit.status === "IN_PROGRESS";
+  const canCheckIn = Boolean(visit.consentAcceptedAt) && canTransition({
+    actor: "patient",
+    ownsRecord: true,
+    from: visit.status,
+    to: "CHECKED_IN",
+    now,
+    startsAt: visit.startsAt,
+    endsAt: visit.endsAt,
+  }).ok;
   const join = describeVisitJoin({
     actorUserId: user.id,
     actorStatus: user.status,
@@ -141,18 +160,18 @@ export default async function PatientAppointmentPage({
         service={visit.service}
         when={visit.when}
         duration={durationLabel(visit.startsAt, visit.endsAt)}
-        modeLabel={online ? "Online consultation" : "In person"}
+        modeLabel={online ? `${channelLabel} consultation` : channelLabel}
         statusLabel={appointmentStatusLabel(visit.status)}
         paymentLabel={latestPayment ? paymentStatusLabel(latestPayment) : paid ? "Paid" : "Not recorded"}
         reference={visit.id}
         instructions={visit.preparation}
         place={online ? null : visit.place}
         message={join.message}
-        joinHref={!online || !join.canJoin || inProgress ? null : `/patient/appointments/${visit.id}/consultation`}
+        joinHref={!online || !join.canJoin || inProgress ? null : `/patient/appointments/${visit.id}/consultation${visit.visitChannel === "AUDIO" ? "?accept=audio" : ""}`}
         secondaryHref={canReschedule && visit.offeringId ? `/patient/appointments/${visit.id}/reschedule` : null}
         secondaryLabel={canReschedule ? "Reschedule" : null}
         supportEmail={supportEmail}
-        inProgressHref={inProgress ? `/patient/appointments/${visit.id}/consultation` : null}
+        inProgressHref={inProgress ? `/patient/appointments/${visit.id}/consultation${visit.visitChannel === "AUDIO" ? "?accept=audio" : ""}` : null}
         completed={completed ? {
           summaryHref: summary ? `/patient/summaries/${summary.id}` : null,
           followUpHref: followUps[0] ? `/patient/appointments/${followUps[0].id}` : null,
@@ -182,8 +201,24 @@ export default async function PatientAppointmentPage({
       ) : null}
       {holdOpen && visit.paymentHoldExpiresAt ? (
         <div className="visit-banner">
+          <p>Pay the self-pay fee before this hold ends. The visit is confirmed when the payment arrives.</p>
           <HoldCountdown expiresAt={visit.paymentHoldExpiresAt.toISOString()} />
         </div>
+      ) : null}
+      {visit.status === "EXPIRED_UNPAID" ? (
+        <div className="visit-banner">
+          <p>This payment hold ended, so the time was released.</p>
+          <Link href="/patient/find">Find a Doctor</Link>
+        </div>
+      ) : null}
+      {preparing ? (
+        <VisitPreparation
+          appointmentId={visit.id}
+          history={visit.intakeHistory ?? ""}
+          consented={Boolean(visit.consentAcceptedAt)}
+          canCheckIn={canCheckIn}
+          checkedIn={visit.status === "CHECKED_IN" || Boolean(visit.checkedInAt)}
+        />
       ) : null}
 
       <div className="visit-grid">

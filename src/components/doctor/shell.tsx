@@ -19,6 +19,7 @@ import {
   faRightFromBracket,
   faUser,
   faUserDoctor,
+  faUserShield,
   faUsers,
   faBell,
   faChevronLeft,
@@ -65,6 +66,7 @@ export function DoctorShell({
   imageVersion,
   unread,
   notices,
+  administration = false,
   children,
 }: {
   userId: string;
@@ -74,6 +76,7 @@ export function DoctorShell({
   imageVersion: string | null;
   unread: number | null;
   notices: BellItem[];
+  administration?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -192,6 +195,12 @@ export function DoctorShell({
                     <strong>{name}</strong>
                     <span>{specialty}</span>
                   </div>
+                  {administration ? (
+                    <Link href="/admin" role="menuitem" onClick={() => setAccountPath(null)}>
+                      <FontAwesomeIcon icon={faUserShield} aria-hidden="true" />
+                      Administration
+                    </Link>
+                  ) : null}
                   <Link href="/doctor/profile" role="menuitem" onClick={() => setAccountPath(null)}>
                     <FontAwesomeIcon icon={faUser} aria-hidden="true" />
                     Profile

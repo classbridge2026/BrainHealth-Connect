@@ -10,9 +10,12 @@ describe("Orange Money phone transfer", () => {
     expect(orangeTransferCode("076604922", "50")).toBe("#144*2*1*076604922*50*PIN#");
   });
 
-  it("accepts an SMS transaction code and refuses a PIN", () => {
-    expect(parseOrangeTransactionId(" pp12.345678 ")).toBe("PP12.345678");
+  it("accepts an Orange Money transaction ID and refuses a PIN or a short code", () => {
+    expect(parseOrangeTransactionId(" pp250502.1502.b91020 ")).toBe("PP250502.1502.B91020");
+    expect(parseOrangeTransactionId("CI161214.1217.A50760")).toBe("CI161214.1217.A50760");
+    expect(parseOrangeTransactionId("MP251204.0801.A93191")).toBe("MP251204.0801.A93191");
+    expect(parseOrangeTransactionId("PP12.345678")).toBeNull();
     expect(parseOrangeTransactionId("1234")).toBeNull();
-    expect(parseOrangeTransactionId("12")).toBeNull();
+    expect(parseOrangeTransactionId("WPS12345")).toBeNull();
   });
 });

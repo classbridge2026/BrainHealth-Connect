@@ -78,10 +78,11 @@ export default async function PatientConsultationPage({
   });
   const latestPayment = visit.paymentStatuses.at(-1);
   const paid = visit.paymentStatuses.includes("PAID");
+  const storedAccept = visit.visitChannel === "AUDIO" ? "audio" : visit.visitChannel === "VIDEO" ? "video" : null;
 
   return (
     <ConsultationSession
-      accept={readAccept(query.accept)}
+      accept={readAccept(query.accept) ?? storedAccept}
       appointmentId={visit.id}
       aside={(
         <PatientVisitPanel

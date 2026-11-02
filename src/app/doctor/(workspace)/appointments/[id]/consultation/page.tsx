@@ -39,9 +39,9 @@ function toNote(note: {
 export default async function DoctorConsultationPage({ params }: { params: Promise<{ id: string }> }) {
   const portal = await requireClinicalPortal();
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
-  if (portal.access !== "ready" || !portal.doctor) return <RestrictedPractice access={portal.access} />;
+  if (!portal.staff && (portal.access !== "ready" || !portal.doctor)) return <RestrictedPractice access={portal.access} />;
   const { id } = await params;
-  const result = await loadOwnedAppointment(prisma, { id, userId: portal.user.id, as: "doctor" });
+  const result = await loadOwnedAppointment(prisma, { id, userId: portal.user.id, as: portal.staff ? "staff" : "doctor" });
   if (!result.ok) {
     if (result.code === "NOT_FOUND") notFound();
     return <RecordsUnavailable code={result.code} />;
@@ -82,8 +82,10 @@ export default async function DoctorConsultationPage({ params }: { params: Promi
       canComplete={canComplete}
       canOpen={record.ok ? record.view.canOpen : false}
       encounterLabel={record.ok && record.view.encounter ? encounterStatusLabel(record.view.encounter.status) : null}
+      concern={visit.patientConcern}
       fee={visit.fee}
       followUps={linked.map((row) => ({ id: row.id, when: formatBookingWhen(row.startsAt), statusLabel: appointmentStatusLabel(row.status) }))}
+      intake={visit.intakeHistory}
       locations={form.ok ? form.locations : []}
       modeLabel={visit.mode === "ONLINE" ? "Online consultation" : "In person"}
       offerings={form.ok ? form.offerings : []}

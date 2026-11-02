@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { RecordsUnavailable } from "@/components/records-unavailable";
+import { parseVisitChannel, visitChannelLabel } from "@/lib/appointments/channel";
 import { loadOfferingSlots } from "@/lib/appointments/queries";
 import { freetownDate, parseCalendarDate, addDays } from "@/lib/appointments/time";
 import { prisma } from "@/lib/db/prisma";
@@ -25,6 +26,13 @@ function dayParts(iso: string, today: string) {
   };
 }
 
+function bookHref(offeringId: string, date: string, locationId: string, channel: string) {
+  const params = new URLSearchParams({ date });
+  if (locationId) params.set("location", locationId);
+  if (channel) params.set("channel", channel);
+  return `/patient/book/${offeringId}?${params.toString()}`;
+}
+
 function longDay(iso: string) {
   const date = parseCalendarDate(iso);
   if (!date) return iso;
@@ -44,6 +52,7 @@ export default async function BookOfferingPage({
   const requested = typeof query.date === "string" ? query.date : today;
   const locationId = typeof query.location === "string" ? query.location : "";
   const start = typeof query.start === "string" ? query.start : "";
+  const requestedChannel = parseVisitChannel(typeof query.channel === "string" ? query.channel : "");
   const result = await loadOfferingSlots(prisma, { offeringId, day: requested, locationId: locationId || null });
   if (!result.ok) {
     if (result.code === "NOT_FOUND") notFound();
@@ -54,6 +63,10 @@ export default async function BookOfferingPage({
   const selected = slots.find((slot) => slot.startsAt === start);
   const location = locations.find((row) => row.id === locationId);
   const online = offering.mode === "ONLINE";
+  const channel = online
+    ? requestedChannel === "VIDEO" || requestedChannel === "AUDIO" ? requestedChannel : null
+    : "IN_PERSON";
+  const channelQuery = channel === "AUDIO" ? "audio" : channel === "VIDEO" ? "video" : channel === "IN_PERSON" ? "in-person" : "";
 
   return (
     <div className="book-page">
@@ -71,7 +84,7 @@ export default async function BookOfferingPage({
             <div className="book-facts">
               <span className="book-chip">
                 <VisitIcon name={online ? "video" : "hospital"} />
-                {online ? "Online" : "In person"}
+                {channel ? visitChannelLabel(channel) : "Choose a visit type"}
               </span>
               <span className="book-chip">
                 <VisitIcon name="clock" />
@@ -103,7 +116,7 @@ export default async function BookOfferingPage({
               {locations.map((row) => (
                 <Link
                   key={row.id}
-                  href={`/patient/book/${offering.id}?date=${requested}&location=${row.id}`}
+                  href={bookHref(offering.id, requested, row.id, "in-person")}
                   className={`book-clinic${row.id === locationId ? " book-clinic-on" : ""}`}
                 >
                   {row.label}
@@ -115,6 +128,16 @@ export default async function BookOfferingPage({
         )
       ) : null}
 
+      {online && !channel ? (
+        <section className="book-panel">
+          <h2>Visit type</h2>
+          <p className="book-hint">Choose video or audio before the times appear.</p>
+          <div className="book-clinics">
+            <Link className="book-clinic" href={bookHref(offering.id, requested, "", "video")}>Video</Link>
+            <Link className="book-clinic" href={bookHref(offering.id, requested, "", "audio")}>Audio</Link>
+          </div>
+        </section>
+      ) : (
       <section className="book-panel">
         <h2>{longDay(requested)}</h2>
         <div className="book-days" role="list">
@@ -124,7 +147,7 @@ export default async function BookOfferingPage({
               <Link
                 key={day}
                 role="listitem"
-                href={`/patient/book/${offering.id}?date=${day}${locationId ? `&location=${locationId}` : ""}`}
+                href={bookHref(offering.id, day, locationId, channelQuery)}
                 className={`book-day${day === requested ? " book-day-on" : ""}`}
                 aria-current={day === requested ? "date" : undefined}
               >
@@ -136,22 +159,33 @@ export default async function BookOfferingPage({
           })}
         </div>
       </section>
+      )}
 
-      {offering.mode === "IN_PERSON" && !location ? null : schedule.length === 0 ? (
+      {online && !channel ? null : offering.mode === "IN_PERSON" && !location ? null : schedule.length === 0 ? (
         <p className="book-panel book-hint">No open times on this date. Try another day.</p>
       ) : (
         <section className="book-panel">
           <h2>Available times</h2>
-          <OpenTimes basePath={`/patient/book/${offering.id}`} date={requested} locationId={locationId} selectedStart={start} slots={schedule}>
-            {selected ? (
+          <OpenTimes basePath={`/patient/book/${offering.id}`} date={requested} locationId={locationId} channel={channelQuery} selectedStart={start} slots={schedule}>
+            {selected && channel ? (
               <section className="book-review">
                 <h2>Review booking</h2>
                 <p>
-                  {offering.doctorName} · {offering.service} · {online ? "Online" : "In person"} · {selected.label}
+                  {offering.doctorName} · {offering.service} · {visitChannelLabel(channel)} · {selected.label}
                   {location ? ` · ${location.label}` : ""} · {offering.fee}
                 </p>
-                <p>This request holds the time until the doctor approves or declines it. Until then it stays under Pending.</p>
-                <ConfirmBookingForm offeringId={offering.id} startsAt={selected.startsAt} locationId={location?.id ?? ""} />
+                <p>
+                  {offering.priceAmountMinor > 0
+                    ? "Confirming holds this open time. Pay the self-pay fee with Orange Money or Afrimoney before the hold ends, and the visit is confirmed."
+                    : "Confirming books this open time. There is no fee for this visit."}
+                </p>
+                <ConfirmBookingForm
+                  offeringId={offering.id}
+                  startsAt={selected.startsAt}
+                  locationId={location?.id ?? ""}
+                  channel={channel}
+                  payable={offering.priceAmountMinor > 0}
+                />
               </section>
             ) : null}
           </OpenTimes>

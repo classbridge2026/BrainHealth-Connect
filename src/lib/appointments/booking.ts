@@ -3,15 +3,16 @@ import {
   AppointmentStatus,
   Prisma,
   type PrismaClient,
+  type VisitChannel,
 } from "@prisma/client";
-import { sanitizeMetadata } from "@/lib/admin/rules";
+import { isPortalAdministrator, sanitizeMetadata } from "@/lib/admin/rules";
 import { createRateLimiter, type RateLimiter } from "@/lib/auth/rate-limit";
 import { bookingCatalogDecision, cleanRequiredText, parseUuid } from "@/lib/catalog/rules";
 import { snapshotAppointmentFee } from "@/lib/catalog/money";
 import { canReceiveNewAppointment } from "@/lib/doctors/rules";
 import { isUniqueConflict } from "@/lib/doctors/errors";
 import { prisma } from "@/lib/db/prisma";
-import { expireOverdueHolds, isOverlapError } from "./payment-holds";
+import { expireOverdueHolds, getPaymentHoldMinutes, isOverlapError } from "./payment-holds";
 import { loadBlockingIntervals, loadDoctorRules } from "./schedule-data";
 import { slotIsOpen, type SlotMode } from "./slots";
 import { addDays, parseCalendarDate } from "./time";
@@ -39,6 +40,7 @@ export type BookingCode =
   | "UNSUPPORTED"
   | "REASON"
   | "CONCERN"
+  | "CHANNEL"
   | "UNAVAILABLE";
 
 export type BookingResult =
@@ -66,7 +68,7 @@ async function ownPatient(tx: Prisma.TransactionClient, userId: string) {
 }
 
 export async function bookScheduledSlot(
-  input: { actorUserId: string; offeringId: string; locationId?: string | null; startsAt: Date; concern: string },
+  input: { actorUserId: string; offeringId: string; locationId?: string | null; startsAt: Date; concern: string; channel: VisitChannel },
   deps: Deps = {},
 ): Promise<BookingResult> {
   const db = deps.db ?? prisma;
@@ -180,7 +182,13 @@ export async function bookScheduledSlot(
         now,
       });
       if (!open) return { ok: false as const, code: "SLOT_UNAVAILABLE" as const };
+      if (mode === "IN_PERSON" && input.channel !== "IN_PERSON") return { ok: false as const, code: "CHANNEL" as const };
+      if (mode === "ONLINE" && input.channel !== "VIDEO" && input.channel !== "AUDIO") return { ok: false as const, code: "CHANNEL" as const };
 
+      const payable = snapshot.feeAmountMinor > 0;
+      const holdMinutes = payable ? await getPaymentHoldMinutes(tx) : 0;
+      const paymentHoldExpiresAt = payable ? new Date(now.getTime() + holdMinutes * 60_000) : null;
+      const status = payable ? AppointmentStatus.PENDING_PAYMENT : AppointmentStatus.CONFIRMED;
       const appointment = await tx.appointment.create({
         data: {
           patientProfileId: patient.id,
@@ -190,10 +198,11 @@ export async function bookScheduledSlot(
           offeringId: offering.id,
           locationId,
           mode,
-          status: AppointmentStatus.PENDING_APPROVAL,
+          visitChannel: input.channel,
+          status,
           startsAt: input.startsAt,
           endsAt,
-          paymentHoldExpiresAt: null,
+          paymentHoldExpiresAt,
           feeAmount: snapshot.feeAmount,
           feeAmountMinor: snapshot.feeAmountMinor,
           currency: snapshot.currency,
@@ -205,8 +214,8 @@ export async function bookScheduledSlot(
         data: {
           appointmentId: appointment.id,
           actorUserId: input.actorUserId,
-          toStatus: AppointmentStatus.PENDING_APPROVAL,
-          detail: "awaiting_doctor_approval",
+          toStatus: status,
+          detail: payable ? "payment_hold_created" : "confirmed_without_fee",
         },
       });
       await tx.auditLog.create({
@@ -218,9 +227,10 @@ export async function bookScheduledSlot(
           metadata: sanitizeMetadata({ mode, durationMinutes: offering.durationMinutes, currency: snapshot.currency }) ?? undefined,
         },
       });
-      return { ok: true as const, appointmentId: appointment.id };
+      return { ok: true as const, appointmentId: appointment.id, paymentHoldExpiresAt: paymentHoldExpiresAt ?? undefined };
     });
-    return notifySaved(db, saved, "requested");
+    if (!saved.ok) return saved;
+    return notifySaved(db, saved, saved.paymentHoldExpiresAt ? "held" : "confirmed");
   } catch (error) {
     const code = failureCode(error);
     if (code) return { ok: false, code };
@@ -394,8 +404,14 @@ const CANCEL_STATUS: Record<"patient" | "doctor", AppointmentStatus> = {
   doctor: AppointmentStatus.CANCELLED_BY_DOCTOR,
 };
 
+function actsForAssignedDoctor(actorUserId: string, doctorUserId: string | undefined, roleCodes?: readonly string[]) {
+  if (!doctorUserId) return false;
+  if (actorUserId === doctorUserId) return true;
+  return isPortalAdministrator([...(roleCodes ?? [])]);
+}
+
 export async function cancelOwnAppointment(
-  input: { actorUserId: string; actor: "patient" | "doctor"; appointmentId: string; reason: string },
+  input: { actorUserId: string; actor: "patient" | "doctor"; appointmentId: string; reason: string; roleCodes?: readonly string[] },
   deps: Deps = {},
 ): Promise<BookingResult> {
   const db = deps.db ?? prisma;
@@ -415,7 +431,9 @@ export async function cancelOwnAppointment(
         },
       });
       const owns =
-        input.actor === "patient" ? appointment?.patient.userId === input.actorUserId : appointment?.doctor.userId === input.actorUserId;
+        input.actor === "doctor"
+          ? actsForAssignedDoctor(input.actorUserId, appointment?.doctor.userId, input.roleCodes)
+          : appointment?.patient.userId === input.actorUserId;
       if (!appointment || !owns) return { ok: false as const, code: "NOT_FOUND" as const };
       const decision = canTransition({
         actor: input.actor,
@@ -462,7 +480,7 @@ export async function cancelOwnAppointment(
 }
 
 export async function approveBookingRequest(
-  input: { actorUserId: string; appointmentId: string },
+  input: { actorUserId: string; appointmentId: string; roleCodes?: readonly string[] },
   deps: Deps = {},
 ): Promise<BookingResult> {
   const db = deps.db ?? prisma;
@@ -474,10 +492,13 @@ export async function approveBookingRequest(
         where: { id: input.appointmentId },
         select: { id: true, status: true, startsAt: true, endsAt: true, doctor: { select: { userId: true } } },
       });
-      if (!appointment || appointment.doctor.userId !== input.actorUserId) return { ok: false as const, code: "NOT_FOUND" as const };
+      if (!appointment || !actsForAssignedDoctor(input.actorUserId, appointment.doctor.userId, input.roleCodes)) {
+        return { ok: false as const, code: "NOT_FOUND" as const };
+      }
+      const actor = appointment.doctor.userId === input.actorUserId ? "doctor" : "admin";
       const decision = canTransition({
-        actor: "doctor",
-        ownsRecord: true,
+        actor,
+        ownsRecord: actor === "doctor",
         from: appointment.status,
         to: "CONFIRMED",
         now,
@@ -496,7 +517,7 @@ export async function approveBookingRequest(
           actorUserId: input.actorUserId,
           fromStatus: AppointmentStatus.PENDING_APPROVAL,
           toStatus: AppointmentStatus.CONFIRMED,
-          detail: "doctor_approved",
+          detail: actor === "admin" ? "administrator_approved" : "doctor_approved",
         },
       });
       await tx.auditLog.create({
@@ -517,7 +538,7 @@ export async function approveBookingRequest(
 }
 
 export async function advanceDoctorAppointment(
-  input: { actorUserId: string; appointmentId: string; to: "CHECKED_IN" | "IN_PROGRESS" | "COMPLETED" | "NO_SHOW" },
+  input: { actorUserId: string; appointmentId: string; to: "CHECKED_IN" | "IN_PROGRESS" | "COMPLETED" | "NO_SHOW"; roleCodes?: readonly string[] },
   deps: Deps = {},
 ): Promise<BookingResult> {
   const db = deps.db ?? prisma;
@@ -529,7 +550,9 @@ export async function advanceDoctorAppointment(
         where: { id: input.appointmentId },
         select: { id: true, status: true, startsAt: true, endsAt: true, doctor: { select: { userId: true } } },
       });
-      if (!appointment || appointment.doctor.userId !== input.actorUserId) return { ok: false as const, code: "NOT_FOUND" as const };
+      if (!appointment || !actsForAssignedDoctor(input.actorUserId, appointment.doctor.userId, input.roleCodes)) {
+        return { ok: false as const, code: "NOT_FOUND" as const };
+      }
       const decision = canTransition({
         actor: "doctor",
         ownsRecord: true,
@@ -576,7 +599,7 @@ export async function advanceDoctorAppointment(
 }
 
 export async function rescheduleAppointment(
-  input: { actorUserId: string; actor: Exclude<AppointmentActor, "system">; appointmentId: string; startsAt: Date; reason: string },
+  input: { actorUserId: string; actor: Exclude<AppointmentActor, "system">; appointmentId: string; startsAt: Date; reason: string; roleCodes?: readonly string[] },
   deps: Deps = {},
 ): Promise<BookingResult> {
   const db = deps.db ?? prisma;
@@ -607,7 +630,8 @@ export async function rescheduleAppointment(
       });
       const owns =
         input.actor === "admin" ||
-        (input.actor === "patient" ? appointment?.patient.userId === input.actorUserId : appointment?.doctor.userId === input.actorUserId);
+        (input.actor === "doctor" && actsForAssignedDoctor(input.actorUserId, appointment?.doctor.userId, input.roleCodes)) ||
+        (input.actor === "patient" && appointment?.patient.userId === input.actorUserId);
       if (!appointment || !owns || !appointment.offeringId) return { ok: false as const, code: "NOT_FOUND" as const };
       const decision = canTransition({
         actor: input.actor,
@@ -757,6 +781,8 @@ export function bookingMessage(code: BookingCode): string {
       return "Enter a reason between 10 and 500 characters.";
     case "CONCERN":
       return "Describe what is wrong, using 10 to 500 characters, before sending this request.";
+    case "CHANNEL":
+      return "Choose video, audio, or in person before you confirm.";
     default:
       return "The appointment could not be saved.";
   }

@@ -38,7 +38,7 @@ describe("consultation session", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<ConsultationSession {...shared} role="patient" />);
-    expect(screen.getByRole("button", { name: "Join consultation" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "I've arrived" })).toBeTruthy();
     await waitFor(() => {
       expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/token"))).toBe(true);
     });
@@ -57,7 +57,7 @@ describe("consultation session", () => {
 
   it("hides join when the server says the appointment is not eligible", () => {
     render(<ConsultationSession {...shared} canJoin={false} message="Your consultation is not open yet. Please return closer to your appointment time." role="patient" />);
-    expect(screen.queryByRole("button", { name: "Join consultation" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "I've arrived" })).toBeNull();
     expect(screen.getByText(/not open yet/i)).toBeTruthy();
   });
 
@@ -84,7 +84,7 @@ describe("consultation session", () => {
       />,
     );
     expect(await screen.findByText(/Osman is in the waiting room/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Join and connect" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Admit patient" })).toBeTruthy();
   });
 
   it("tells the doctor when the patient declines so they can call again", async () => {

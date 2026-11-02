@@ -248,7 +248,8 @@ export function PatientLobby({
   onVideoInput,
   onAudioOutput,
   onTest,
-  onJoin,
+  arrived,
+  onArrive,
 }: {
   systemName: string;
   counterpart: string;
@@ -278,7 +279,8 @@ export function PatientLobby({
   onVideoInput: (value: string) => void;
   onAudioOutput: (value: string) => void;
   onTest: () => void;
-  onJoin: () => void;
+  arrived: boolean;
+  onArrive: () => void;
 }) {
   const [devicesOpen, setDevicesOpen] = useState(false);
   const blocked = !configured || !canJoin;
@@ -342,9 +344,11 @@ export function PatientLobby({
               <Settings size={18} aria-hidden="true" />
               <span className="pc-label">Devices</span>
             </button>
-            <button className="pc-join" type="button" disabled={!ready || joining} onClick={onJoin}>
-              {joining ? "Joining…" : "Join consultation"}
-            </button>
+            {arrived ? (
+              <button className="pc-join" type="button" disabled>Waiting for the doctor</button>
+            ) : (
+              <button className="pc-join" type="button" disabled={!ready || joining} onClick={onArrive}>I&apos;ve arrived</button>
+            )}
           </div>
         </div>
       )}
@@ -372,6 +376,7 @@ export function PatientLobby({
         />
       )}
       {blocked ? null : <p className="pc-frame-name">{audioOnly ? "Audio" : ready && !audioOnly ? (talking ? "Talking" : "You") : "Preview"}</p>}
+      {arrived && !blocked ? <p className="pc-stage-note">You are in the waiting room. The doctor will admit you.</p> : null}
       {stageMessage && !blocked ? <p className="pc-stage-note">{stageMessage}</p> : null}
     </PatientConsultFrame>
   );

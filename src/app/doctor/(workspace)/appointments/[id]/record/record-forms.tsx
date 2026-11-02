@@ -162,6 +162,7 @@ export function PatientSummaryForm({ appointmentId }: { appointmentId: string })
     ["reason", "Reason for the visit"],
     ["findings", "What this means for the patient"],
     ["plan", "Care plan"],
+    ["prescription", "Prescription"],
     ["followUp", "Follow-up"],
     ["additional", "Additional information for the patient"],
   ] as const;
@@ -170,6 +171,17 @@ export function PatientSummaryForm({ appointmentId }: { appointmentId: string })
       <h2 className="text-lg font-semibold text-brand-navy">Patient summary</h2>
       <p className="text-sm leading-6 text-brand-muted">Write this for the patient. It does not copy the working note. Tick the box below if they should be able to read it now.</p>
       <input name="appointmentId" type="hidden" value={appointmentId} />
+      <label className="text-sm font-medium text-brand-navy">
+        Outcome
+        <select className={`${textAreaClass} mt-1`} name="outcome" defaultValue="">
+          <option value="">Choose an outcome</option>
+          <option>Diagnosis</option>
+          <option>Treatment plan</option>
+          <option>Prescription</option>
+          <option>Lab referral</option>
+          <option>Needs an in-person visit</option>
+        </select>
+      </label>
       {fields.map(([name, label]) => (
         <label key={name} className="text-sm font-medium text-brand-navy">
           {label}

@@ -199,9 +199,25 @@ export function VisitPayment({
               <input type="hidden" name="appointmentId" value={appointmentId} />
               <input type="hidden" name="provider" value={method === "afri" ? "AFRIMONEY" : "ORANGE_MONEY"} />
               <label className="pay-field">
-                Transaction code
-                <input name="reference" required autoComplete="off" inputMode="text" placeholder={method === "afri" ? "From the Afrimoney SMS" : "From the Orange Money SMS"} />
+                {method === "afri" ? "Transaction code" : "Transaction ID"}
+                <input
+                  name="reference"
+                  required
+                  autoComplete="off"
+                  spellCheck={false}
+                  inputMode="text"
+                  placeholder={method === "afri" ? "From the Afrimoney SMS" : "PP250502.1502.B91020"}
+                />
               </label>
+              {method === "orange" ? (
+                <>
+                  <p className="pay-note">Use the transaction ID from the Orange Money SMS or receipt. It looks like PP250502.1502.B91020.</p>
+                  <label className="pay-field">
+                    Screenshot of the transaction details
+                    <input name="receipt" type="file" accept="image/jpeg,image/png,image/webp" required />
+                  </label>
+                </>
+              ) : null}
               <button className="pay-submit" disabled={reporting} type="submit">
                 {reporting ? "Submitting…" : "Confirm payment"}
               </button>

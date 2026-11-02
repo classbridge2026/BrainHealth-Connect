@@ -299,7 +299,7 @@ describe.skipIf(!enabled)("isolated PostgreSQL", () => {
     const results = await Promise.all(
       graph.patients.map((patient) =>
         bookScheduledSlot(
-          { actorUserId: patient.userId, offeringId: graph.offeringId, startsAt, concern: "Tooth pain on the left side since yesterday." },
+          { actorUserId: patient.userId, offeringId: graph.offeringId, startsAt, concern: "Tooth pain on the left side since yesterday.", channel: "VIDEO" },
           { db, rateLimiter: limiter },
         ),
       ),
@@ -311,7 +311,7 @@ describe.skipIf(!enabled)("isolated PostgreSQL", () => {
       select: { feeAmountMinor: true, currency: true, status: true, patientProfileId: true },
     });
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ feeAmountMinor: 1550, currency: "SLL", status: "PENDING_APPROVAL" });
+    expect(rows[0]).toMatchObject({ feeAmountMinor: 1550, currency: "SLL", status: "PENDING_PAYMENT", visitChannel: "VIDEO" });
   });
 
   it("confirms a matching payment once and refuses a mismatched amount or a second provider event", async () => {

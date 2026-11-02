@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db/prisma";
 import { beginVisitPayment, refreshVisitPayment } from "@/lib/payments/collect";
 import { reportAfrimoneyTransfer } from "@/lib/payments/afrimoney-transfer";
 import { reportOrangeTransfer } from "@/lib/payments/orange-transfer";
+import { inspectProfileImage } from "@/lib/profile/image";
 
 export type PayState = { message?: string; tone?: "ok" | "error"; paymentUrl?: string };
 
@@ -43,10 +44,33 @@ export async function refreshWalletPaymentAction(_previous: PayState, formData: 
 export async function reportOrangeTransferAction(_previous: PayState, formData: FormData): Promise<PayState> {
   const user = await requireStoredRoles([PATIENT_ROLE_CODE]);
   const appointmentId = String(formData.get("appointmentId") ?? "");
-  const reported = { actorUserId: user.id, appointmentId, reference: String(formData.get("reference") ?? "") };
-  const result = String(formData.get("provider") ?? "") === "AFRIMONEY"
-    ? await reportAfrimoneyTransfer(reported, prisma)
-    : await reportOrangeTransfer(reported, prisma);
+  const reference = String(formData.get("reference") ?? "");
+  const provider = String(formData.get("provider") ?? "");
+  if (provider === "AFRIMONEY") {
+    const result = await reportAfrimoneyTransfer({ actorUserId: user.id, appointmentId, reference }, prisma);
+    revalidatePath(`/patient/appointments/${appointmentId}`);
+    revalidatePath("/patient/payments");
+    revalidatePath("/admin/payments");
+    return result;
+  }
+  const file = formData.get("receipt");
+  if (!(file instanceof File) || file.size === 0) {
+    return { message: "Upload a screenshot of the Orange Money transaction details.", tone: "error" };
+  }
+  const filename = /\.(jpe?g|png|webp)$/i.test(file.name)
+    ? file.name
+    : file.type === "image/png"
+      ? "receipt.png"
+      : file.type === "image/webp"
+        ? "receipt.webp"
+        : "receipt.jpg";
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const checked = inspectProfileImage({ filename, declaredMime: file.type, bytes });
+  if (!checked.ok) return { message: "Upload a JPEG, PNG, or WebP screenshot of the transaction, up to 2 MB.", tone: "error" };
+  const result = await reportOrangeTransfer(
+    { actorUserId: user.id, appointmentId, reference, receipt: { bytes, mimeType: checked.mimeType } },
+    prisma,
+  );
   revalidatePath(`/patient/appointments/${appointmentId}`);
   revalidatePath("/patient/payments");
   revalidatePath("/admin/payments");

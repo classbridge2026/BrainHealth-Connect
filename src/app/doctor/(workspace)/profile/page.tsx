@@ -4,7 +4,9 @@ import { ProfilePhotoEditor } from "@/components/profile-photo";
 import { RecordsUnavailable } from "@/components/records-unavailable";
 import { StatusBadge, verificationBadge } from "@/components/status-badge";
 import { requireStoredRoles } from "@/lib/auth/require-role";
-import { DOCTOR_ROLE_CODE } from "@/lib/auth/constants";
+import { isPortalAdministrator } from "@/lib/admin/rules";
+import { ClinicPracticeNote } from "@/components/doctor/restricted";
+import { DOCTOR_PORTAL_ROLES } from "@/lib/doctor/session";
 import { prisma } from "@/lib/db/prisma";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
 import { loadOwnDoctor } from "@/lib/doctors/queries";
@@ -17,7 +19,7 @@ export const metadata: Metadata = { title: "Doctor profile" };
 export const dynamic = "force-dynamic";
 
 export default async function DoctorProfilePage() {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   let profile: Awaited<ReturnType<typeof loadOwnDoctor>> = null;
   try {
     profile = await loadOwnDoctor(prisma, user.id);
@@ -25,7 +27,7 @@ export default async function DoctorProfilePage() {
     if (!isSchemaMismatch(error)) throw error;
     return <RecordsUnavailable code="SCHEMA" />;
   }
-  if (!profile) return <RecordsUnavailable code="NOT_FOUND" />;
+  if (!profile) return isPortalAdministrator(user.roleCodes) ? <ClinicPracticeNote /> : <RecordsUnavailable code="NOT_FOUND" />;
   const photo = await prisma.user.findUnique({ where: { id: user.id }, select: { profileImageUpdatedAt: true } });
   const offerings = await prisma.doctorOffering.findMany({
     where: { doctorProfileId: profile.id },

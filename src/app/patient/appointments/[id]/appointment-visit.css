@@ -267,6 +267,28 @@
   font-weight: 700;
 }
 
+.visit-banner p {
+  margin: 0;
+}
+
+.visit-banner a {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0.7rem;
+  height: 2.4rem;
+  padding: 0 0.9rem;
+  border-radius: 0.7rem;
+  background: #0f766e;
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.visit-banner a:hover {
+  background: #0c655e;
+}
+
 .visit-list {
   display: grid;
   gap: 0.65rem;
@@ -325,6 +347,28 @@
 .visit-muted {
   color: #6b7c93 !important;
   font-weight: 600;
+}
+
+.visit-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.75rem;
+  width: fit-content;
+  border: 0;
+  border-radius: 0.85rem;
+  background: #0f766e;
+  color: #fff;
+  padding: 0 1rem;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.visit-action:disabled {
+  opacity: 0.6;
+  cursor: progress;
 }
 
 .visit-history {
@@ -866,6 +910,13 @@ button.pay-method-on {
   border-color: #0f766e;
   outline: 2px solid #99f6e4;
   outline-offset: 1px;
+}
+
+.pay-field input[type="file"] {
+  height: auto;
+  padding: 0.7rem 0.85rem;
+  font-size: 0.88rem;
+  font-weight: 650;
 }
 
 .pay-actions {

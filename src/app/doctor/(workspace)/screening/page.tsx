@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { RecordsUnavailable } from "@/components/records-unavailable";
-import { RestrictedPractice } from "@/components/doctor/restricted";
+import { ClinicPracticeNote, RestrictedPractice } from "@/components/doctor/restricted";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { requireClinicalPortal } from "@/lib/doctor/session";
 import { formatPlatformWhen } from "@/lib/admin/labels";
@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DoctorScreeningPage() {
   const portal = await requireClinicalPortal();
+  if (portal.staff) return <ClinicPracticeNote />;
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
   if (portal.access !== "ready" || !portal.doctor) return <RestrictedPractice access={portal.access} />;
   const result = await listDoctorAssessments(prisma, portal.doctor.id);

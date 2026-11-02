@@ -1,5 +1,6 @@
 import { cache } from "react";
-import { DOCTOR_ROLE_CODE } from "@/lib/auth/constants";
+import { ADMIN_ROLE_CODE, DOCTOR_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
+import { isPortalAdministrator } from "@/lib/admin/rules";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { prisma } from "@/lib/db/prisma";
 import { isRecordsOffline } from "@/lib/db/offline";
@@ -8,8 +9,10 @@ import { redirectOffline } from "@/lib/db/offline-redirect";
 import { recentInAppNotices } from "@/lib/notifications/delivery";
 import { clinicalAccess, type ClinicalAccess } from "./present";
 
+export const DOCTOR_PORTAL_ROLES = [DOCTOR_ROLE_CODE, ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE];
+
 const loadDoctorAccount = cache(async () => {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   let name = "Clinician";
   let specialty = "Clinician";
   let imageVersion: string | null = null;
@@ -46,7 +49,12 @@ const loadDoctorAccount = cache(async () => {
     imageVersion = account?.profileImageUpdatedAt?.toISOString() ?? null;
     unread = unreadCount;
     notices = recent;
-    access = clinicalAccess(profile?.verificationStatus);
+    const clinicDoctor = !profile && isPortalAdministrator(user.roleCodes);
+    access = clinicDoctor ? "ready" : clinicalAccess(profile?.verificationStatus);
+    if (clinicDoctor) {
+      name = "Administrator";
+      specialty = "Doctor workspace";
+    }
     doctor = profile
       ? { id: profile.id, displayName: profile.displayName, verificationStatus: profile.verificationStatus }
       : null;
@@ -55,7 +63,8 @@ const loadDoctorAccount = cache(async () => {
     if (!isSchemaMismatch(error)) throw error;
     access = "schema";
   }
-  return { user, name, specialty, imageVersion, unread, notices, access, doctor };
+  const staff = isPortalAdministrator(user.roleCodes) && !doctor;
+  return { user, name, specialty, imageVersion, unread, notices, access, doctor, staff };
 });
 
 export async function loadDoctorChrome() {
@@ -68,17 +77,19 @@ export async function loadDoctorChrome() {
     unread: account.unread,
     notices: account.notices,
     access: account.access,
+    staff: account.staff,
   };
 }
 
 export async function requireClinicalPortal() {
   const account = await loadDoctorAccount();
-  return { user: account.user, doctor: account.doctor, access: account.access };
+  return { user: account.user, doctor: account.doctor, access: account.access, staff: account.staff };
 }
 
-export async function blockIfUnapproved(userId: string): Promise<string | null> {
+export async function blockIfUnapproved(userId: string, roleCodes?: readonly string[]): Promise<string | null> {
   try {
     const doctor = await prisma.doctorProfile.findUnique({ where: { userId }, select: { verificationStatus: true } });
+    if (!doctor && roleCodes && isPortalAdministrator([...roleCodes])) return null;
     if (doctor?.verificationStatus !== "APPROVED") {
       return "Clinical actions stay unavailable until an administrator approves this account.";
     }

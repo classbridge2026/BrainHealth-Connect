@@ -45,7 +45,7 @@ const PATIENT_TOPICS: Topic[] = [
     aliases: ["find a doctor", "book a doctor", "book an appointment", "book appointment"],
     keywords: ["find", "book", "booking", "verified", "clinician"],
     summary: "Find a Doctor lists only approved, active doctors. Search by name, open a doctor, then book an online or in-person consultation.",
-    how: "Click Find a Doctor. Click Book appointment on the doctor you want. For an in-person visit, choose a clinic before the times appear. Pick a day and an open time. Write what is wrong, at least a short note, and confirm. The visit keeps a payment window. If it is not completed in time, the hold expires and the time is released.",
+    how: "Click Find a Doctor. Click Book appointment on the doctor you want. Search by concern, specialty, or doctor. Choose video, audio, or in person before the times appear. For an in-person visit, choose a clinic before the times appear. Pick an open time, write what is wrong, and confirm. The visit keeps a payment window. Pay the self-pay fee with Orange Money or Afrimoney before the hold ends, or the time is released.",
     limits: "You book only for this patient account. A doctor who is not approved does not appear.",
   },
   {
@@ -75,7 +75,7 @@ const PATIENT_TOPICS: Topic[] = [
     aliases: ["payments", "payment history"],
     keywords: ["payment", "payments", "paid", "pending"],
     summary: "Payments and History shows the charges stored for your visits, including what is paid and what is still pending.",
-    how: "After the doctor approves a visit, open that appointment and pay with Orange Money or Afrimoney. This page is the history. Filter it by status.",
+    how: "Open the appointment and pay with Orange Money or Afrimoney while the payment window is open. This page is the history. Filter it by status.",
     limits: "You cannot mark a payment successful, captured, or refunded.",
   },
   {

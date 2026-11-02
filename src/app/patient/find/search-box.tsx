@@ -8,8 +8,8 @@ export function DoctorSearch({ initialQuery }: { initialQuery: string }) {
     <form className="find-search" role="search" onSubmit={(event) => event.preventDefault()}>
       <label className="find-search-field">
         <Search size={18} aria-hidden="true" />
-        <span className="sr-only">Search by doctor name</span>
-        <LiveSearchInput destination="/patient/find" initial={initialQuery} placeholder="Search by doctor name" />
+        <span className="sr-only">Search by concern, specialty, or doctor</span>
+        <LiveSearchInput destination="/patient/find" initial={initialQuery} placeholder="Search by concern, specialty, or doctor" />
       </label>
     </form>
   );

@@ -2,6 +2,7 @@ import { PaymentStatus, type PrismaClient } from "@prisma/client";
 import { parseUuid } from "@/lib/catalog/rules";
 import { isUniqueConflict } from "@/lib/doctors/errors";
 import { notifyAppointmentParties } from "@/lib/appointments/email-notice";
+import { saveChannelNotice } from "@/lib/notifications/delivery";
 import { confirmVerifiedPayment } from "@/lib/appointments/payment-holds";
 import { AFRIMONEY, normalizeSierraLeoneMsisdn } from "./mobile-money";
 import { nextProviderPaymentStatus, paymentAmountsMatch } from "./verification";
@@ -36,11 +37,12 @@ export function orangeDialHref(dialNumber: string, amount: string) {
   return `tel:${encodeURIComponent(`#144*2*1*${dialNumber}*${amount}*`)}`;
 }
 
-/** The code from the Orange Money SMS. A 4-digit PIN is rejected. */
+/** Orange Money IDs look like PP250502.1502.B91020: two letters, the date, the time, then a receipt code. */
+const ORANGE_TRANSACTION_ID = /^[A-Z]{2}\d{6}\.\d{4}\.[A-Z]\d{5}$/;
+
 export function parseOrangeTransactionId(input: string): string | null {
   const value = input.trim().toUpperCase().replace(/\s+/g, "");
-  if (!/^[A-Z0-9][A-Z0-9.-]{5,39}$/.test(value)) return null;
-  if (/^\d{4}$/.test(value)) return null;
+  if (!ORANGE_TRANSACTION_ID.test(value)) return null;
   return value;
 }
 
@@ -77,13 +79,16 @@ export async function saveOrangeReceiveNumber(input: string, db: Db, actorUserId
 }
 
 export async function reportOrangeTransfer(
-  input: { actorUserId: string; appointmentId: string; reference: string },
+  input: { actorUserId: string; appointmentId: string; reference: string; receipt: { bytes: Uint8Array; mimeType: string } },
   db: Db,
 ): Promise<{ message: string; tone?: "ok" | "error" }> {
   const appointmentId = parseUuid(input.appointmentId);
   const reference = parseOrangeTransactionId(input.reference);
   if (!appointmentId) return { message: "This visit could not be found.", tone: "error" };
-  if (!reference) return { message: "Enter the transaction code from the Orange Money SMS. Do not enter your PIN.", tone: "error" };
+  if (!reference) return { message: "Enter the Orange Money transaction ID from the SMS, such as PP250502.1502.B91020. Do not enter your PIN.", tone: "error" };
+  if (input.receipt.bytes.byteLength === 0 || !input.receipt.mimeType.startsWith("image/")) {
+    return { message: "Upload a screenshot of the Orange Money transaction details.", tone: "error" };
+  }
   const dial = await loadOrangeDialNumber(db);
   if (!dial) return { message: "The clinic has not saved an Orange Money number yet.", tone: "error" };
 
@@ -92,7 +97,7 @@ export async function reportOrangeTransfer(
     select: { id: true, status: true, feeAmountMinor: true, currency: true },
   });
   if (!appointment) return { message: "This visit could not be found.", tone: "error" };
-  if (appointment.status !== "CONFIRMED" && appointment.status !== "PENDING_PAYMENT" && appointment.status !== "PENDING_APPROVAL") {
+  if (appointment.status !== "CONFIRMED" && appointment.status !== "PENDING_PAYMENT" && appointment.status !== "PENDING_APPROVAL" && appointment.status !== "EXPIRED_UNPAID") {
     return { message: "This visit is not waiting for a payment.", tone: "error" };
   }
   if (appointment.feeAmountMinor <= 0) return { message: "This visit does not have a fee.", tone: "error" };
@@ -115,6 +120,8 @@ export async function reportOrangeTransfer(
         providerCode: ORANGE_MONEY,
         providerReference: reference,
         providerAccountId: `232${dial.slice(1)}`,
+        receiptBytes: Buffer.from(input.receipt.bytes),
+        receiptMime: input.receipt.mimeType,
         events: {
           create: {
             providerCode: ORANGE_MONEY,
@@ -129,6 +136,16 @@ export async function reportOrangeTransfer(
     if (isUniqueConflict(error)) return { message: "That Orange Money transaction code is already recorded.", tone: "error" };
     throw error;
   }
+  await saveChannelNotice(db, {
+    recipientId: input.actorUserId,
+    channel: "IN_APP",
+    type: "payment.orange_reported",
+    title: "Orange Money transfer sent",
+    preview: `Transaction ${reference} is with the clinic.`,
+    entityType: "Appointment",
+    entityId: appointmentId,
+    status: "SENT",
+  }).catch(() => undefined);
   return { message: "The clinic will confirm this Orange Money transfer.", tone: "ok" };
 }
 
@@ -179,7 +196,8 @@ export async function reviewOrangeTransfer(
     return { message: `The ${wallet} transfer is confirmed and the visit is booked.`, tone: "ok" };
   }
   const awaitingApproval = payment.appointment.status === "PENDING_APPROVAL";
-  if (input.decision === "confirm" && !CONFIRMABLE_VISIT.has(payment.appointment.status) && !awaitingApproval) {
+  const released = payment.appointment.status === "EXPIRED_UNPAID";
+  if (input.decision === "confirm" && !CONFIRMABLE_VISIT.has(payment.appointment.status) && !awaitingApproval && !released) {
     return { message: "This visit is not waiting for a payment.", tone: "error" };
   }
 
@@ -210,9 +228,11 @@ export async function reviewOrangeTransfer(
   }
   return {
     message: input.decision === "confirm"
-      ? awaitingApproval
-        ? `The ${wallet} transfer is confirmed. The doctor can approve the visit.`
-        : `The ${wallet} transfer is confirmed.`
+      ? released
+        ? `The ${wallet} transfer is recorded. The payment hold had already ended, so this time stays released.`
+        : awaitingApproval
+          ? `The ${wallet} transfer is confirmed. The doctor can approve the visit.`
+          : `The ${wallet} transfer is confirmed.`
       : "The transfer was not accepted. The patient can send it again.",
     tone: "ok",
   };

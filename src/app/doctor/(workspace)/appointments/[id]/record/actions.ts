@@ -91,8 +91,11 @@ export async function saveStructuredNoteAction(_previous: ClinicalActionState, f
   const result = await saveClinicalNote(prisma, {
     appointmentId,
     actorUserId: user.id,
+    noteId: String(formData.get("noteId") ?? "") || null,
     kind: "PRIVATE_WORKING",
     body: composed.body,
+    expectedRevision: String(formData.get("expectedRevision") ?? ""),
+    amendmentReason: String(formData.get("amendmentReason") ?? ""),
   });
   return finish(appointmentId, result);
 }
@@ -102,8 +105,10 @@ export async function savePatientSummaryAction(_previous: ClinicalActionState, f
   const appointmentId = String(formData.get("appointmentId") ?? "");
   const composed = composePatientSummary({
     reason: String(formData.get("reason") ?? ""),
+    outcome: String(formData.get("outcome") ?? ""),
     findings: String(formData.get("findings") ?? ""),
     plan: String(formData.get("plan") ?? ""),
+    prescription: String(formData.get("prescription") ?? ""),
     followUp: String(formData.get("followUp") ?? ""),
     additional: String(formData.get("additional") ?? ""),
   });

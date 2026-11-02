@@ -1,3 +1,5 @@
+import { PATIENT_CHECK_IN_MINUTES } from "./channel";
+
 export type AppointmentActor = "patient" | "doctor" | "admin" | "system";
 
 export type TransitionCode =
@@ -23,7 +25,11 @@ export function canTransition(input: {
   if (!input.ownsRecord && input.actor !== "admin" && input.actor !== "system") {
     return { ok: false, code: "FORBIDDEN" };
   }
-  if (input.actor === "doctor" && input.ownsRecord && input.from === "PENDING_APPROVAL" && input.to === "CONFIRMED") {
+  if (
+    input.from === "PENDING_APPROVAL" &&
+    input.to === "CONFIRMED" &&
+    ((input.actor === "doctor" && input.ownsRecord) || input.actor === "admin")
+  ) {
     if (input.startsAt <= input.now) return { ok: false, code: "TOO_LATE" };
     return { ok: true };
   }
@@ -44,6 +50,12 @@ export function canTransition(input: {
   }
 
   if (input.actor === "patient") {
+    if (input.to === "CHECKED_IN" && input.from === "CONFIRMED") {
+      const earliest = input.startsAt.getTime() - PATIENT_CHECK_IN_MINUTES * 60_000;
+      if (input.now.getTime() < earliest) return { ok: false, code: "TOO_EARLY" };
+      if (input.now.getTime() > input.endsAt.getTime()) return { ok: false, code: "TOO_LATE" };
+      return { ok: true };
+    }
     if (input.to !== "CANCELLED_BY_PATIENT" && input.to !== "RESCHEDULED") return { ok: false, code: "FORBIDDEN" };
     if (input.from !== "PENDING_PAYMENT" && input.from !== "PENDING_APPROVAL" && input.from !== "CONFIRMED") return { ok: false, code: "UNSUPPORTED" };
     if (input.from === "PENDING_APPROVAL" && input.to === "RESCHEDULED") return { ok: false, code: "UNSUPPORTED" };

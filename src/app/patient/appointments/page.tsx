@@ -55,7 +55,7 @@ export default async function PatientAppointmentsPage({ searchParams }: { search
         ))}
       </nav>
       {rows.length === 0 ? (
-        <p className="rounded-2xl border border-[#d7e3ee] bg-white p-5 text-sm text-[#5b6b7c]">{view === "upcoming" ? "You have no upcoming appointments." : view === "pending" ? "You have no bookings waiting for a doctor." : "Nothing is stored in this view."}</p>
+        <p className="rounded-2xl border border-[#d7e3ee] bg-white p-5 text-sm text-[#5b6b7c]">{view === "upcoming" ? "You have no upcoming appointments." : view === "pending" ? "You have no bookings waiting for payment." : "Nothing is stored in this view."}</p>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-[#d7e3ee] bg-white">
           <table className="phone-table w-full min-w-[760px] text-left text-sm">

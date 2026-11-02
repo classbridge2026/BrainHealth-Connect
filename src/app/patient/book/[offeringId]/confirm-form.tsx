@@ -6,7 +6,19 @@ import "../book.css";
 
 const initial: BookState = {};
 
-export function ConfirmBookingForm({ offeringId, startsAt, locationId }: { offeringId: string; startsAt: string; locationId: string }) {
+export function ConfirmBookingForm({
+  offeringId,
+  startsAt,
+  locationId,
+  channel,
+  payable,
+}: {
+  offeringId: string;
+  startsAt: string;
+  locationId: string;
+  channel: string;
+  payable: boolean;
+}) {
   const [state, action, pending] = useActionState(bookSlotAction, initial);
   const concernRef = useRef<HTMLLabelElement>(null);
 
@@ -27,13 +39,14 @@ export function ConfirmBookingForm({ offeringId, startsAt, locationId }: { offer
       <input type="hidden" name="offeringId" value={offeringId} />
       <input type="hidden" name="startsAt" value={startsAt} />
       <input type="hidden" name="locationId" value={locationId} />
+      <input type="hidden" name="channel" value={channel} />
       <label className="book-concern" id="what-is-wrong" ref={concernRef}>
         What is wrong?
-        <span>Tell the doctor what is wrong before you send this request. The doctor reads it before approving or declining.</span>
+        <span>Tell the doctor what is wrong. This is the reason for the visit.</span>
         <textarea name="concern" required minLength={10} maxLength={500} rows={4} placeholder="Describe the problem in your own words." />
       </label>
       <button className="book-confirm" type="submit" disabled={pending}>
-        {pending ? "Sending…" : "Request appointment"}
+        {pending ? "Saving…" : payable ? "Confirm and pay" : "Confirm appointment"}
       </button>
       {state.message ? <p className="book-alert" role="alert">{state.message}</p> : null}
     </form>

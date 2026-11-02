@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { formatPlatformDay, formatPlatformWhen } from "@/lib/admin/labels";
+import { formatPlatformDay, formatPlatformWhen, paymentStatusLabel } from "@/lib/admin/labels";
 import { completeEndedConsultations, shownAppointmentStatus } from "@/lib/appointments/finish";
 import { formatBookingWhen } from "@/lib/appointments/time";
 import { parseUuid } from "@/lib/catalog/rules";
@@ -132,7 +132,12 @@ const scheduleSelect = {
   startsAt: true,
   endsAt: true,
   consultationServiceId: true,
+  patientConcern: true,
+  intakeHistory: true,
+  feeAmountMinor: true,
+  payments: { orderBy: { createdAt: "desc" as const }, take: 1, select: { status: true } },
   patient: { select: { id: true, fullName: true, user: { select: { id: true, profileImageUpdatedAt: true } } } },
+  doctor: { select: { displayName: true } },
   consultationService: { select: { id: true, name: true, code: true } },
 } as const;
 
@@ -147,15 +152,18 @@ export async function loadDoctorScheduleView(
     mode: "ONLINE" | "IN_PERSON" | null;
     serviceId: string | null;
     now?: Date;
+    clinicWide?: boolean;
   },
 ) {
   const now = input.now ?? new Date();
   try {
-    const doctor = await db.doctorProfile.findUnique({ where: { userId: input.userId }, select: { id: true } });
-    if (!doctor) return { ok: true as const, rows: [], services: [] as Array<{ id: string; name: string }> };
-    await completeEndedConsultations(db, { now, doctorProfileId: doctor.id });
+    const doctor = input.clinicWide
+      ? null
+      : await db.doctorProfile.findUnique({ where: { userId: input.userId }, select: { id: true } });
+    if (!input.clinicWide && !doctor) return { ok: true as const, rows: [], services: [] as Array<{ id: string; name: string }> };
+    await completeEndedConsultations(db, { now, doctorProfileId: doctor?.id });
     const where: Prisma.AppointmentWhereInput = {
-      doctorProfileId: doctor.id,
+      ...(doctor ? { doctorProfileId: doctor.id } : {}),
       startsAt: { gte: input.start, lt: input.end },
     };
     if (input.status) where.status = input.status as Prisma.EnumAppointmentStatusFilter["equals"];
@@ -164,7 +172,7 @@ export async function loadDoctorScheduleView(
     const [rows, services] = await Promise.all([
       db.appointment.findMany({ where, orderBy: { startsAt: "asc" }, take: 200, select: scheduleSelect }),
       db.consultationService.findMany({
-        where: { appointments: { some: { doctorProfileId: doctor.id } } },
+        where: doctor ? { appointments: { some: { doctorProfileId: doctor.id } } } : { isActive: true },
         select: { id: true, name: true },
         orderBy: { name: "asc" },
         take: 40,
@@ -183,9 +191,13 @@ export async function loadDoctorScheduleView(
       patientUserId: row.patient.user.id,
       patientImageVersion: row.patient.user.profileImageUpdatedAt?.toISOString() ?? null,
       patient: row.patient.fullName,
+      doctorName: row.doctor.displayName,
       service: row.consultationService.name,
       serviceId: row.consultationService.id,
       followUp: isFollowUpConsultation(row.consultationService),
+      reason: row.patientConcern,
+      intake: row.intakeHistory,
+      paymentLabel: row.payments[0] ? paymentStatusLabel(row.payments[0].status) : row.feeAmountMinor === 0 ? "No fee" : "Not recorded",
       onSelectedDay: row.startsAt >= dayStart && row.startsAt < dayEnd,
     }));
     return { ok: true as const, rows: presented, services };

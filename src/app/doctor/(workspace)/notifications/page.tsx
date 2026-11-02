@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { RecordsUnavailable } from "@/components/records-unavailable";
 import { StatusBadge } from "@/components/status-badge";
-import { DOCTOR_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
+import { DOCTOR_PORTAL_ROLES } from "@/lib/doctor/session";
 import { listDoctorNotifications } from "@/lib/doctor/workspace";
 import { prisma } from "@/lib/db/prisma";
 import { MarkViewedNotifications } from "@/components/notifications/mark-viewed";
@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "Notifications" };
 export const dynamic = "force-dynamic";
 
 export default async function DoctorNotificationsPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   const filter = (await searchParams).filter === "unread" ? "unread" : "all";
   const result = await listDoctorNotifications(prisma, user.id, filter === "unread");
   if (!result.ok) return <RecordsUnavailable code={result.code} />;

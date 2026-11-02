@@ -159,6 +159,8 @@ describe("appointment transitions", () => {
     const reason = "Patient no longer needs this time";
     expect(canTransition({ actor: "doctor", ownsRecord: true, from: "PENDING_APPROVAL", to: "CONFIRMED", now, startsAt, endsAt }).ok).toBe(true);
     expect(canTransition({ actor: "doctor", ownsRecord: true, from: "PENDING_APPROVAL", to: "CONFIRMED", now: startsAt, startsAt, endsAt }).ok).toBe(false);
+    expect(canTransition({ actor: "admin", ownsRecord: false, from: "PENDING_APPROVAL", to: "CONFIRMED", now, startsAt, endsAt }).ok).toBe(true);
+    expect(canTransition({ actor: "admin", ownsRecord: false, from: "PENDING_APPROVAL", to: "CONFIRMED", now: startsAt, startsAt, endsAt }).ok).toBe(false);
     expect(canTransition({ actor: "patient", ownsRecord: true, from: "PENDING_APPROVAL", to: "CANCELLED_BY_PATIENT", now, startsAt, endsAt, reason }).ok).toBe(true);
     expect(canTransition({ actor: "patient", ownsRecord: true, from: "PENDING_APPROVAL", to: "RESCHEDULED", now, startsAt, endsAt, reason }).ok).toBe(false);
     expect(canTransition({ actor: "doctor", ownsRecord: true, from: "PENDING_APPROVAL", to: "CANCELLED_BY_DOCTOR", now, startsAt, endsAt, reason }).ok).toBe(true);
@@ -168,6 +170,10 @@ describe("appointment transitions", () => {
     expect(canTransition({ actor: "doctor", ownsRecord: true, from: "PENDING_APPROVAL", to: "CHECKED_IN", now, startsAt, endsAt }).ok).toBe(false);
     expect(canTransition({ actor: "doctor", ownsRecord: true, from: "CONFIRMED", to: "COMPLETED", now, startsAt, endsAt }).ok).toBe(true);
     expect(canTransition({ actor: "doctor", ownsRecord: true, from: "PENDING_APPROVAL", to: "COMPLETED", now, startsAt, endsAt }).ok).toBe(false);
+    const early = new Date(startsAt.getTime() - 16 * 60_000);
+    const ready = new Date(startsAt.getTime() - 14 * 60_000);
+    expect(canTransition({ actor: "patient", ownsRecord: true, from: "CONFIRMED", to: "CHECKED_IN", now: early, startsAt, endsAt }).ok).toBe(false);
+    expect(canTransition({ actor: "patient", ownsRecord: true, from: "CONFIRMED", to: "CHECKED_IN", now: ready, startsAt, endsAt }).ok).toBe(true);
   });
 
   it("lets a doctor reschedule a missed visit after the scheduled time and refuses a completed one", () => {

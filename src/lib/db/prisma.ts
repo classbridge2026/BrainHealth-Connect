@@ -15,7 +15,7 @@ function createPrismaClient(): PrismaClient {
   return new PrismaClient({
     datasources: databaseUrl ? { db: { url: databaseUrl } } : undefined,
     // Photos live on the user row. Leave them out of every read unless a query selects them.
-    omit: { user: { profileImageBytes: true }, supportRequest: { attachmentBytes: true } },
+    omit: { user: { profileImageBytes: true }, supportRequest: { attachmentBytes: true }, payment: { receiptBytes: true } },
     // Neon round trips often exceed Prisma's 5 second interactive-transaction default.
     transactionOptions: { maxWait: 20_000, timeout: 30_000 },
   }) as unknown as PrismaClient;

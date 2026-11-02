@@ -76,6 +76,7 @@ export function ConsultationSession({
   const [audioOutput, setAudioOutput] = useState("");
   const [speakerNote, setSpeakerNote] = useState<string | null>(null);
   const [audioLevel, setAudioLevel] = useState<number | null>(null);
+  const [arrived, setArrived] = useState(false);
   const [internet, setInternet] = useState("Not checked");
   const [cameraStatus, setCameraStatus] = useState("Not tested");
   const [micStatus, setMicStatus] = useState("Not tested");
@@ -314,7 +315,7 @@ export function ConsultationSession({
   }, [appointmentId, configured, connection, role, when]);
 
   useEffect(() => {
-    if (role !== "patient" || connection) return;
+    if (role !== "patient" || connection || !arrived) return;
     let stop = false;
     async function ping(method: "POST" | "DELETE") {
       try {
@@ -341,7 +342,7 @@ export function ConsultationSession({
       window.clearTimeout(timer);
       void ping("DELETE");
     };
-  }, [appointmentId, connection, role]);
+  }, [appointmentId, arrived, connection, role]);
 
   useEffect(() => {
     if (role !== "doctor" || !canJoin || connection) return;
@@ -562,8 +563,9 @@ export function ConsultationSession({
           onAudioInput={(value) => { setAudioInput(value); void checkDevices(audioOnly, value, videoInput); }}
           onAudioOnly={(value) => { setAudioOnly(value); setReady(false); setCameraStatus(value ? "Not used for audio only" : "Not tested"); }}
           onAudioOutput={setAudioOutput}
+          arrived={arrived}
+          onArrive={() => setArrived(true)}
           onBack={exit}
-          onJoin={() => void join()}
           onTest={() => void checkDevices()}
           onVideoInput={(value) => { setVideoInput(value); void checkDevices(audioOnly, audioInput, value); }}
         />

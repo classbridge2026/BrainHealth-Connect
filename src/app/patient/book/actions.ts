@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { PATIENT_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { bookScheduledSlot, bookingMessage, type BookingCode } from "@/lib/appointments/booking";
+import { parseVisitChannel } from "@/lib/appointments/channel";
 import { prisma } from "@/lib/db/prisma";
 
 export type BookState = { message?: string };
@@ -12,6 +13,8 @@ export async function bookSlotAction(_previous: BookState, formData: FormData): 
   const user = await requireStoredRoles([PATIENT_ROLE_CODE]);
   const startsAt = new Date(String(formData.get("startsAt") ?? ""));
   const location = String(formData.get("locationId") ?? "").trim();
+  const channel = parseVisitChannel(String(formData.get("channel") ?? ""));
+  if (!channel) return { message: "Choose video, audio, or in person before you confirm." };
   const result = await bookScheduledSlot(
     {
       actorUserId: user.id,
@@ -19,6 +22,7 @@ export async function bookSlotAction(_previous: BookState, formData: FormData): 
       locationId: location || null,
       startsAt,
       concern: String(formData.get("concern") ?? ""),
+      channel,
     },
     { db: prisma },
   );

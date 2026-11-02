@@ -7,6 +7,7 @@ import { readPageSession } from "@/lib/auth/current-user";
 import { SESSION_COOKIE } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { loadReleasedSummary } from "@/lib/patient/portal";
+import { DownloadSummary } from "./download-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
         <p className="mt-2 text-sm text-brand-muted">{summary.patientName} · {summary.doctor} · Visit {summary.when} · Released {summary.releasedWhen}</p>
       </header>
       <article className="rounded-2xl border border-brand-line bg-white p-5 text-sm leading-7 whitespace-pre-wrap text-brand-ink">{summary.body}</article>
+      <DownloadSummary filename={`carecircle-summary-${summary.appointmentId}.txt`} body={summary.body} />
       <section className="grid gap-2">
         <h2 className="text-lg font-semibold text-brand-navy">Documents released with this summary</h2>
         {summary.files.length === 0 ? (
@@ -48,7 +50,10 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
           </ul>
         )}
       </section>
-      <Link className="text-sm font-semibold text-brand-teal" href={`/patient/appointments/${summary.appointmentId}`}>View the appointment</Link>
+      <div className="flex flex-wrap gap-4">
+        <Link className="text-sm font-semibold text-brand-teal" href={`/patient/appointments/${summary.appointmentId}`}>View the appointment</Link>
+        <Link className="text-sm font-semibold text-brand-teal" href="/patient/find">Book a follow-up</Link>
+      </div>
     </div>
   );
 }

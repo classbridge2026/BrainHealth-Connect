@@ -36,7 +36,7 @@ const copy: Record<AppointmentNotice, { subject: (systemName: string) => string;
   },
   paid: {
     subject: (systemName) => `Payment received on ${systemName}`,
-    line: "The visit fee is confirmed. The doctor can approve the booking.",
+    line: "The visit fee is recorded.",
     type: "appointment.paid",
   },
   reminder_day: {
@@ -90,6 +90,7 @@ export async function notifyAppointmentParties(
       select: {
         id: true,
         mode: true,
+        visitChannel: true,
         status: true,
         startsAt: true,
         patient: { select: { userId: true, fullName: true, user: { select: { email: true, status: true, deletedAt: true } } } },
@@ -138,11 +139,11 @@ export async function notifyAppointmentParties(
     const adminLine =
       input.event === "paid"
         ? patientName && doctorName
-          ? `${patientName} paid for the visit with ${doctorName}. The doctor can approve it.`
-          : "A patient paid for a visit. The doctor can approve it."
+          ? `${patientName} paid for the visit with ${doctorName}. Open the appointment to see it.`
+          : "A patient paid for a visit. Open the appointment to see it."
         : patientName && doctorName
-          ? `${patientName} booked ${doctorName}. The visit is waiting for the doctor to approve it.`
-          : "A patient booked a doctor. The visit is waiting for the doctor to approve it.";
+          ? `${patientName} booked ${doctorName}. Open the appointment to approve or decline it.`
+          : "A patient booked a doctor. Open the appointment to approve or decline it.";
 
     for (const recipient of recipients) {
       if (REMINDER.has(input.event)) {
@@ -159,7 +160,20 @@ export async function notifyAppointmentParties(
         if (already) continue;
       }
       const line = recipient.kind === "admin" ? adminLine : notice.line;
-      const text = [line, `Time: ${when} (Africa/Freetown).`, recipient.href ? `Open the appointment: ${recipient.href}` : ""]
+      const channelName = appointment.visitChannel === "AUDIO"
+        ? "audio"
+        : appointment.mode === "IN_PERSON" || appointment.visitChannel === "IN_PERSON"
+          ? "in-person"
+          : "video";
+      const joinLine = recipient.kind === "patient" && input.event === "confirmed"
+        ? appointment.mode === "ONLINE"
+          ? `This is a ${channelName} visit. Sign in and open the appointment to join.`
+          : "This is an in-person visit. Open the appointment for the clinic details."
+        : "";
+      const prepareLine = recipient.kind === "patient" && REMINDER.has(input.event)
+        ? "Open the appointment to finish your history, consent, and eCheck-in."
+        : "";
+      const text = [line, joinLine, prepareLine, `Time: ${when} (Africa/Freetown).`, recipient.href ? `Open the appointment: ${recipient.href}` : ""]
         .filter(Boolean)
         .join("\n");
       const preview = `${line} ${when}.`;

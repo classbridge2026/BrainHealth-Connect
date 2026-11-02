@@ -2,7 +2,15 @@ import { PaymentStatus, type PrismaClient } from "@prisma/client";
 import { parseUuid } from "@/lib/catalog/rules";
 import { isUniqueConflict } from "@/lib/doctors/errors";
 import { AFRIMONEY } from "./mobile-money";
-import { formatOrangeDialNumber, orangeDialNumber, parseOrangeTransactionId, ussdAmount } from "./orange-transfer";
+import { formatOrangeDialNumber, orangeDialNumber, ussdAmount } from "./orange-transfer";
+
+/** Afrimoney SMS codes vary. A 4-digit PIN is rejected. */
+export function parseAfrimoneyTransactionId(input: string): string | null {
+  const value = input.trim().toUpperCase().replace(/\s+/g, "");
+  if (!/^[A-Z0-9][A-Z0-9.-]{5,39}$/.test(value)) return null;
+  if (/^\d{4}$/.test(value)) return null;
+  return value;
+}
 
 export const AFRIMONEY_NUMBER_KEY = "AFRIMONEY_NUMBER";
 
@@ -61,7 +69,7 @@ export async function reportAfrimoneyTransfer(
   db: Db,
 ): Promise<{ message: string; tone?: "ok" | "error" }> {
   const appointmentId = parseUuid(input.appointmentId);
-  const reference = parseOrangeTransactionId(input.reference);
+  const reference = parseAfrimoneyTransactionId(input.reference);
   if (!appointmentId) return { message: "This visit could not be found.", tone: "error" };
   if (!reference) return { message: "Enter the transaction code from the Afrimoney SMS. Do not enter your PIN.", tone: "error" };
   const dial = await loadAfrimoneyDialNumber(db);

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PATIENT_ROLE_CODE, DOCTOR_ROLE_CODE } from "@/lib/auth/constants";
+import { PATIENT_ROLE_CODE, DOCTOR_ROLE_CODE, ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { parseUuid } from "@/lib/catalog/rules";
 import { clinicianMayDocument } from "@/lib/clinical/rules";
 
@@ -103,10 +103,13 @@ export function joinDecision(input: {
 }): { ok: true; role: "patient" | "doctor" } | { ok: false; code: JoinCode } {
   const isPatient = input.appointment.patientUserId === input.actor.userId;
   const isDoctor = input.appointment.doctorUserId === input.actor.userId;
-  if (isPatient === isDoctor) return { ok: false, code: "NOT_FOUND" };
+  const isAdministrator =
+    input.actor.roleCodes.includes(ADMIN_ROLE_CODE) || input.actor.roleCodes.includes(SUPER_ADMIN_ROLE_CODE);
+  if (isPatient && (isDoctor || isAdministrator)) return { ok: false, code: "NOT_FOUND" };
+  if (!isPatient && !isDoctor && !isAdministrator) return { ok: false, code: "NOT_FOUND" };
   const role = isPatient ? "patient" : "doctor";
   if (role === "patient" && !input.actor.roleCodes.includes(PATIENT_ROLE_CODE)) return { ok: false, code: "NOT_FOUND" };
-  if (role === "doctor" && !input.actor.roleCodes.includes(DOCTOR_ROLE_CODE)) return { ok: false, code: "NOT_FOUND" };
+  if (role === "doctor" && !input.actor.roleCodes.includes(DOCTOR_ROLE_CODE) && !isAdministrator) return { ok: false, code: "NOT_FOUND" };
 
   const actorStatus = role === "patient" ? input.appointment.patientStatus : input.appointment.doctorStatus;
   if (input.actor.status !== "ACTIVE" || actorStatus !== "ACTIVE") return { ok: false, code: "INACTIVE" };

@@ -4,7 +4,7 @@ import { BadgeCheck, Building2, Video } from "lucide-react";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { RecordsUnavailable } from "@/components/records-unavailable";
 import { prisma } from "@/lib/db/prisma";
-import { searchVerifiedDoctors } from "@/lib/patient/portal";
+import { listBookingFilters, searchVerifiedDoctors } from "@/lib/patient/portal";
 import { DoctorSearch } from "./search-box";
 import "./find.css";
 
@@ -19,6 +19,7 @@ type DoctorCard = {
   specialties: string[];
   services: string[];
   modes: Array<"ONLINE" | "IN_PERSON">;
+  languages: string[];
   fee: string | null;
   userId: string;
   imageVersion: string | null;
@@ -27,23 +28,65 @@ type DoctorCard = {
 export default async function FindDoctorPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q : "";
-  const result = await searchVerifiedDoctors(prisma, { q });
+  const specialty = typeof params.specialty === "string" ? params.specialty : "";
+  const language = typeof params.language === "string" ? params.language : "";
+  const location = typeof params.location === "string" ? params.location : "";
+  const visit = typeof params.visit === "string" ? params.visit : "";
+  const [result, filters] = await Promise.all([
+    searchVerifiedDoctors(prisma, { q, specialty, language, location, visit }),
+    listBookingFilters(prisma),
+  ]);
   if (!result.ok) return <RecordsUnavailable code={result.code === "NOT_FOUND" ? "NOT_FOUND" : result.code} />;
+  const options = filters.ok ? filters : { specialties: [], languages: [], districts: [] };
   const count = result.doctors.length;
 
   return (
     <div className="find-page">
       <header className="find-head">
         <h1>Find a Doctor</h1>
-        <p>Choose a verified clinician, then book an online or in-person consultation. Only approved, active doctors are listed.</p>
+        <p>Search by concern, specialty, or doctor. Profiles show qualifications, fees, and languages. Visits are self-pay.</p>
       </header>
       <DoctorSearch initialQuery={q} />
+      <form className="find-filters" action="/patient/find">
+        {q ? <input type="hidden" name="q" value={q} /> : null}
+        <label>
+          Specialty
+          <select name="specialty" defaultValue={specialty}>
+            <option value="">Any specialty</option>
+            {options.specialties.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>
+        <label>
+          Language
+          <select name="language" defaultValue={language}>
+            <option value="">Any language</option>
+            {options.languages.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>
+        <label>
+          Location
+          <select name="location" defaultValue={location}>
+            <option value="">Any location</option>
+            {options.districts.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>
+        <label>
+          Visit
+          <select name="visit" defaultValue={visit}>
+            <option value="">Any visit</option>
+            <option value="video">Video</option>
+            <option value="audio">Audio</option>
+            <option value="in-person">In person</option>
+          </select>
+        </label>
+        <button type="submit">Apply</button>
+      </form>
       <p className="find-count">
         {count} verified doctor{count === 1 ? "" : "s"}
         {q.trim() ? ` matching “${q.trim()}”` : ""}
       </p>
       {count === 0 ? (
-        <p className="find-empty">No approved doctor matches that name. Try another spelling, or delete the search to see everyone.</p>
+        <p className="find-empty">No approved doctor matches that search. Try a specialty, a concern, or another name.</p>
       ) : (
         <ul className="find-list">
           {result.doctors.map((doctor) => (
@@ -73,7 +116,10 @@ function DoctorCard({ doctor }: { doctor: DoctorCard }) {
           <h2><Link href={href}>{doctor.displayName}</Link></h2>
           <span className="doc-verified"><BadgeCheck size={14} aria-hidden="true" /> Verified</span>
         </div>
-        <p className="doc-cred">{credentials.join(" · ")}</p>
+        <div className="doc-cred">
+          <p>{credentials.join(" · ")}</p>
+          {doctor.languages.length > 0 ? <p>Languages: {doctor.languages.join(", ")}</p> : null}
+        </div>
         <ul className="doc-chips" aria-label="Specialties">
           {specialties.length === 0 ? <li>Specialty not published</li> : specialties.map((name) => <li key={name}>{name}</li>)}
           {extraSpecialties > 0 ? <li>+{extraSpecialties}</li> : null}
@@ -87,7 +133,10 @@ function DoctorCard({ doctor }: { doctor: DoctorCard }) {
           ))}
           {services.map((service) => <li key={service}>{service}</li>)}
         </ul>
-        {doctor.fee ? <p className="doc-fee"><span>Consultations from </span>{doctor.fee}</p> : null}
+        <div className="doc-fees">
+          {doctor.fee ? <p className="doc-fee"><span>Consultations from </span>{doctor.fee}</p> : null}
+          <p className="doc-fee"><span>Payment </span>Self-pay</p>
+        </div>
       </div>
       <div className="doc-actions">
         <Link className="doc-book" href={href}>Book appointment</Link>

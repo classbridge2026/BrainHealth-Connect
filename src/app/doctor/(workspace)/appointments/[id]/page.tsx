@@ -7,6 +7,7 @@ import { RestrictedPractice } from "@/components/doctor/restricted";
 import { StatusBadge } from "@/components/status-badge";
 import { VisitIcon } from "@/app/patient/appointments/[id]/visit-icons";
 import { appointmentStatusLabel, appointmentStatusTone, paymentStatusLabel } from "@/lib/admin/labels";
+import { visitChannelLabel } from "@/lib/appointments/channel";
 import { loadOfferingSlots, loadOwnedAppointment } from "@/lib/appointments/queries";
 import { addDays, freetownDate, parseCalendarDate } from "@/lib/appointments/time";
 import { canTransition } from "@/lib/appointments/transitions";
@@ -30,11 +31,11 @@ export default async function DoctorAppointmentPage({
 }) {
   const portal = await requireClinicalPortal();
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
-  if (portal.access !== "ready" || !portal.doctor) return <RestrictedPractice access={portal.access} />;
+  if (!portal.staff && (portal.access !== "ready" || !portal.doctor)) return <RestrictedPractice access={portal.access} />;
   const user = portal.user;
   const { id } = await params;
   const query = await searchParams;
-  const result = await loadOwnedAppointment(prisma, { id, userId: user.id, as: "doctor" });
+  const result = await loadOwnedAppointment(prisma, { id, userId: user.id, as: portal.staff ? "staff" : "doctor" });
   if (!result.ok) {
     if (result.code === "NOT_FOUND") notFound();
     return <RecordsUnavailable code={result.code} />;
@@ -149,7 +150,7 @@ export default async function DoctorAppointmentPage({
         </div>
 
         <div className="doc-chip-row">
-          <span className={`doc-chip ${online ? "teal" : ""}`}>{online ? "Online consultation" : "In person"}</span>
+          <span className={`doc-chip ${online ? "teal" : ""}`}>{online ? `${visitChannelLabel(visit.visitChannel, visit.mode)} consultation` : "In person"}</span>
           <span className="doc-chip">{paymentLabel}</span>
           <span className="doc-chip">{visit.fee}</span>
         </div>
@@ -187,10 +188,19 @@ export default async function DoctorAppointmentPage({
           </div>
         ) : null}
         {!online && !visit.place ? <p className="doc-banner">Location details have not been provided yet.</p> : null}
+        {visit.status === "PENDING_PAYMENT" ? (
+          <p className="doc-banner">The patient is holding this time and still needs to pay. The visit is confirmed when the payment arrives.</p>
+        ) : null}
         {visit.patientConcern && !pendingApproval ? (
           <div className="doc-concern">
             <h2>What the patient reported</h2>
             <p>{visit.patientConcern}</p>
+          </div>
+        ) : null}
+        {visit.intakeHistory ? (
+          <div className="doc-concern">
+            <h2>Intake</h2>
+            <p>{visit.intakeHistory}</p>
           </div>
         ) : null}
         {visit.preparation ? <p className="doc-banner">{visit.preparation}</p> : null}
@@ -207,11 +217,11 @@ export default async function DoctorAppointmentPage({
               {visit.status === "IN_PROGRESS" ? "Continue consultation" : "Prepare for consultation"}
             </Link>
           ) : null}
-          <Link className="doc-btn-ghost" href={`/doctor/patients/${visit.patient.id}`}>Patient information</Link>
-          {recordOpen ? (
+          {portal.staff ? null : <Link className="doc-btn-ghost" href={`/doctor/patients/${visit.patient.id}`}>Patient information</Link>}
+          {recordOpen && !portal.staff ? (
             <Link className="doc-btn-ghost" href={`/doctor/appointments/${visit.id}/record`}>Clinical record</Link>
           ) : null}
-          {followUps[0] ? (
+          {portal.staff ? null : followUps[0] ? (
             <Link className="doc-btn-ghost" href={`/doctor/appointments/${followUps[0].id}`}>View follow-up</Link>
           ) : (
             <Link className="doc-btn-ghost" href={`/doctor/follow-ups?source=${visit.id}`}>Record a follow-up</Link>

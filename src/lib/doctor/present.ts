@@ -179,6 +179,31 @@ export function composeConsultationNote(input: Record<(typeof NOTE_SECTIONS)[num
   return { ok: true, body };
 }
 
+export function splitConsultationNote(body: string): Record<(typeof NOTE_SECTIONS)[number]["key"], string> {
+  const empty = {
+    complaint: "",
+    history: "",
+    findings: "",
+    assessment: "",
+    plan: "",
+    followUp: "",
+  };
+  const found = NOTE_SECTIONS.flatMap((section) => {
+    const at = body.indexOf(`${section.label}\n`);
+    return at < 0 ? [] : [{ ...section, at }];
+  }).sort((left, right) => left.at - right.at);
+  if (found.length === 0) {
+    empty.complaint = body.trim();
+    return empty;
+  }
+  for (let index = 0; index < found.length; index += 1) {
+    const start = found[index].at + found[index].label.length + 1;
+    const end = index + 1 < found.length ? found[index + 1].at : body.length;
+    empty[found[index].key] = body.slice(start, end).trim();
+  }
+  return empty;
+}
+
 export function scheduleHref(input: { view: ScheduleView; date: string; status?: string | null; mode?: string | null; service?: string | null }): string {
   const params = new URLSearchParams({ view: input.view, date: input.date });
   if (input.status) params.set("status", input.status);

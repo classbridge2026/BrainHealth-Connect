@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { DashIcon, type DashIconName } from "@/components/doctor/dash-icons";
 import { HeroClock } from "@/components/doctor/hero-clock";
 import { ProfilePhoto } from "@/components/profile-photo";
@@ -17,6 +18,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DoctorPage() {
   const portal = await requireClinicalPortal();
+  if (portal.staff) redirect("/doctor/appointments");
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
   if (portal.access !== "ready" || !portal.doctor) return <RestrictedPractice access={portal.access} />;
   const [board, chrome] = await Promise.all([loadDoctorDashboard(prisma, portal.doctor), loadDoctorChrome()]);

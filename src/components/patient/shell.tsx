@@ -216,7 +216,7 @@ export function PatientShell({
             <LiveSearchInput id="portal-search" destination="/patient/find" placeholder="Search doctors by name or specialty..." />
           </form>
           <div className="portal-navbar-end">
-            <NotificationBell unread={unread} href="/patient/notifications" items={notices} />
+            <NotificationBell unread={unread} href="/patient/notifications" items={notices} watch="patient" />
             <div className="portal-account" ref={accountRef}>
               <button
                 type="button"

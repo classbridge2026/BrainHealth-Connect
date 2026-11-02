@@ -80,36 +80,37 @@ function database(options?: { status?: string; rules?: ReturnType<typeof rule>[]
 describe("scheduled booking", () => {
   it("rejects an unapproved doctor and a time that is not on the schedule", async () => {
     const suspended = database({ status: "SUSPENDED" });
-    const denied = await bookScheduledSlot({ actorUserId: "actor-1", offeringId: OFFERING, startsAt: SLOT, concern: CONCERN }, { db: suspended.db as never, now: NOW, rateLimiter: createRateLimiter({ limit: 10, windowMs: 60_000 }) });
+    const denied = await bookScheduledSlot({ actorUserId: "actor-1", offeringId: OFFERING, startsAt: SLOT, concern: CONCERN, channel: "VIDEO" }, { db: suspended.db as never, now: NOW, rateLimiter: createRateLimiter({ limit: 10, windowMs: 60_000 }) });
     expect(denied).toEqual({ ok: false, code: "DOCTOR_UNAVAILABLE" });
 
     const closed = database({ rules: [] });
     const unavailable = await bookScheduledSlot(
-      { actorUserId: "actor-1", offeringId: OFFERING, startsAt: SLOT, concern: CONCERN },
+      { actorUserId: "actor-1", offeringId: OFFERING, startsAt: SLOT, concern: CONCERN, channel: "VIDEO" },
       { db: closed.db as never, now: NOW, rateLimiter: createRateLimiter({ limit: 10, windowMs: 60_000 }) },
     );
     expect(unavailable).toEqual({ ok: false, code: "SLOT_UNAVAILABLE" });
     const past = await bookScheduledSlot(
-      { actorUserId: "actor-1", offeringId: OFFERING, startsAt: new Date("2026-10-19T07:00:00.000Z"), concern: CONCERN },
+      { actorUserId: "actor-1", offeringId: OFFERING, startsAt: new Date("2026-10-19T07:00:00.000Z"), concern: CONCERN, channel: "VIDEO" },
       { db: database().db as never, now: NOW, rateLimiter: createRateLimiter({ limit: 10, windowMs: 60_000 }) },
     );
     expect(past).toEqual({ ok: false, code: "PAST" });
   });
 
-  it("books the signed-in patient's slot as a request waiting for the doctor", async () => {
+  it("holds the signed-in patient's slot until the fee is paid", async () => {
     const store = database();
     const result = await bookScheduledSlot(
-      { actorUserId: "actor-1", offeringId: OFFERING, startsAt: SLOT, concern: `  ${CONCERN}  ` },
+      { actorUserId: "actor-1", offeringId: OFFERING, startsAt: SLOT, concern: `  ${CONCERN}  `, channel: "VIDEO" },
       { db: store.db as never, now: NOW, rateLimiter: createRateLimiter({ limit: 10, windowMs: 60_000 }) },
     );
     expect(result.ok).toBe(true);
     expect(store.created[0]).toMatchObject({
       patientProfileId: "profile-actor",
-      status: "PENDING_APPROVAL",
+      status: "PENDING_PAYMENT",
+      visitChannel: "VIDEO",
       feeAmountMinor: 250000,
       currency: "SLL",
       offeringId: OFFERING,
-      paymentHoldExpiresAt: null,
+      paymentHoldExpiresAt: new Date("2026-10-19T08:10:00.000Z"),
       patientConcern: CONCERN,
     });
   });
@@ -118,11 +119,11 @@ describe("scheduled booking", () => {
     const store = database();
     const limiter = createRateLimiter({ limit: 10, windowMs: 60_000 });
     const missing = await bookScheduledSlot(
-      { actorUserId: "actor-1", offeringId: OFFERING, startsAt: SLOT, concern: "   " },
+      { actorUserId: "actor-1", offeringId: OFFERING, startsAt: SLOT, concern: "   ", channel: "VIDEO" },
       { db: store.db as never, now: NOW, rateLimiter: limiter },
     );
     const short = await bookScheduledSlot(
-      { actorUserId: "actor-1", offeringId: OFFERING, startsAt: SLOT, concern: "pain" },
+      { actorUserId: "actor-1", offeringId: OFFERING, startsAt: SLOT, concern: "pain", channel: "VIDEO" },
       { db: store.db as never, now: NOW, rateLimiter: limiter },
     );
     expect(missing).toEqual({ ok: false, code: "CONCERN" });
@@ -139,7 +140,7 @@ describe("scheduled booking", () => {
       },
     });
     const result = await bookScheduledSlot(
-      { actorUserId: "actor-1", offeringId: OFFERING, startsAt: SLOT, concern: CONCERN },
+      { actorUserId: "actor-1", offeringId: OFFERING, startsAt: SLOT, concern: CONCERN, channel: "VIDEO" },
       { db: store.db as never, now: NOW, rateLimiter: createRateLimiter({ limit: 10, windowMs: 60_000 }) },
     );
     expect(result).toEqual({ ok: false, code: "SLOT_UNAVAILABLE" });

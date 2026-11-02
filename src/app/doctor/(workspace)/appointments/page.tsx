@@ -35,7 +35,7 @@ export default async function DoctorAppointmentsPage({
 }) {
   const portal = await requireClinicalPortal();
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
-  if (portal.access !== "ready" || !portal.doctor) return <RestrictedPractice access={portal.access} />;
+  if (!portal.staff && (portal.access !== "ready" || !portal.doctor)) return <RestrictedPractice access={portal.access} />;
   const query = await searchParams;
   const now = new Date();
   const view = parseScheduleView(query.view);
@@ -54,6 +54,7 @@ export default async function DoctorAppointmentsPage({
     mode,
     serviceId: service,
     now,
+    clinicWide: portal.staff,
   });
   if (!result.ok) return <RecordsUnavailable code={result.code} />;
   const filters = { status, mode, service };
@@ -77,7 +78,11 @@ export default async function DoctorAppointmentsPage({
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-[#0C2B45]">Appointment Schedule</h1>
-          <p className="mt-1 text-sm text-[#5b6b7c]">View and manage your appointments. Times use Africa/Freetown (GMT).</p>
+          <p className="mt-1 text-sm text-[#5b6b7c]">
+            {portal.staff
+              ? "Approve, decline, and run these visits the same way the assigned doctor can. Times use Africa/Freetown (GMT)."
+              : "View and manage your appointments. Times use Africa/Freetown (GMT)."}
+          </p>
         </div>
       </header>
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_280px]">
@@ -108,8 +113,8 @@ export default async function DoctorAppointmentsPage({
           <div className="mt-4">
             {view === "month" ? <MonthGrid anchor={anchor} byDay={byDay} filters={filters} /> : null}
             {view === "week" ? <WeekGrid anchor={anchor} byDay={byDay} filters={filters} /> : null}
-            {view === "list" ? <AppointmentTable rows={result.rows} /> : null}
-            {view === "day" ? <DayList rows={result.rows} /> : null}
+            {view === "list" ? <AppointmentTable rows={result.rows} showDoctor={portal.staff} /> : null}
+            {view === "day" ? <DayList rows={result.rows} showDoctor={portal.staff} /> : null}
           </div>
         </section>
         <aside className="grid content-start gap-4">
@@ -143,7 +148,14 @@ export default async function DoctorAppointmentsPage({
   );
 }
 
-function DayList({ rows }: { rows: Array<{ id: string; time: string; patient: string; patientUserId: string; patientImageVersion: string | null; service: string; mode: string; status: string }> }) {
+function clip(value: string | null) {
+  if (!value) return null;
+  const text = value.replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  return text.length > 90 ? `${text.slice(0, 89)}…` : text;
+}
+
+function DayList({ rows, showDoctor }: { rows: Array<{ id: string; time: string; patient: string; doctorName: string; patientUserId: string; patientImageVersion: string | null; service: string; mode: string; status: string; reason: string | null; intake: string | null; paymentLabel: string }>; showDoctor: boolean }) {
   if (rows.length === 0) return <p className="rounded-xl bg-[#F3F8FC] p-4 text-sm text-[#5b6b7c]">Nothing is booked in this range.</p>;
   return (
     <ul className="grid gap-2">
@@ -155,7 +167,12 @@ function DayList({ rows }: { rows: Array<{ id: string; time: string; patient: st
               <ProfilePhoto userId={row.patientUserId} name={row.patient} version={row.patientImageVersion} size={36} alt="" />
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold text-[#0C2B45]">{row.patient}</span>
-                <span className="block truncate text-xs text-[#5b6b7c]">{row.service} · {row.mode === "ONLINE" ? "Online" : "In person"}</span>
+                <span className="block truncate text-xs text-[#5b6b7c]">
+                  {showDoctor ? `${row.doctorName} · ` : ""}
+                  {row.service} · {row.mode === "ONLINE" ? "Online" : "In person"} · {row.paymentLabel}
+                </span>
+                {clip(row.reason) ? <span className="block truncate text-xs text-[#0C2B45]">Reason: {clip(row.reason)}</span> : null}
+                {clip(row.intake) ? <span className="block truncate text-xs text-[#5b6b7c]">Intake: {clip(row.intake)}</span> : null}
               </span>
             </span>
             <StatusBadge tone={appointmentStatusTone(row.status)}>{appointmentStatusLabel(row.status)}</StatusBadge>
@@ -166,7 +183,7 @@ function DayList({ rows }: { rows: Array<{ id: string; time: string; patient: st
   );
 }
 
-function AppointmentTable({ rows }: { rows: Array<{ id: string; when: string; patient: string; patientId: string; service: string; mode: string; status: string }> }) {
+function AppointmentTable({ rows, showDoctor }: { rows: Array<{ id: string; when: string; patient: string; doctorName: string; patientId: string; service: string; mode: string; status: string; reason: string | null; intake: string | null; paymentLabel: string }>; showDoctor: boolean }) {
   if (rows.length === 0) return <p className="rounded-xl bg-[#F3F8FC] p-4 text-sm text-[#5b6b7c]">Nothing is booked in this month.</p>;
   return (
     <div className="overflow-x-auto">
@@ -177,6 +194,8 @@ function AppointmentTable({ rows }: { rows: Array<{ id: string; when: string; pa
             <th className="px-2 py-2 font-medium">Patient</th>
             <th className="px-2 py-2 font-medium">Service</th>
             <th className="px-2 py-2 font-medium">Mode</th>
+            <th className="px-2 py-2 font-medium">Reason</th>
+            <th className="px-2 py-2 font-medium">Payment</th>
             <th className="px-2 py-2 font-medium">Status</th>
           </tr>
         </thead>
@@ -185,8 +204,13 @@ function AppointmentTable({ rows }: { rows: Array<{ id: string; when: string; pa
             <tr key={row.id} className="border-t border-[#e6eef5]">
               <td className="px-2 py-3" data-label="When"><Link className="font-semibold text-[#0F766E]" href={`/doctor/appointments/${row.id}`}>{row.when}</Link></td>
               <td className="px-2 py-3" data-label="Patient"><Link className="font-medium text-[#0C2B45]" href={`/doctor/patients/${row.patientId}`}>{row.patient}</Link></td>
-              <td className="px-2 py-3" data-label="Service">{row.service}</td>
+              <td className="px-2 py-3" data-label="Service">{showDoctor ? `${row.doctorName} · ` : ""}{row.service}</td>
               <td className="px-2 py-3" data-label="Mode">{row.mode === "ONLINE" ? "Online" : "In person"}</td>
+              <td className="px-2 py-3" data-label="Reason">
+                <span className="block">{clip(row.reason) ?? "No reason recorded"}</span>
+                {clip(row.intake) ? <span className="block text-xs text-[#5b6b7c]">Intake: {clip(row.intake)}</span> : null}
+              </td>
+              <td className="px-2 py-3" data-label="Payment">{row.paymentLabel}</td>
               <td className="px-2 py-3" data-label="Status"><StatusBadge tone={appointmentStatusTone(row.status)}>{appointmentStatusLabel(row.status)}</StatusBadge></td>
             </tr>
           ))}

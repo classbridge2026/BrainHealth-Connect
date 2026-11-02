@@ -328,7 +328,7 @@ export function AdminShell({
             <AdminIcon name="search" />
             <span className="sr-only">Open search</span>
           </button>
-          <NotificationBell unread={unreadNotifications ?? 0} href="/admin/notifications" items={notices} />
+          <NotificationBell unread={unreadNotifications ?? 0} href="/admin/notifications" items={notices} watch="admin" />
           <div className="admin-account" ref={accountRef}>
             <button
               type="button"
@@ -350,6 +350,10 @@ export function AdminShell({
                   <strong>{email}</strong>
                   <span>{roleLabel}</span>
                 </div>
+                <Link href="/doctor" role="menuitem" onClick={() => setAccountPath(null)}>
+                  <AdminIcon name="doctor" />
+                  Doctor workspace
+                </Link>
                 <Link href="/admin/profile" role="menuitem" onClick={() => setAccountPath(null)}>
                   <AdminIcon name="view" />
                   Your photo

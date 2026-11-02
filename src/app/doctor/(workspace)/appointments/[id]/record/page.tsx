@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { RecordsUnavailable } from "@/components/records-unavailable";
-import { RestrictedPractice } from "@/components/doctor/restricted";
+import { ClinicPracticeNote, RestrictedPractice } from "@/components/doctor/restricted";
 import { requireClinicalPortal } from "@/lib/doctor/session";
 import { loadClinicianRecord } from "@/lib/clinical/records";
 import { encounterStatusLabel, noteChange, noteFinalizeDecision } from "@/lib/clinical/rules";
@@ -28,6 +28,7 @@ function releaseLabel(release: string) {
 
 export default async function ClinicalRecordPage({ params }: { params: Promise<{ id: string }> }) {
   const portal = await requireClinicalPortal();
+  if (portal.staff) return <ClinicPracticeNote />;
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
   if (portal.access !== "ready" || !portal.doctor) return <RestrictedPractice access={portal.access} />;
   const user = portal.user;

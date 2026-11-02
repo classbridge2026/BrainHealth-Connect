@@ -401,8 +401,10 @@ export function clinicalMalwareScanDecision(
 
 const SUMMARY_SECTIONS = [
   ["reason", "Reason for the visit"],
+  ["outcome", "Outcome"],
   ["findings", "What this means for you"],
   ["plan", "Care plan"],
+  ["prescription", "Prescription"],
   ["followUp", "Follow-up"],
   ["additional", "Additional information"],
 ] as const;

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-import { DOCTOR_ROLE_CODE } from "@/lib/auth/constants";
 import { getSystemName } from "@/lib/brand/system-name";
+import { isPortalAdministrator } from "@/lib/admin/rules";
+import { ClinicPracticeNote } from "@/components/doctor/restricted";
 import { requireStoredRoles } from "@/lib/auth/require-role";
+import { DOCTOR_PORTAL_ROLES } from "@/lib/doctor/session";
 import { prisma } from "@/lib/db/prisma";
 import { missingUploadedCredentials, onboardingSteps, profileFieldGaps, profileIsEditable } from "@/lib/doctors/rules";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
@@ -18,7 +20,7 @@ function dateValue(value: Date | null): string {
 }
 
 export default async function DoctorOnboardingPage() {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   let profile: Awaited<ReturnType<typeof loadOwnDoctor>> = null;
   try {
     profile = await loadOwnDoctor(prisma, user.id);
@@ -27,6 +29,7 @@ export default async function DoctorOnboardingPage() {
     return <p>Doctor onboarding is not available until the doctor onboarding migration has been applied.</p>;
   }
   if (!profile) {
+    if (isPortalAdministrator(user.roleCodes)) return <ClinicPracticeNote />;
     return <p>Your doctor profile is not available.</p>;
   }
   const activeSpecialties = await prisma.specialty.findMany({

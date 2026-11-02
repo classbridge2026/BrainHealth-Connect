@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { formatPlatformDay, formatPlatformWhen, formatMinorMoney } from "@/lib/admin/labels";
 import { addDays, formatBookingWhen } from "@/lib/appointments/time";
 import { classifyFollowUp, platformDay, type FollowUpView } from "@/lib/doctor/present";
@@ -110,21 +110,56 @@ export async function loadPatientAccount(db: PrismaClient, userId: string) {
   }
 }
 
-export async function searchVerifiedDoctors(db: PrismaClient, filters: { q?: string | null }) {
+export async function searchVerifiedDoctors(
+  db: PrismaClient,
+  filters: { q?: string | null; specialty?: string | null; language?: string | null; location?: string | null; visit?: string | null },
+) {
   const q = (filters.q ?? "").trim().slice(0, 80);
+  const specialty = (filters.specialty ?? "").trim().slice(0, 80);
+  const language = (filters.language ?? "").trim().slice(0, 40);
+  const location = (filters.location ?? "").trim().slice(0, 80);
+  const visit = (filters.visit ?? "").trim().toLowerCase();
+  const visitMode: "IN_PERSON" | "ONLINE" | null = visit === "in-person" ? "IN_PERSON" : visit === "video" || visit === "audio" ? "ONLINE" : null;
+  const where: Prisma.DoctorProfileWhereInput = {
+    AND: [
+          { verificationStatus: "APPROVED" },
+          { user: { status: "ACTIVE", deletedAt: null } },
+          {
+            specialties: {
+              some: {
+                claimStatus: "VERIFIED",
+                specialty: {
+                  isActive: true,
+                  ...(specialty ? { name: { equals: specialty, mode: "insensitive" } } : {}),
+                },
+              },
+            },
+          },
+          ...(q
+            ? [{
+                OR: [
+                  { displayName: { contains: q, mode: "insensitive" as const } },
+                  { specialties: { some: { claimStatus: "VERIFIED" as const, specialty: { isActive: true, name: { contains: q, mode: "insensitive" as const } } } } },
+                  { offerings: { some: { isActive: true, consultationService: { isActive: true, name: { contains: q, mode: "insensitive" as const } } } } },
+                ],
+              }]
+            : []),
+          ...(language ? [{ languages: { has: language } }] : []),
+          ...(location
+            ? [{
+                availabilityRules: {
+                  some: { isActive: true, location: { isActive: true, district: { equals: location, mode: "insensitive" as const } } },
+                },
+              }]
+            : []),
+          ...(visitMode
+            ? [{ offerings: { some: { isActive: true, mode: visitMode, consultationService: { isActive: true } } } }]
+            : []),
+    ],
+  };
   try {
     const doctors = await db.doctorProfile.findMany({
-      where: {
-        verificationStatus: "APPROVED",
-        user: { status: "ACTIVE", deletedAt: null },
-        ...(q ? { displayName: { contains: q, mode: "insensitive" } } : {}),
-        specialties: {
-          some: {
-            claimStatus: "VERIFIED",
-            specialty: { isActive: true },
-          },
-        },
-      },
+      where,
       orderBy: { displayName: "asc" },
       take: 24,
       select: {
@@ -133,6 +168,7 @@ export async function searchVerifiedDoctors(db: PrismaClient, filters: { q?: str
         qualificationTitle: true,
         user: { select: { id: true, profileImageUpdatedAt: true } },
         yearsExperience: true,
+        languages: true,
         specialties: {
           where: { claimStatus: "VERIFIED", specialty: { isActive: true } },
           select: { specialty: { select: { name: true } } },
@@ -150,6 +186,7 @@ export async function searchVerifiedDoctors(db: PrismaClient, filters: { q?: str
         displayName: doctor.displayName,
         qualificationTitle: doctor.qualificationTitle,
         yearsExperience: doctor.yearsExperience,
+        languages: doctor.languages,
         specialties: doctor.specialties.map((row) => row.specialty.name),
         services: [...new Set(doctor.offerings.map((offering) => offering.consultationService.name))],
         modes: [...new Set(doctor.offerings.map((offering) => offering.mode))],
@@ -157,6 +194,39 @@ export async function searchVerifiedDoctors(db: PrismaClient, filters: { q?: str
         userId: doctor.user.id,
         imageVersion: doctor.user.profileImageUpdatedAt?.toISOString() ?? null,
       })),
+    };
+  } catch (error) {
+    return failed(error);
+  }
+}
+
+export async function listBookingFilters(db: PrismaClient) {
+  try {
+    const [specialties, speakers, places] = await Promise.all([
+      db.specialty.findMany({
+        where: {
+          isActive: true,
+          doctors: { some: { claimStatus: "VERIFIED", doctor: { verificationStatus: "APPROVED", user: { status: "ACTIVE", deletedAt: null } } } },
+        },
+        select: { name: true },
+        orderBy: { name: "asc" },
+      }),
+      db.doctorProfile.findMany({
+        where: { verificationStatus: "APPROVED", user: { status: "ACTIVE", deletedAt: null } },
+        select: { languages: true },
+      }),
+      db.location.findMany({
+        where: { isActive: true },
+        select: { district: true },
+        distinct: ["district"],
+        orderBy: { district: "asc" },
+      }),
+    ]);
+    return {
+      ok: true as const,
+      specialties: specialties.map((row) => row.name),
+      languages: [...new Set(speakers.flatMap((row) => row.languages).map((name) => name.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+      districts: places.map((row) => row.district).filter(Boolean),
     };
   } catch (error) {
     return failed(error);

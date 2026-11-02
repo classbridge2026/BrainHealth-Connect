@@ -27,6 +27,13 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
   return (
     <main className="grid gap-6">
       <PageHeader eyebrow="Operations" title={payment.amount} description={`${payment.payer.email} · ${payment.providerCode}`} />
+      {payment.receiptMime ? (
+        <img
+          className="max-h-[32rem] w-full rounded-2xl border border-brand-line bg-white object-contain"
+          src={`/admin/payments/${payment.id}/receipt`}
+          alt="Screenshot of the transaction details"
+        />
+      ) : null}
       {payment.status === "REQUIRES_ACTION" && (payment.providerCode === "ORANGE_MONEY" || payment.providerCode === "AFRIMONEY") && payment.providerReference ? (
         <OrangeReviewForm paymentId={payment.id} reference={payment.providerReference} wallet={payment.providerCode === "AFRIMONEY" ? "Afrimoney" : "Orange Money"} />
       ) : (

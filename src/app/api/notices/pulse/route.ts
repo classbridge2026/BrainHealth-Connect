@@ -16,7 +16,9 @@ const audiences = ["patient", "doctor", "admin"] as const;
 type Audience = (typeof audiences)[number];
 
 function allowed(audience: Audience, roleCodes: string[]) {
-  if (audience === "doctor") return roleCodes.includes(DOCTOR_ROLE_CODE);
+  if (audience === "doctor") {
+    return roleCodes.includes(DOCTOR_ROLE_CODE) || roleCodes.includes(ADMIN_ROLE_CODE) || roleCodes.includes(SUPER_ADMIN_ROLE_CODE);
+  }
   if (audience === "patient") return roleCodes.includes(PATIENT_ROLE_CODE);
   return roleCodes.includes(ADMIN_ROLE_CODE) || roleCodes.includes(SUPER_ADMIN_ROLE_CODE);
 }

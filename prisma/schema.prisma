@@ -81,6 +81,12 @@ enum ConsultationMode {
   IN_PERSON
 }
 
+enum VisitChannel {
+  IN_PERSON
+  VIDEO
+  AUDIO
+}
+
 enum AppointmentStatus {
   PENDING_PAYMENT
   EXPIRED_UNPAID
@@ -765,6 +771,11 @@ model Appointment {
   cancellationReason    String?
   /// What the patient says is wrong, in their own words. Not a diagnosis.
   patientConcern        String?
+  /// Video, audio, or in person. Chosen before the calendar. Online visits stay mode ONLINE.
+  visitChannel          VisitChannel?
+  /// History the patient shares before the visit. Not a diagnosis.
+  intakeHistory         String?
+  consentAcceptedAt     DateTime?                @db.Timestamptz(6)
   checkedInAt           DateTime?                @db.Timestamptz(6)
   completedAt           DateTime?                @db.Timestamptz(6)
   createdAt             DateTime                 @default(now()) @db.Timestamptz(6)
@@ -825,6 +836,8 @@ model Payment {
   providerCode      String
   providerReference String?
   providerAccountId String?
+  receiptBytes      Bytes?
+  receiptMime       String?
   createdAt         DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt         DateTime      @updatedAt @db.Timestamptz(6)
 

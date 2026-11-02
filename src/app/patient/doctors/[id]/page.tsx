@@ -23,8 +23,16 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: result.ok && result.doctor.bookable ? result.doctor.displayName : "Doctor" };
 }
 
-export default async function PublicDoctorPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PublicDoctorPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
+  const query = await searchParams;
+  const visit = typeof query.visit === "string" ? query.visit : "";
   const result = await loadPublicDoctor(prisma, id);
   if (!result.ok) {
     if (result.code === "NOT_FOUND") notFound();
@@ -32,6 +40,9 @@ export default async function PublicDoctorPage({ params }: { params: Promise<{ i
   }
   if (!result.doctor.bookable) notFound();
   const doctor = result.doctor;
+  const onlineOfferings = doctor.offerings.filter((offering) => offering.mode === "ONLINE");
+  const clinicOfferings = doctor.offerings.filter((offering) => offering.mode === "IN_PERSON");
+  const chosen = visit === "video" || visit === "audio" ? onlineOfferings : visit === "in-person" ? clinicOfferings : [];
   const kind = doctor.qualificationKind ? QUALIFICATION_KIND[doctor.qualificationKind] : null;
   const qualification = [kind, doctor.qualificationTitle].filter(Boolean).join(" · ");
   const awarded = [doctor.qualificationInstitution, doctor.qualificationYear].filter(Boolean).join(", ");
@@ -70,19 +81,32 @@ export default async function PublicDoctorPage({ params }: { params: Promise<{ i
       {doctor.offerings.length === 0 ? (
         <p className="doctor-about">This doctor has no bookable consultation at the moment.</p>
       ) : (
+        <section className="doctor-about">
+          <h2>Visit type</h2>
+          <p>Choose video, audio, or in person before the times appear. Payment is self-pay.</p>
+          <div className="doctor-visits">
+            {onlineOfferings.length > 0 ? <Link className={visit === "video" ? "is-on" : ""} href={`/patient/doctors/${doctor.id}?visit=video`}>Video</Link> : null}
+            {onlineOfferings.length > 0 ? <Link className={visit === "audio" ? "is-on" : ""} href={`/patient/doctors/${doctor.id}?visit=audio`}>Audio</Link> : null}
+            {clinicOfferings.length > 0 ? <Link className={visit === "in-person" ? "is-on" : ""} href={`/patient/doctors/${doctor.id}?visit=in-person`}>In person</Link> : null}
+          </div>
+        </section>
+      )}
+      {chosen.length > 0 ? (
         <ul className="doctor-offers">
-          {doctor.offerings.map((offering) => (
+          {chosen.map((offering) => (
             <li key={offering.id} className="doctor-offer">
               <h2>{offering.service}</h2>
               <p className="doctor-offer-meta">
-                {offering.specialty} · {offering.mode === "ONLINE" ? "Online" : "In person"} · {offering.durationMinutes} minutes · {offering.fee}
+                {offering.specialty} · {visit === "audio" ? "Audio" : visit === "video" ? "Video" : "In person"} · {offering.durationMinutes} minutes · {offering.fee}
               </p>
               {offering.description ? <p className="doctor-offer-note">{offering.description}</p> : null}
-              <Link href={`/patient/book/${offering.id}`}>View available times</Link>
+              <Link href={`/patient/book/${offering.id}?channel=${visit}`}>View available times</Link>
             </li>
           ))}
         </ul>
-      )}
+      ) : doctor.offerings.length > 0 ? (
+        <p className="doctor-about">Choose a visit type to see the consultations and open times.</p>
+      ) : null}
     </div>
   );
 }

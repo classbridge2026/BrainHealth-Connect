@@ -171,6 +171,7 @@ export async function loadOfferingSlots(
         mode: true,
         durationMinutes: true,
         price: true,
+        priceAmountMinor: true,
         currency: true,
         doctorProfileId: true,
         specialtyId: true,
@@ -253,6 +254,7 @@ export async function loadOfferingSlots(
         mode: offering.mode,
         durationMinutes: offering.durationMinutes,
         fee: formatFee(offering.price, offering.currency),
+        priceAmountMinor: offering.priceAmountMinor,
       },
       locations: locations.map((row) => ({ id: row.id, label: `${row.name}, ${row.locality}, ${row.district}` })),
       slots: schedule.filter((slot) => slot.availability === "open").map(({ startsAt, label }) => ({ startsAt, label })),
@@ -318,12 +320,13 @@ export async function listPatientAppointments(db: PrismaClient, userId: string, 
       location: row.location?.name ?? null,
     }));
     const closed = new Set(["COMPLETED", "CANCELLED_BY_PATIENT", "CANCELLED_BY_DOCTOR", "CANCELLED_BY_ADMIN", "NO_SHOW", "RESCHEDULED", "EXPIRED_UNPAID"]);
-    const pending = mapped.filter((row) => row.status === "PENDING_APPROVAL");
+    const needsAction = new Set(["PENDING_APPROVAL", "PENDING_PAYMENT"]);
+    const pending = mapped.filter((row) => needsAction.has(row.status));
     return {
       ok: true as const,
-      upcoming: mapped.filter((row) => row.startsAt >= now && !closed.has(row.status) && row.status !== "PENDING_APPROVAL"),
+      upcoming: mapped.filter((row) => row.startsAt >= now && !closed.has(row.status) && !needsAction.has(row.status)),
       pending,
-      history: mapped.filter((row) => (row.startsAt < now || closed.has(row.status)) && row.status !== "PENDING_APPROVAL"),
+      history: mapped.filter((row) => (row.startsAt < now || closed.has(row.status)) && !needsAction.has(row.status)),
     };
   } catch (error) {
     return failed(error);
@@ -342,6 +345,10 @@ const appointmentSelect = {
   paymentHoldExpiresAt: true,
   cancellationReason: true,
   patientConcern: true,
+  visitChannel: true,
+  intakeHistory: true,
+  consentAcceptedAt: true,
+  checkedInAt: true,
   offeringId: true,
   locationId: true,
   specialty: { select: { name: true } },
@@ -377,6 +384,10 @@ function presentAppointment(row: {
   paymentHoldExpiresAt: Date | null;
   cancellationReason: string | null;
   patientConcern: string | null;
+  visitChannel: "IN_PERSON" | "VIDEO" | "AUDIO" | null;
+  intakeHistory: string | null;
+  consentAcceptedAt: Date | null;
+  checkedInAt: Date | null;
   offeringId: string | null;
   locationId: string | null;
   doctor: { id: string; displayName: string; userId: string; verificationStatus: string; user: { status: string; deletedAt: Date | null; profileImageUpdatedAt: Date | null } };
@@ -419,6 +430,10 @@ function presentAppointment(row: {
     paymentHoldExpiresAt: row.paymentHoldExpiresAt,
     cancellationReason: row.cancellationReason,
     patientConcern: row.patientConcern,
+    visitChannel: row.visitChannel,
+    intakeHistory: row.intakeHistory,
+    consentAcceptedAt: row.consentAcceptedAt,
+    checkedInAt: row.checkedInAt,
     offeringId: row.offeringId,
     locationId: row.locationId,
     doctor: {
@@ -456,12 +471,14 @@ function scheduleReason(events: Array<{ detail: string | null }>) {
   return text || null;
 }
 
-export async function loadOwnedAppointment(db: PrismaClient, input: { id: string; userId: string; as: "patient" | "doctor" }) {
+export async function loadOwnedAppointment(db: PrismaClient, input: { id: string; userId: string; as: "patient" | "doctor" | "staff" }) {
   if (!parseUuid(input.id)) return { ok: false as const, code: "NOT_FOUND" as const };
   try {
     const row = await db.appointment.findUnique({ where: { id: input.id }, select: appointmentSelect });
     if (!row) return { ok: false as const, code: "NOT_FOUND" as const };
-    const owns = input.as === "patient" ? row.patient.userId === input.userId : row.doctor.userId === input.userId;
+    const owns =
+      input.as === "staff" ||
+      (input.as === "patient" ? row.patient.userId === input.userId : row.doctor.userId === input.userId);
     if (!owns) return { ok: false as const, code: "NOT_FOUND" as const };
     return { ok: true as const, appointment: presentAppointment(row) };
   } catch (error) {

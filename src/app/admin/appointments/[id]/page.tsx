@@ -11,7 +11,7 @@ import { loadAppointmentDetail } from "@/lib/admin/directories";
 import { adminCancelDecision } from "@/lib/admin/rules";
 import { appointmentStatusLabel, appointmentStatusTone, formatPlatformWhen, paymentStatusLabel, paymentStatusTone } from "@/lib/admin/labels";
 import { prisma } from "@/lib/db/prisma";
-import { CancelAppointmentForm } from "./cancel-form";
+import { ApproveBookingForm, CancelAppointmentForm } from "./cancel-form";
 
 export const metadata: Metadata = { title: "Appointment" };
 export const dynamic = "force-dynamic";
@@ -122,8 +122,23 @@ export default async function AppointmentDetailPage({ params }: { params: Promis
           ))}
         </ol>
       </section>
-      <Notice>Moving an appointment to another doctor or time is unavailable. The booking service and database overlap rule stay in place.</Notice>
-      {adminCancelDecision(visit.status) ? <CancelAppointmentForm appointmentId={visit.id} /> : null}
+      {visit.status === "PENDING_APPROVAL" ? (
+        <section className="grid gap-3">
+          <h2 className="text-lg font-semibold text-brand-navy">Booking request</h2>
+          {visit.patientConcern ? (
+            <p className="rounded-2xl border border-brand-line bg-white px-4 py-3 text-sm leading-6 text-brand-ink">{visit.patientConcern}</p>
+          ) : (
+            <p className="text-sm text-brand-muted">This request does not include a description of what is wrong.</p>
+          )}
+          <p className="text-sm leading-6 text-brand-muted">Approve or decline this visit the same way the assigned doctor can. Until it is approved, the booking stays under Pending.</p>
+          {new Date(visit.startsAt) > new Date() ? <ApproveBookingForm appointmentId={visit.id} /> : (
+            <Notice>This requested time has passed. Decline the booking so the patient can choose another time.</Notice>
+          )}
+          <CancelAppointmentForm appointmentId={visit.id} decline />
+        </section>
+      ) : adminCancelDecision(visit.status) ? (
+        <CancelAppointmentForm appointmentId={visit.id} />
+      ) : null}
     </main>
   );
 }

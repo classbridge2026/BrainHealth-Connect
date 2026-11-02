@@ -8,6 +8,7 @@ import { faBell, faChevronLeft } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { noticeStamp } from "@/lib/notifications/stamp";
 import { markAllNotificationsReadAction, markViewedNotificationsAction } from "./actions";
+import { armNoticeSound, playNoticeSound } from "./sound";
 import "./bell.css";
 
 export type BellItem = {
@@ -88,9 +89,20 @@ export function NotificationBell({
     const increased = shownUnread > unreadRef.current;
     unreadRef.current = shownUnread;
     if (!increased) return;
+    playNoticeSound();
     setCleared(false);
     setHidden(new Set());
   }, [shownUnread]);
+
+  useEffect(() => {
+    const arm = () => armNoticeSound();
+    document.addEventListener("pointerdown", arm);
+    document.addEventListener("keydown", arm);
+    return () => {
+      document.removeEventListener("pointerdown", arm);
+      document.removeEventListener("keydown", arm);
+    };
+  }, []);
 
   useEffect(() => {
     if (!watch) return;

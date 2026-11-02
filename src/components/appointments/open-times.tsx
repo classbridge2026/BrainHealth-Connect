@@ -12,10 +12,11 @@ export type BookingTime = {
   availability: SlotAvailability;
 };
 
-function pageHref(basePath: string, date: string, locationId: string, startsAt?: string, hash?: string) {
+function pageHref(basePath: string, date: string, locationId: string, startsAt?: string, hash?: string, channel = "") {
   const params = new URLSearchParams();
   params.set("date", date);
   if (locationId) params.set("location", locationId);
+  if (channel) params.set("channel", channel);
   if (startsAt) params.set("start", startsAt);
   return `${basePath}?${params.toString()}${hash ? `#${hash}` : ""}`;
 }
@@ -26,6 +27,7 @@ export function OpenTimes({
   basePath,
   date,
   locationId = "",
+  channel = "",
   hash,
   children,
 }: {
@@ -34,6 +36,7 @@ export function OpenTimes({
   basePath: string;
   date: string;
   locationId?: string;
+  channel?: string;
   hash?: string;
   children?: ReactNode;
 }) {
@@ -62,8 +65,8 @@ export function OpenTimes({
   useEffect(() => {
     if (!selectedStart || selectedOpen || cleared.current) return;
     cleared.current = true;
-    router.replace(pageHref(basePath, date, locationId, undefined, hash));
-  }, [basePath, date, hash, locationId, router, selectedOpen, selectedStart]);
+    router.replace(pageHref(basePath, date, locationId, undefined, hash, channel));
+  }, [basePath, channel, date, hash, locationId, router, selectedOpen, selectedStart]);
 
   return (
     <div className="book-times">
@@ -74,7 +77,7 @@ export function OpenTimes({
       ) : null}
       <ul className="book-slots">
         {visible.map((slot) => {
-          const href = pageHref(basePath, date, locationId, slot.startsAt, hash);
+          const href = pageHref(basePath, date, locationId, slot.startsAt, hash, channel);
           const chosen = slot.startsAt === selectedStart;
           return (
             <li key={slot.startsAt}>

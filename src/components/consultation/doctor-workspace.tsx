@@ -13,14 +13,15 @@ import {
   Video,
 } from "lucide-react";
 import { ProfilePhoto } from "@/components/profile-photo";
+import { splitConsultationNote } from "@/lib/doctor/present";
 import { doctorStatusAction, type DoctorActionState } from "@/app/doctor/(workspace)/appointments/actions";
 import { scheduleFollowUpAction, type FollowUpState } from "@/app/doctor/(workspace)/follow-ups/actions";
 import {
   openEncounterAction,
   releaseSummaryAction,
   saveFollowUpRecommendationAction,
-  saveNoteAction,
   savePatientSummaryAction,
+  saveStructuredNoteAction,
   type ClinicalActionState,
 } from "@/app/doctor/(workspace)/appointments/[id]/record/actions";
 import "./doctor-room.css";
@@ -70,6 +71,8 @@ export function DoctorWorkspace({
   statusLabel,
   paymentLabel,
   fee,
+  concern = null,
+  intake = null,
   encounterLabel,
   canOpen,
   writeBlocked,
@@ -94,6 +97,8 @@ export function DoctorWorkspace({
   statusLabel: string;
   paymentLabel: string;
   fee: string;
+  concern?: string | null;
+  intake?: string | null;
   encounterLabel: string | null;
   canOpen: boolean;
   writeBlocked: string | null;
@@ -123,6 +128,8 @@ export function DoctorWorkspace({
           <div><UserRound aria-hidden="true" size={16} /><div><dt>Status</dt><dd>{statusLabel}{encounterLabel ? ` · ${encounterLabel}` : ""}</dd></div></div>
           <div><CreditCard aria-hidden="true" size={16} /><div><dt>Payment</dt><dd>{paymentLabel} · {fee}</dd></div></div>
         </dl>
+        {concern ? <p className="dr-quiet"><strong>Reason. </strong>{concern}</p> : null}
+        {intake ? <p className="dr-quiet"><strong>Intake. </strong>{intake}</p> : null}
         <p className="dr-quiet">Patient reference {reference}. This record is limited to your assigned visit.</p>
       </section>
       <div className="dr-tabs" role="tablist" aria-label="Clinical workspace">
@@ -163,22 +170,33 @@ function OpenRecord({ appointmentId }: { appointmentId: string }) {
   );
 }
 
+const soapFields = [
+  ["complaint", "What the patient said"],
+  ["history", "History"],
+  ["findings", "What was observed"],
+  ["assessment", "Assessment"],
+  ["plan", "Plan"],
+  ["followUp", "Follow-up"],
+] as const;
+
 function NotesTab({ appointmentId, note, locked }: { appointmentId: string; note: DoctorWorkspaceNote | null; locked: boolean }) {
-  const [state, action, pending] = useActionState(saveNoteAction, clinicalInitial);
+  const [state, action, pending] = useActionState(saveStructuredNoteAction, clinicalInitial);
   useRefreshOnSave(state.message, state.tone);
   const finalized = note?.state === "FINALIZED";
+  const soap = splitConsultationNote(note?.body ?? "");
   return (
     <form action={action} key={note ? `${note.id}:${note.revision}` : "new-note"}>
       <h3><Lock aria-hidden="true" size={16} /> Clinical notes</h3>
-      <p className="dr-quiet">Private to authorized clinicians. Patients cannot see this note.</p>
+      <p className="dr-quiet">Private to authorized clinicians. Patients cannot see this note. Save what the patient said, what you observed, the assessment, and the plan.</p>
       <input name="appointmentId" type="hidden" value={appointmentId} />
-      <input name="kind" type="hidden" value="PRIVATE_WORKING" />
       {note ? <input name="noteId" type="hidden" value={note.id} /> : null}
       {note ? <input name="expectedRevision" type="hidden" value={String(note.revision)} /> : null}
-      <label className="dr-field">
-        Assessment and plan
-        <textarea name="body" required maxLength={8000} defaultValue={note?.body ?? ""} disabled={locked} placeholder="Add clinical notes, assessment, and plan." />
-      </label>
+      {soapFields.map(([name, label]) => (
+        <label className="dr-field" key={name}>
+          {label}
+          <textarea name={name} maxLength={2000} defaultValue={soap[name]} disabled={locked} />
+        </label>
+      ))}
       {finalized ? (
         <label className="dr-field">
           Reason for the amendment
@@ -311,8 +329,20 @@ function SummaryTab({ appointmentId, note, locked }: { appointmentId: string; no
       <form action={saveAction}>
         <input name="appointmentId" type="hidden" value={appointmentId} />
         <label className="dr-field">Reason for the visit<textarea name="reason" maxLength={2000} disabled={locked} defaultValue="" /></label>
+        <label className="dr-field">
+          Outcome
+          <select name="outcome" defaultValue="" disabled={locked}>
+            <option value="">Choose an outcome</option>
+            <option>Diagnosis</option>
+            <option>Treatment plan</option>
+            <option>Prescription</option>
+            <option>Lab referral</option>
+            <option>Needs an in-person visit</option>
+          </select>
+        </label>
         <label className="dr-field">What this means for the patient<textarea name="findings" maxLength={2000} disabled={locked} /></label>
         <label className="dr-field">Care plan<textarea name="plan" maxLength={2000} disabled={locked} /></label>
+        <label className="dr-field">Prescription<textarea name="prescription" maxLength={2000} disabled={locked} placeholder="Medicine, dose, and how long to take it. Leave blank if there is none." /></label>
         <label className="dr-field">Follow-up<textarea name="followUp" maxLength={2000} disabled={locked} /></label>
         <label className="dr-field">Additional information<textarea name="additional" maxLength={2000} disabled={locked} /></label>
         <div className="dr-actions">

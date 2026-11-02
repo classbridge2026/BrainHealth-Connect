@@ -68,6 +68,9 @@ describe("consultation eligibility", () => {
     expect(decide({}, { userId: OTHER })).toEqual({ ok: false, code: "NOT_FOUND" });
     expect(decide({}, { userId: DOCTOR, roleCodes: ["DOCTOR"] }, NOW).ok).toBe(true);
     expect(decide({}, { userId: OTHER, roleCodes: ["DOCTOR"] })).toEqual({ ok: false, code: "NOT_FOUND" });
+    expect(decide({}, { userId: OTHER, roleCodes: ["ADMIN"] })).toEqual({ ok: true, role: "doctor" });
+    expect(decide({}, { userId: OTHER, roleCodes: ["SUPER_ADMIN"] }, new Date("2026-10-19T09:00:00.000Z"))).toEqual({ ok: true, role: "doctor" });
+    expect(decide({}, { userId: PATIENT, roleCodes: ["PATIENT", "ADMIN"] })).toEqual({ ok: false, code: "NOT_FOUND" });
     expect(decide({ mode: "IN_PERSON" })).toEqual({ ok: false, code: "NOT_ONLINE" });
     expect(decide({}, { status: "DISABLED" })).toEqual({ ok: false, code: "INACTIVE" });
     expect(decide({ doctorVerificationStatus: "SUSPENDED" })).toEqual({ ok: false, code: "DOCTOR_UNAVAILABLE" });

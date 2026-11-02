@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DashIcon, type DashIconName } from "@/components/doctor/dash-icons";
 import { RecordsUnavailable } from "@/components/records-unavailable";
+import { ClinicPracticeNote } from "@/components/doctor/restricted";
 import { requireClinicalPortal } from "@/lib/doctor/session";
 import { loadDoctorSchedule } from "@/lib/appointments/queries";
 import { availabilityModeLabel } from "@/lib/appointments/slots";
@@ -100,6 +101,7 @@ function visitMode(mode: string) {
 
 export default async function DoctorAvailabilityPage() {
   const portal = await requireClinicalPortal();
+  if (portal.staff) return <ClinicPracticeNote />;
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
   if (!portal.doctor) return <RecordsUnavailable code="NOT_FOUND" />;
   const schedule = await loadDoctorSchedule(prisma, portal.doctor.id);

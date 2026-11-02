@@ -3,6 +3,7 @@ import {
   classifyFollowUp,
   clinicalAccess,
   composeConsultationNote,
+  splitConsultationNote,
   monthCells,
   parseAnchor,
   patientReference,
@@ -57,6 +58,8 @@ describe("doctor portal presentation", () => {
     if (saved.ok) {
       expect(saved.body).toContain("Presenting complaint");
       expect(saved.body).not.toContain("History");
+      expect(splitConsultationNote(saved.body).complaint).toBe("Headache for three days");
+      expect(splitConsultationNote(saved.body).findings).toBe("Alert");
     }
   });
 

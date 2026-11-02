@@ -175,7 +175,7 @@ export function DoctorLobby({
                     <div><div><dt>Microphone</dt><dd>{micStatus}</dd></div></div>
                     <div><div><dt>Speaker</dt><dd>{speakerNote ?? (devices.output.length > 0 ? "Listed. Play a tone to test it." : "Not detectable in this browser.")}</dd></div></div>
                   </dl>
-                  {waitingName ? <p role="status">{waitingName} is in the waiting room. The call connects when you join, without ringing.</p> : null}
+                  {waitingName ? <p role="status">{waitingName} is in the waiting room. Admit them to start the visit.</p> : null}
                   {holdMessage ? <p role="status">{holdMessage}</p> : null}
                   {callNotice === "declined" ? <p className="dr-recall" role="status">The patient declined the call. Call again if they dropped it by mistake. They will receive the call.</p> : null}
                   {callNotice === "left" ? <p className="dr-recall" role="status">The patient left the call. Call again and they will receive it.</p> : null}
@@ -187,7 +187,7 @@ export function DoctorLobby({
                   <button className="dr-secondary" type="button" disabled={checking} onClick={onTest}>{checking ? "Testing…" : "Test devices"}</button>
                   <button className="dr-secondary" type="button" onClick={onTestSpeaker}>Play test tone</button>
                   {callNotice ? <button className="dr-primary" type="button" disabled={joining} onClick={onCallAgain}>{joining ? "Calling…" : "Call again"}</button> : null}
-                  <button className="dr-primary" type="button" disabled={!ready || joining} onClick={onJoin}>{joining ? "Joining…" : waitingName ? "Join and connect" : "Join consultation"}</button>
+                  <button className="dr-primary" type="button" disabled={!ready || joining} onClick={onJoin}>{joining ? "Joining…" : waitingName ? "Admit patient" : "Join consultation"}</button>
                 </div>
               </div>
             ) : null}

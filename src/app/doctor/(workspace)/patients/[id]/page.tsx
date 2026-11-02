@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { RecordsUnavailable } from "@/components/records-unavailable";
-import { RestrictedPractice } from "@/components/doctor/restricted";
+import { ClinicPracticeNote, RestrictedPractice } from "@/components/doctor/restricted";
 import { StatusBadge } from "@/components/status-badge";
 import { appointmentStatusLabel, appointmentStatusTone } from "@/lib/admin/labels";
 import { requireClinicalPortal } from "@/lib/doctor/session";
@@ -34,6 +34,7 @@ export default async function AssignedPatientPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const portal = await requireClinicalPortal();
+  if (portal.staff) return <ClinicPracticeNote />;
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
   if (portal.access !== "ready" || !portal.doctor) return <RestrictedPractice access={portal.access} />;
   const { id } = await params;

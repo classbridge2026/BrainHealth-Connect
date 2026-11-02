@@ -3,7 +3,7 @@ import Link from "next/link";
 import { LiveQueryForm } from "@/components/live-query";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { RecordsUnavailable } from "@/components/records-unavailable";
-import { RestrictedPractice } from "@/components/doctor/restricted";
+import { ClinicPracticeNote, RestrictedPractice } from "@/components/doctor/restricted";
 import { StatusBadge } from "@/components/status-badge";
 import { requireClinicalPortal } from "@/lib/doctor/session";
 import { clampPage } from "@/lib/doctor/present";
@@ -19,6 +19,7 @@ export default async function DoctorPatientsPage({
   searchParams: Promise<{ q?: string; page?: string; status?: string }>;
 }) {
   const portal = await requireClinicalPortal();
+  if (portal.staff) return <ClinicPracticeNote />;
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
   if (portal.access !== "ready" || !portal.doctor) return <RestrictedPractice access={portal.access} />;
   const query = await searchParams;
