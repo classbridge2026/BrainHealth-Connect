@@ -8,14 +8,13 @@ const guardianId = "5c134b07-ded2-4959-9f76-8459a0f6c9b3";
 
 function database(options?: { samePerson?: boolean; inactive?: boolean }) {
   const writes: string[] = [];
-  const db = {
+  const records = {
     patientProfile: {
       findUnique: async () => ({ id: patientId, userId: options?.samePerson ? guardianId : "patient-user", archivedAt: null, fullName: "Amina" }),
     },
     user: {
       findUnique: async () => ({ id: guardianId, status: options?.inactive ? "SUSPENDED" : "ACTIVE", deletedAt: null }),
     },
-    $transaction: async (fn: (tx: typeof db) => Promise<void>) => fn(db),
     guardianRelationship: {
       upsert: async () => {
         writes.push("relationship");
@@ -38,6 +37,10 @@ function database(options?: { samePerson?: boolean; inactive?: boolean }) {
       },
     },
     auditLog: { create: async () => { writes.push("audit"); return {}; } },
+  };
+  const db = {
+    ...records,
+    $transaction: async (fn: (tx: typeof records) => Promise<void>) => fn(records),
   };
   return { db: db as unknown as PrismaClient, writes };
 }

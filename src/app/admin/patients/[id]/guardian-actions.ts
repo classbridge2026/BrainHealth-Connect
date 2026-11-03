@@ -18,7 +18,7 @@ export async function authorizeGuardianAction(_previous: GuardianActionState, fo
       relationshipType: String(formData.get("relationshipType") ?? ""),
       confirmed: formData.get("confirm") === "yes",
     },
-    { db: prisma, actor },
+    { db: prisma, actor: { userId: actor.id, roleCodes: actor.roleCodes } },
   );
   revalidatePath(`/admin/patients/${patientId}`);
   revalidatePath("/admin/settings");
