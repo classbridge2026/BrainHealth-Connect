@@ -20,7 +20,7 @@ async function deliverReset(input: { to: string; resetUrl: string }) {
   return sendCareCircleEmail({
     to: input.to,
     systemName,
-    subject: `Reset your ${systemName} password`,
+    subject: `${systemName}: password reset request`,
     text: [
       `A password reset was requested for your ${systemName} account.`,
       "",

@@ -69,12 +69,18 @@ describe("gmail smtp delivery", () => {
     });
     expect(sendMail).toHaveBeenCalledWith({
       from: { name: "CareCircle MindTogether", address: "account@example.com" },
-      replyTo: "account@example.com",
+      replyTo: { name: "CareCircle MindTogether", address: "account@example.com" },
       envelope: { from: "account@example.com", to: "person@example.com" },
       to: "person@example.com",
       subject: "Hello",
-      text: "Body\n\nThis message was sent to person@example.com by CareCircle MindTogether.",
+      text: "Body\n\nCareCircle MindTogether sent this message about your account. You can reply to this email if you need help.",
       html: expect.stringContaining("Body"),
+      textEncoding: "quoted-printable",
+      xMailer: false,
+      headers: {
+        "Auto-Submitted": "auto-generated",
+        "X-Auto-Response-Suppress": "All",
+      },
     });
 
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -85,5 +91,18 @@ describe("gmail smtp delivery", () => {
     expect(JSON.stringify(errorLog.mock.calls)).not.toContain("app-password-value");
     expect(JSON.stringify(errorLog.mock.calls)).not.toContain("secret-body");
     errorLog.mockRestore();
+  });
+
+  it("labels a portal link instead of showing the full address as the link text", async () => {
+    configureSmtp();
+    sendMail.mockResolvedValueOnce({ messageId: "queued" });
+    await sendCareCircleEmail({
+      to: "person@example.com",
+      subject: "Hello",
+      text: "Open the page.\n\nhttps://brain-health-connect.vercel.app/doctor/invitation?token=abc",
+    });
+    const html = String(sendMail.mock.calls[0]?.[0]?.html ?? "");
+    expect(html).toContain(">Open your invitation</a>");
+    expect(html).not.toContain(">https://brain-health-connect.vercel.app/doctor/invitation?token=abc</a>");
   });
 });

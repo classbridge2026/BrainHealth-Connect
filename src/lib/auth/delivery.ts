@@ -42,15 +42,38 @@ export function emailProviderConfigured(): boolean {
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function messageHtml(text: string): string {
-  const linked = escapeHtml(text).replace(
-    /(https?:\/\/[^\s<]+)/g,
-    (url) => `<a href="${url}">${url}</a>`,
-  );
-  return `<!DOCTYPE html><html><body style="margin:0;padding:24px;background:#f7f4ef"><div style="max-width:560px;font-family:Arial,sans-serif;font-size:16px;line-height:1.5;color:#12304a">${linked.replace(/\n/g, "<br>")}</div></body></html>`;
+function linkLabel(url: string): string {
+  try {
+    const path = new URL(url.replace(/&amp;/g, "&")).pathname;
+    if (path.includes("/doctor/invitation")) return "Open your invitation";
+    if (path.includes("password")) return "Choose a new password";
+    if (path.includes("verify")) return "Confirm your email";
+    if (path.includes("appointment")) return "Open the appointment";
+    return "Open the portal";
+  } catch {
+    return "Open the portal";
+  }
+}
+
+function messageHtml(text: string, systemName: string): string {
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((paragraph) => {
+      const linked = escapeHtml(paragraph).replace(
+        /(https?:\/\/[^\s<]+)/g,
+        (url) => `<a href="${url}" style="color:#0f766e;font-weight:700">${linkLabel(url)}</a>`,
+      );
+      return `<p style="margin:0 0 16px">${linked.replace(/\n/g, "<br>")}</p>`;
+    })
+    .join("");
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(systemName)}</title></head><body style="margin:0;padding:24px;background:#ffffff;color:#12304a;font-family:Arial,sans-serif;font-size:16px;line-height:1.5"><div style="max-width:560px">${paragraphs}</div></body></html>`;
+}
+
+function accountFooter(systemName: string): string {
+  return `${systemName} sent this message about your account. You can reply to this email if you need help.`;
 }
 
 export async function sendCareCircleEmail(input: {
@@ -64,7 +87,7 @@ export async function sendCareCircleEmail(input: {
     return { delivered: false, reason: "not_configured" };
   }
   const systemName = input.systemName?.trim() || DEFAULT_SYSTEM_NAME;
-  const text = `${input.text}\n\nThis message was sent to ${input.to} by ${systemName}.`;
+  const text = `${input.text.trim()}\n\n${accountFooter(systemName)}`;
   try {
     const transport = nodemailer.createTransport({
       host: settings.host,
@@ -74,12 +97,18 @@ export async function sendCareCircleEmail(input: {
     });
     await transport.sendMail({
       from: { name: systemName, address: settings.user },
-      replyTo: settings.user,
+      replyTo: { name: systemName, address: settings.user },
       envelope: { from: settings.user, to: input.to },
       to: input.to,
       subject: input.subject,
       text,
-      html: messageHtml(text),
+      html: messageHtml(text, systemName),
+      textEncoding: "quoted-printable",
+      xMailer: false,
+      headers: {
+        "Auto-Submitted": "auto-generated",
+        "X-Auto-Response-Suppress": "All",
+      },
     });
     return { delivered: true, reason: "sent" };
   } catch {
@@ -101,7 +130,7 @@ export function createEmailDelivery(): EmailDelivery {
       return sendCareCircleEmail({
         to,
         systemName,
-        subject: `Verify your ${systemName} email`,
+        subject: `${systemName}: confirm your email`,
         text: [
           `Confirm your email address for ${systemName}.`,
           "",
