@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { formatPlatformDay, formatPlatformWhen, formatMinorMoney } from "@/lib/admin/labels";
+import { decimalToMinorUnits } from "@/lib/catalog/money";
 import { addDays, formatBookingWhen } from "@/lib/appointments/time";
 import { classifyFollowUp, platformDay, type FollowUpView } from "@/lib/doctor/present";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
@@ -14,11 +15,42 @@ function failed(error: unknown): PortalFailure {
   return { ok: false, code: isSchemaMismatch(error) ? "SCHEMA" : "UNAVAILABLE" };
 }
 
-function directoryFee(offerings: Array<{ priceAmountMinor: number; currency: string }>) {
-  if (offerings.length === 0) return null;
-  const currency = offerings[0].currency;
-  if (offerings.some((row) => row.currency !== currency)) return null;
-  const lowest = offerings.reduce((best, row) => (row.priceAmountMinor < best ? row.priceAmountMinor : best), offerings[0].priceAmountMinor);
+function currencyCode(value: string): string | null {
+  const currency = value.replace(/[^A-Za-z]/g, "").toUpperCase();
+  return /^[A-Z]{3}$/.test(currency) ? currency : null;
+}
+
+/** The fee an administrator saved. A blank doctor fee uses the service price. */
+export function directoryFee(
+  offerings: Array<{
+    priceAmountMinor: number;
+    currency: string;
+    consultationService: { defaultFee: Prisma.Decimal | string; currency: string };
+  }>,
+): string | null {
+  const priced = offerings.flatMap((row) => {
+    const offeringCurrency = currencyCode(row.currency);
+    if (offeringCurrency && Number.isSafeInteger(row.priceAmountMinor) && row.priceAmountMinor > 0) {
+      return [{ minor: row.priceAmountMinor, currency: offeringCurrency }];
+    }
+    const serviceCurrency = currencyCode(row.consultationService.currency);
+    if (!serviceCurrency) return [];
+    let fee: Prisma.Decimal;
+    try {
+      fee = row.consultationService.defaultFee instanceof Prisma.Decimal
+        ? row.consultationService.defaultFee
+        : new Prisma.Decimal(row.consultationService.defaultFee);
+    } catch {
+      return [];
+    }
+    const minor = decimalToMinorUnits(fee);
+    if (minor === null || minor <= 0) return [];
+    return [{ minor, currency: serviceCurrency }];
+  });
+  if (priced.length === 0) return null;
+  const currency = priced[0]?.currency;
+  if (!currency || priced.some((row) => row.currency !== currency)) return null;
+  const lowest = priced.reduce((best, row) => (row.minor < best ? row.minor : best), priced[0].minor);
   return formatMinorMoney(lowest, currency);
 }
 
@@ -112,12 +144,11 @@ export async function loadPatientAccount(db: PrismaClient, userId: string) {
 
 export async function searchVerifiedDoctors(
   db: PrismaClient,
-  filters: { q?: string | null; specialty?: string | null; language?: string | null; location?: string | null; visit?: string | null },
+  filters: { q?: string | null; specialty?: string | null; language?: string | null; visit?: string | null },
 ) {
   const q = (filters.q ?? "").trim().slice(0, 80);
   const specialty = (filters.specialty ?? "").trim().slice(0, 80);
   const language = (filters.language ?? "").trim().slice(0, 40);
-  const location = (filters.location ?? "").trim().slice(0, 80);
   const visit = (filters.visit ?? "").trim().toLowerCase();
   const visitMode: "IN_PERSON" | "ONLINE" | null = visit === "in-person" ? "IN_PERSON" : visit === "video" || visit === "audio" ? "ONLINE" : null;
   const where: Prisma.DoctorProfileWhereInput = {
@@ -145,13 +176,6 @@ export async function searchVerifiedDoctors(
               }]
             : []),
           ...(language ? [{ languages: { has: language } }] : []),
-          ...(location
-            ? [{
-                availabilityRules: {
-                  some: { isActive: true, location: { isActive: true, district: { equals: location, mode: "insensitive" as const } } },
-                },
-              }]
-            : []),
           ...(visitMode
             ? [{ offerings: { some: { isActive: true, mode: visitMode, consultationService: { isActive: true } } } }]
             : []),
@@ -175,7 +199,12 @@ export async function searchVerifiedDoctors(
         },
         offerings: {
           where: { isActive: true, consultationService: { isActive: true }, specialty: { isActive: true } },
-          select: { mode: true, priceAmountMinor: true, currency: true, consultationService: { select: { name: true } } },
+          select: {
+            mode: true,
+            priceAmountMinor: true,
+            currency: true,
+            consultationService: { select: { name: true, defaultFee: true, currency: true } },
+          },
         },
       },
     });
@@ -202,7 +231,7 @@ export async function searchVerifiedDoctors(
 
 export async function listBookingFilters(db: PrismaClient) {
   try {
-    const [specialties, speakers, places] = await Promise.all([
+    const [specialties, speakers] = await Promise.all([
       db.specialty.findMany({
         where: {
           isActive: true,
@@ -215,18 +244,11 @@ export async function listBookingFilters(db: PrismaClient) {
         where: { verificationStatus: "APPROVED", user: { status: "ACTIVE", deletedAt: null } },
         select: { languages: true },
       }),
-      db.location.findMany({
-        where: { isActive: true },
-        select: { district: true },
-        distinct: ["district"],
-        orderBy: { district: "asc" },
-      }),
     ]);
     return {
       ok: true as const,
       specialties: specialties.map((row) => row.name),
       languages: [...new Set(speakers.flatMap((row) => row.languages).map((name) => name.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
-      districts: places.map((row) => row.district).filter(Boolean),
     };
   } catch (error) {
     return failed(error);

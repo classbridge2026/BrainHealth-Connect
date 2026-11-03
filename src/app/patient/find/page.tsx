@@ -41,21 +41,20 @@ export default async function FindDoctorPage({ searchParams }: { searchParams: P
   const q = typeof params.q === "string" ? params.q : "";
   const specialty = typeof params.specialty === "string" ? params.specialty : "";
   const language = typeof params.language === "string" ? params.language : "";
-  const location = typeof params.location === "string" ? params.location : "";
   const visit = typeof params.visit === "string" ? params.visit : "";
-  const openSearch = !q && !specialty && !language && !location && !visit;
+  const openSearch = !q && !specialty && !language && !visit;
   const loaded = openSearch
     ? await readOpenDirectory().catch(async () => {
         const [found, choices] = await Promise.all([searchVerifiedDoctors(prisma, {}), listBookingFilters(prisma)]);
         return { result: found, filters: choices };
       })
     : await Promise.all([
-        searchVerifiedDoctors(prisma, { q, specialty, language, location, visit }),
+        searchVerifiedDoctors(prisma, { q, specialty, language, visit }),
         listBookingFilters(prisma),
       ]).then(([found, choices]) => ({ result: found, filters: choices }));
   const { result, filters } = loaded;
   if (!result.ok) return <RecordsUnavailable code={result.code === "NOT_FOUND" ? "NOT_FOUND" : result.code} />;
-  const options = filters.ok ? filters : { specialties: [], languages: [], districts: [] };
+  const options = filters.ok ? filters : { specialties: [], languages: [] };
   const count = result.doctors.length;
 
   return (
@@ -79,13 +78,6 @@ export default async function FindDoctorPage({ searchParams }: { searchParams: P
           <select name="language" defaultValue={language}>
             <option value="">Any language</option>
             {options.languages.map((name) => <option key={name} value={name}>{name}</option>)}
-          </select>
-        </label>
-        <label>
-          Location
-          <select name="location" defaultValue={location}>
-            <option value="">Any location</option>
-            {options.districts.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         </label>
         <label>

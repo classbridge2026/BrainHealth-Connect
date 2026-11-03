@@ -1,6 +1,30 @@
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { describe, expect, it } from "vitest";
-import type { PrismaClient } from "@prisma/client";
-import { clearOwnInAppNotifications, genderLabel, isReleasedPatientSummary, parseConsultationFilter, patientNotificationHref } from "./portal";
+import { clearOwnInAppNotifications, directoryFee, genderLabel, isReleasedPatientSummary, parseConsultationFilter, patientNotificationHref } from "./portal";
+
+describe("find a doctor fees", () => {
+  const service = (fee: string, currency = "SLL") => ({ defaultFee: new Prisma.Decimal(fee), currency });
+
+  it("shows the administrator service price when the doctor fee was left at zero", () => {
+    expect(
+      directoryFee([
+        { priceAmountMinor: 0, currency: "SLL", consultationService: service("100") },
+        { priceAmountMinor: 0, currency: "SLL", consultationService: service("100.00") },
+      ]),
+    ).toBe("100.00 SLL");
+  });
+
+  it("keeps a doctor fee the administrator set above zero and hides a zero price", () => {
+    expect(directoryFee([{ priceAmountMinor: 15000, currency: "SLL", consultationService: service("100") }])).toBe("150.00 SLL");
+    expect(directoryFee([{ priceAmountMinor: 0, currency: "SLL", consultationService: service("0") }])).toBeNull();
+    expect(
+      directoryFee([
+        { priceAmountMinor: 0, currency: "SLL", consultationService: service("100") },
+        { priceAmountMinor: 0, currency: "USD", consultationService: service("10", "USD") },
+      ]),
+    ).toBeNull();
+  });
+});
 
 describe("patient portal visibility", () => {
   it("shows only a released patient summary", () => {
