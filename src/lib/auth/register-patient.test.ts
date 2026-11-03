@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { beforeEach, describe, expect, it } from "vitest";
-import { GENERIC_DUPLICATE_ACCOUNT, PRIVACY_DOCUMENT_VERSION, TERMS_DOCUMENT_VERSION } from "./constants";
+import { PRIVACY_DOCUMENT_VERSION, TERMS_DOCUMENT_VERSION } from "./constants";
 import { registerPatient } from "./register-patient";
 import { createRateLimiter } from "./rate-limit";
 
@@ -46,6 +46,11 @@ function createDb(options?: { failProfile?: boolean; emails?: Set<string>; phone
       },
     },
     user: {
+      findUnique: async ({ where }: { where: { emailNormalized?: string; phoneE164?: string } }) => {
+        if (where.emailNormalized && emails.has(where.emailNormalized)) return { id: "existing-email" };
+        if (where.phoneE164 && phones.has(where.phoneE164)) return { id: "existing-phone" };
+        return null;
+      },
       create: async ({ data }: { data: Stored }) => {
         const email = String(data.emailNormalized);
         const phone = String(data.phoneE164);
@@ -150,7 +155,20 @@ describe("patient registration", () => {
       { ...valid, phone: "076000009" },
       deps(createDb({ emails: sharedEmails, phones: sharedPhones }).db),
     );
-    expect(duplicate).toEqual({ ok: false, formMessage: GENERIC_DUPLICATE_ACCOUNT });
+    expect(duplicate).toEqual({
+      ok: false,
+      formMessage: "This email address is already registered. Sign in with it, or use a different email.",
+      fieldErrors: { email: "This email address is already registered. Sign in with it, or use a different email." },
+    });
+
+    const duplicatePhone = await registerPatient(
+      { ...valid, email: "other@example.com", phone: "076000001" },
+      deps(createDb({ emails: sharedEmails, phones: sharedPhones }).db),
+    );
+    expect(duplicatePhone).toMatchObject({
+      ok: false,
+      fieldErrors: { phone: "This phone number is already registered. Sign in with it, or use a different phone number." },
+    });
 
     const failing = createDb({ failProfile: true });
     const failed = await registerPatient(
@@ -177,7 +195,9 @@ describe("patient registration", () => {
     const failures = results.filter((result) => !result.ok);
     expect(successes).toHaveLength(1);
     expect(failures).toHaveLength(1);
-    expect(failures[0]).toMatchObject({ formMessage: GENERIC_DUPLICATE_ACCOUNT });
+    expect(failures[0]).toMatchObject({
+      fieldErrors: { email: "This email address is already registered. Sign in with it, or use a different email." },
+    });
     expect(sharedEmails.size).toBe(1);
   });
 

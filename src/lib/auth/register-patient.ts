@@ -34,6 +34,9 @@ export type RegistrationDeps = {
   logError?: (code: string) => void;
 };
 
+const EMAIL_ALREADY_REGISTERED = "This email address is already registered. Sign in with it, or use a different email.";
+const PHONE_ALREADY_REGISTERED = "This phone number is already registered. Sign in with it, or use a different phone number.";
+
 function isUniqueConstraint(error: unknown): boolean {
   return Boolean(
     error &&
@@ -41,6 +44,34 @@ function isUniqueConstraint(error: unknown): boolean {
       "code" in error &&
       (error as { code?: string }).code === "P2002",
   );
+}
+
+function duplicateRegistration(taken: { email: boolean; phone: boolean }): PublicRegistrationResult {
+  const fieldErrors: Partial<Record<RegistrationField, string>> = {};
+  if (taken.email) fieldErrors.email = EMAIL_ALREADY_REGISTERED;
+  if (taken.phone) fieldErrors.phone = PHONE_ALREADY_REGISTERED;
+  if (!taken.email && !taken.phone) {
+    return { ok: false, formMessage: GENERIC_DUPLICATE_ACCOUNT };
+  }
+  const formMessage =
+    taken.email && taken.phone
+      ? "This email address and phone number are already registered. Sign in, or use different contact details."
+      : taken.email
+        ? EMAIL_ALREADY_REGISTERED
+        : PHONE_ALREADY_REGISTERED;
+  return { ok: false, formMessage, fieldErrors };
+}
+
+async function registeredContact(
+  db: PrismaClient,
+  emailNormalized: string,
+  phoneE164: string,
+): Promise<{ email: boolean; phone: boolean }> {
+  const [email, phone] = await Promise.all([
+    db.user.findUnique({ where: { emailNormalized }, select: { id: true } }),
+    db.user.findUnique({ where: { phoneE164 }, select: { id: true } }),
+  ]);
+  return { email: Boolean(email), phone: Boolean(phone) };
 }
 
 export function appBaseUrlFromEnv(requestOrigin?: string | null): string | null {
@@ -86,6 +117,9 @@ export async function registerPatient(
   const sessionToken = createEmailToken().raw;
 
   try {
+    const taken = await registeredContact(deps.db, data.emailNormalized, data.phoneE164);
+    if (taken.email || taken.phone) return duplicateRegistration(taken);
+
     const role = await deps.db.role.findUnique({ where: { code: PATIENT_ROLE_CODE } });
     if (!role) {
       return { ok: false, formMessage: "Patient registration is not available right now." };
@@ -149,7 +183,11 @@ export async function registerPatient(
 
   } catch (error) {
     if (isUniqueConstraint(error)) {
-      return { ok: false, formMessage: GENERIC_DUPLICATE_ACCOUNT };
+      try {
+        return duplicateRegistration(await registeredContact(deps.db, data.emailNormalized, data.phoneE164));
+      } catch {
+        return { ok: false, formMessage: GENERIC_DUPLICATE_ACCOUNT };
+      }
     }
     deps.logError?.("registration_failed");
     return { ok: false, formMessage: "We could not create the account. Try again." };

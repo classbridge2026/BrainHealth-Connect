@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { homeForRoles, type AppHome } from "./access";
-import { ADMIN_ROLE_CODE, DOCTOR_ROLE_CODE, GENERIC_CREDENTIALS, SUPER_ADMIN_ROLE_CODE } from "./constants";
+import { ADMIN_ROLE_CODE, DOCTOR_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "./constants";
 import { normalizeEmail } from "./email-address";
 import { verifyPassword } from "./password";
 import { normalizePhone } from "./phone";
@@ -25,9 +25,13 @@ export async function authenticatePatient(
   const raw = (input.identifier ?? input.email ?? "").trim();
   const emailNormalized = normalizeEmail(raw);
   const phoneE164 = emailNormalized ? null : normalizePhone(raw);
-  if ((!emailNormalized && !phoneE164) || !input.password || input.password.length > 128) {
+  if (!emailNormalized && !phoneE164) {
     await verifyPassword(input.password || " ", await unusedHash());
-    return { ok: false, formMessage: GENERIC_CREDENTIALS, code: "invalid" };
+    return { ok: false, formMessage: "Enter the email address or phone number on the account.", code: "invalid" };
+  }
+  if (!input.password || input.password.length > 128) {
+    await verifyPassword(input.password, await unusedHash());
+    return { ok: false, formMessage: "Enter the password for this account.", code: "invalid" };
   }
 
   const accountSelect = {
@@ -45,8 +49,15 @@ export async function authenticatePatient(
     ? await verifyPassword(input.password, user.passwordHash)
     : await verifyPassword(input.password, await unusedHash());
 
-  if (!user || user.deletedAt || !passwordMatches) {
-    return { ok: false, formMessage: GENERIC_CREDENTIALS, code: "invalid" };
+  if (!user || user.deletedAt) {
+    return {
+      ok: false,
+      formMessage: emailNormalized ? "No account uses this email address." : "No account uses this phone number.",
+      code: "invalid",
+    };
+  }
+  if (!passwordMatches) {
+    return { ok: false, formMessage: "That password does not match this account.", code: "invalid" };
   }
 
   const roleCodes = user.roles.map((entry) => entry.role.code);
