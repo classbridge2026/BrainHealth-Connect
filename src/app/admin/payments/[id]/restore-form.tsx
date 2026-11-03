@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/form-classes";
+import { useRefreshAfterAction } from "@/components/refresh-after-action";
 import type { AdminActionState } from "@/lib/admin/action-state";
 import { restorePaidVisitAction } from "./review-actions";
 
@@ -21,6 +22,7 @@ export function RestoreVisitForm({
   canReject: boolean;
 }) {
   const [state, action, pending] = useActionState(restorePaidVisitAction, initial);
+  useRefreshAfterAction(state.message);
   return (
     <form action={action} className="grid gap-3 rounded-2xl border border-brand-line bg-white p-5">
       <h2 className="text-lg font-semibold text-brand-navy">The patient already paid</h2>

@@ -13,35 +13,35 @@ import { redirectOffline } from "@/lib/db/offline-redirect";
 export const metadata: Metadata = { title: "Administration" };
 export const dynamic = "force-dynamic";
 
-async function loadAdminChrome(userId: string) {
-  const [account, notices] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: { email: true, profileImageUpdatedAt: true },
-    }),
-    loadInAppNoticeSummary(prisma, userId, "admin"),
-  ]);
+async function loadAdminAccount(userId: string) {
+  const account = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, profileImageUpdatedAt: true },
+  });
   return {
     email: account?.email ?? "Administrator",
     imageVersion: account?.profileImageUpdatedAt?.toISOString() ?? null,
-    unreadNotifications: notices.unread,
-    notices: notices.items,
   };
 }
 
-const readAdminChrome = unstable_cache(loadAdminChrome, ["admin-chrome"], { revalidate: 20 });
+const readAdminAccount = unstable_cache(loadAdminAccount, ["admin-account"], { revalidate: 20 });
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireStoredRoles([ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE]);
-  let chrome: Awaited<ReturnType<typeof loadAdminChrome>>;
+  let account: Awaited<ReturnType<typeof loadAdminAccount>>;
+  let notices: Awaited<ReturnType<typeof loadInAppNoticeSummary>>;
   try {
-    chrome = await readAdminChrome(user.id);
+    [account, notices] = await Promise.all([
+      readAdminAccount(user.id),
+      loadInAppNoticeSummary(prisma, user.id, "admin"),
+    ]);
   } catch (error) {
     if (isRecordsOffline(error)) await redirectOffline();
     throw error;
   }
   const systemName = await getSystemName();
-  const { email, imageVersion, unreadNotifications, notices } = chrome;
+  const { email, imageVersion } = account;
+  const unreadNotifications = notices.unread;
   return (
     <AdminShell
       userId={user.id}
@@ -50,7 +50,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       imageVersion={imageVersion}
       roleLabel={user.roleCodes.includes(SUPER_ADMIN_ROLE_CODE) ? "Super administrator" : "Administrator"}
       unreadNotifications={unreadNotifications}
-      notices={notices}
+      notices={notices.items}
     >
       {children}
     </AdminShell>

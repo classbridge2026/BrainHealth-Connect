@@ -25,7 +25,9 @@ export async function startWalletPaymentAction(_previous: PayState, formData: Fo
   );
   revalidatePath(`/patient/appointments/${appointmentId}`);
   revalidatePath("/patient/payments");
+  revalidatePath("/patient", "layout");
   revalidatePath("/admin/payments");
+  revalidatePath("/admin", "layout");
   const started = Boolean(result.paymentUrl) || (result.message ?? "").startsWith("Afrimoney sent a prompt");
   return { message: result.message, paymentUrl: result.paymentUrl, tone: started ? "ok" : "error" };
 }
@@ -36,7 +38,9 @@ export async function refreshWalletPaymentAction(_previous: PayState, formData: 
   const result = await refreshVisitPayment({ actorUserId: user.id, appointmentId }, prisma);
   revalidatePath(`/patient/appointments/${appointmentId}`);
   revalidatePath("/patient/payments");
+  revalidatePath("/patient", "layout");
   revalidatePath("/admin/payments");
+  revalidatePath("/admin", "layout");
   const paid = result.message === "The payment is recorded.";
   return { message: result.message, tone: paid ? "ok" : "error" };
 }
@@ -50,7 +54,9 @@ export async function reportOrangeTransferAction(_previous: PayState, formData: 
     const result = await reportAfrimoneyTransfer({ actorUserId: user.id, appointmentId, reference }, prisma);
     revalidatePath(`/patient/appointments/${appointmentId}`);
     revalidatePath("/patient/payments");
+    revalidatePath("/patient", "layout");
     revalidatePath("/admin/payments");
+    revalidatePath("/admin", "layout");
     return result;
   }
   const file = formData.get("receipt");
@@ -73,6 +79,8 @@ export async function reportOrangeTransferAction(_previous: PayState, formData: 
   );
   revalidatePath(`/patient/appointments/${appointmentId}`);
   revalidatePath("/patient/payments");
+  revalidatePath("/patient", "layout");
   revalidatePath("/admin/payments");
+  revalidatePath("/admin", "layout");
   return result;
 }

@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/form-classes";
+import { useRefreshAfterAction } from "@/components/refresh-after-action";
 import type { AdminActionState } from "@/lib/admin/action-state";
 import { reviewOrangeTransferAction } from "./review-actions";
 
@@ -9,6 +10,7 @@ const initial: AdminActionState = {};
 
 export function OrangeReviewForm({ paymentId, reference, wallet }: { paymentId: string; reference: string; wallet: string }) {
   const [state, action, pending] = useActionState(reviewOrangeTransferAction, initial);
+  useRefreshAfterAction(state.message);
   return (
     <form action={action} className="grid gap-3 rounded-2xl border border-brand-line bg-white p-5">
       <h2 className="text-lg font-semibold text-brand-navy">Confirm the {wallet} transfer</h2>

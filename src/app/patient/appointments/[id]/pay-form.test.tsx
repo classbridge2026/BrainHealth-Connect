@@ -10,6 +10,10 @@ vi.mock("./pay-actions", () => ({
   startWalletPaymentAction: vi.fn(),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
+
 afterEach(() => cleanup());
 
 const checkout = {
@@ -41,6 +45,11 @@ describe("visit payment methods", () => {
     render(<VisitPayment {...checkout} />);
     expect(screen.getByRole("button", { name: /Orange Money/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Afrimoney/ })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Watch how to pay" }));
+    expect(screen.getByRole("dialog", { name: "How to book and pay" })).toBeTruthy();
+    expect(screen.getByLabelText("How to book and pay, in Krio").getAttribute("src")).toBe("/guides/brainhealth-connect-patient-booking-krio.mp4");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "How to book and pay" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /Afrimoney/ }));
 

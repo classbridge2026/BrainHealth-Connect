@@ -1,6 +1,6 @@
 const CONTROLS = [
   "Create doctor and send invitation",
-  "Prepare for consultation",
+  "Open consultation",
   "Continue consultation",
   "End consultation",
   "Grant administrator",

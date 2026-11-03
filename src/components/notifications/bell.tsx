@@ -78,6 +78,8 @@ export function NotificationBell({
   const [live, setLive] = useState<NoticeSnapshot | null>(null);
   const unreadRef = useRef(unread);
   const openedPayment = useRef(unread);
+  const routerRef = useRef(router);
+  routerRef.current = router;
   const serverStamp = noticeStamp(unread, items.map((item) => item.id));
   const serverStampRef = useRef(serverStamp);
   serverStampRef.current = serverStamp;
@@ -134,6 +136,7 @@ export function NotificationBell({
           return;
         }
         setLive(pulse);
+        routerRef.current.refresh();
       } catch {
         // The next check tries again.
       }
@@ -142,7 +145,7 @@ export function NotificationBell({
     function schedule(delay: number) {
       timer = window.setTimeout(() => {
         void look().finally(() => {
-          if (!stop) schedule(45000);
+          if (!stop) schedule(8000);
         });
       }, delay);
     }
@@ -151,7 +154,7 @@ export function NotificationBell({
       if (document.visibilityState === "visible") void look();
     }
 
-    schedule(20000);
+    schedule(1000);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       stop = true;

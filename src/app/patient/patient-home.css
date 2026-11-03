@@ -63,6 +63,13 @@
   background: #0b5f59;
 }
 
+.pat-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1rem;
+}
+
 .pat-hero-photo {
   display: block;
   width: 5.25rem;
@@ -221,6 +228,12 @@
   color: #5b6b7c;
   font-size: 0.88rem;
   line-height: 1.55;
+}
+
+.pat-empty-guide {
+  display: grid;
+  justify-items: start;
+  gap: 0.35rem;
 }
 
 .pat-next {

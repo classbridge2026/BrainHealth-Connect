@@ -139,7 +139,7 @@ const DOCTOR_TOPICS: Topic[] = [
     aliases: ["appointments", "consultation", "check in", "start a consultation"],
     keywords: ["appointment", "appointments", "check", "consultation", "noshow", "complete"],
     summary: "Appointments are the visits assigned to you.",
-    how: "Click the booking, then click Approve or Decline. After you approve, click Prepare for consultation. When the visit is finished, click End consultation. The system marks the visit complete. Cancel asks you to confirm before it is saved, and you can reschedule when the visit allows it.",
+    how: "Click the booking, then click Approve or Decline. After you approve, click Open consultation. When the visit is finished, click End consultation. The system marks the visit complete. Cancel asks you to confirm before it is saved, and you can reschedule when the visit allows it.",
     limits: "You cannot change a visit assigned to another doctor. An unapproved profile cannot take these actions.",
   },
   {

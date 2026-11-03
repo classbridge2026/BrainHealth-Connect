@@ -1,6 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import { BookingGuideVideo } from "@/components/patient/booking-guide";
+import { useRefreshAfterAction } from "@/components/refresh-after-action";
 import { refreshWalletPaymentAction, reportOrangeTransferAction, startWalletPaymentAction } from "./pay-actions";
 
 const initial = { message: "", tone: undefined as "ok" | "error" | undefined, paymentUrl: undefined as string | undefined };
@@ -51,6 +53,9 @@ export function VisitPayment({
   const [started, start, starting] = useActionState(startWalletPaymentAction, initial);
   const [checked, refresh, checking] = useActionState(refreshWalletPaymentAction, initial);
   const [reported, report, reporting] = useActionState(reportOrangeTransferAction, initial);
+  useRefreshAfterAction(started.message);
+  useRefreshAfterAction(checked.message);
+  useRefreshAfterAction(reported.message);
   const [copied, setCopied] = useState(false);
   const [method, setMethod] = useState<"orange" | "afri" | null>(null);
   const choose = (next: "orange" | "afri" | null) => {
@@ -85,6 +90,7 @@ export function VisitPayment({
           <dd>{when}</dd>
         </div>
       </dl>
+      {canPay && !paid && !pendingApproval && !waitingReference ? <BookingGuideVideo label="Watch how to pay" /> : null}
 
       {paid ? (
         <p className="pay-note" role="status">This fee is paid. The consultation can open when the visit time arrives.</p>

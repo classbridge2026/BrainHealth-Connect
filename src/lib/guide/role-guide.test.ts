@@ -24,7 +24,7 @@ describe("role guide", () => {
   it("keeps a doctor inside their own practice", () => {
     const visit = chatWithDoctor({ pathname: "/doctor", question: "How do I start a consultation?" });
     expect(visit.text).toMatch(/1\. Click the booking, then click \*\*Approve\*\* or \*\*Decline\*\*/);
-    expect(visit.text).toMatch(/2\. After you approve, click \*\*Prepare for consultation\*\*/);
+    expect(visit.text).toMatch(/2\. After you approve, click \*\*Open consultation\*\*/);
     expect(visit.text).toMatch(/3\. When the visit is finished, click \*\*End consultation\*\*/);
     expect(visit.text).toMatch(/marks the visit complete/);
     expect(visit.text).toMatch(/another doctor/);

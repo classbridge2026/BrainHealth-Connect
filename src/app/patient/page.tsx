@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BookingGuideVideo } from "@/components/patient/booking-guide";
 import { PatientHomeIcon, type PatientHomeIconName } from "@/components/patient/home-icons";
 import { profileImageSrc } from "@/components/profile-image-src";
 import { ProfilePhoto } from "@/components/profile-photo";
@@ -40,7 +41,10 @@ export default async function PatientPage() {
         <div className="pat-hero-copy">
           <h1>Welcome back, {first}!</h1>
           <p>Connect with qualified doctors, book appointments, and access your health records — all in one place.</p>
-          <Link href="/patient/find">Find a Doctor</Link>
+          <div className="pat-hero-actions">
+            <Link href="/patient/find">Find a Doctor</Link>
+            <BookingGuideVideo label="Watch how to book" />
+          </div>
         </div>
         <img className="pat-hero-photo" src={photoSrc} alt={name === "there" ? "" : name} />
       </section>
@@ -81,7 +85,10 @@ export default async function PatientPage() {
             appointments.pending.length > 0 ? (
               <p className="pat-empty">You have a booking waiting for the doctor. <Link href="/patient/appointments?view=pending">Open Pending</Link></p>
             ) : (
-              <p className="pat-empty">You have no upcoming appointment.</p>
+              <div className="pat-empty-guide">
+                <p className="pat-empty">You have no upcoming appointment.</p>
+                <BookingGuideVideo label="Watch how to book" />
+              </div>
             )
           ) : (
             <div className="pat-next">

@@ -214,7 +214,7 @@ export default async function DoctorAppointmentPage({
           {preparing && !missed ? (
             <Link className="doc-btn" href={`/doctor/appointments/${visit.id}/consultation`}>
               <VisitIcon name={online ? "video" : "calendar"} />
-              {visit.status === "IN_PROGRESS" ? "Continue consultation" : "Prepare for consultation"}
+              {visit.status === "IN_PROGRESS" ? "Continue consultation" : "Open consultation"}
             </Link>
           ) : null}
           {portal.staff ? null : <Link className="doc-btn-ghost" href={`/doctor/patients/${visit.patient.id}`}>Patient information</Link>}
@@ -275,15 +275,6 @@ export default async function DoctorAppointmentPage({
                 selectedStart={start}
                 slots={slots ? (slots.ok ? { ok: true, schedule: slots.schedule } : { ok: false }) : null}
               />
-            </section>
-          ) : null}
-          {preparing && !missed ? (
-            <section className="doc-panel">
-              <h2>Prepare for consultation</h2>
-              <p className="doc-quiet">This booking is approved. Review the visit and open the consultation. When you end the consultation, the system marks it complete.</p>
-              <Link className="doc-btn" href={`/doctor/appointments/${visit.id}/consultation`}>
-                {visit.status === "IN_PROGRESS" ? "Continue consultation" : "Prepare for consultation"}
-              </Link>
             </section>
           ) : null}
           <DoctorAppointmentForms appointmentId={visit.id} actions={[]} canCancel={canCancel} />

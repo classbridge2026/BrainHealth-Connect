@@ -15,7 +15,9 @@ export async function reviewOrangeTransferAction(_previous: AdminActionState, fo
   const result = await reviewOrangeTransfer({ actorUserId: user.id, paymentId, decision }, prisma);
   revalidatePath(`/admin/payments/${paymentId}`);
   revalidatePath("/admin/payments");
+  revalidatePath("/admin", "layout");
   revalidatePath("/patient/payments");
+  revalidatePath("/patient/appointments");
   return { message: result.message, tone: result.tone === "ok" ? "ok" : "error" };
 }
 
@@ -32,6 +34,7 @@ export async function restorePaidVisitAction(_previous: AdminActionState, formDa
   revalidatePath(`/admin/payments/${paymentId}`);
   revalidatePath("/admin/payments");
   revalidatePath("/admin/appointments");
+  revalidatePath("/admin", "layout");
   revalidatePath("/patient/appointments");
   revalidatePath("/patient/payments");
   const tone = "tone" in result ? result.tone : result.ok ? "ok" : "error";
