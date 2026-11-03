@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CareCircleMark } from "@/components/brand";
+import { InstallApp } from "@/components/install-app";
 import { LiveSearchInput } from "@/components/live-query";
 import { NotificationBell, type BellItem } from "@/components/notifications/bell";
 import { ProfilePhoto } from "@/components/profile-photo";
@@ -330,6 +331,7 @@ export function AdminShell({
             <AdminIcon name="search" />
             <span className="sr-only">Open search</span>
           </button>
+          <InstallApp systemName={systemName} />
           <NotificationBell unread={unreadNotifications ?? 0} href="/admin/notifications" items={notices} watch="admin" />
           <div className="admin-account" ref={accountRef}>
             <button

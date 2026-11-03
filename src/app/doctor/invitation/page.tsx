@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { privateRobots } from "@/lib/brand/seo";
 import { LoginLayout } from "@/app/login/login-layout";
 import { getSystemName } from "@/lib/brand/system-name";
 import { prisma } from "@/lib/db/prisma";
@@ -6,7 +7,7 @@ import { formatWhen } from "@/lib/doctors/invitation-email";
 import { inspectDoctorInvitation } from "@/lib/doctors/invitations";
 import { AcceptInvitationForm } from "./accept-form";
 
-export const metadata: Metadata = { title: "Doctor invitation" };
+export const metadata: Metadata = { title: "Doctor invitation", robots: privateRobots };
 export const dynamic = "force-dynamic";
 
 export default async function DoctorInvitationPage({

@@ -8,6 +8,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "Create your account",
     description: `Create a ${systemName} patient account.`,
+    alternates: { canonical: "/register" },
   };
 }
 

@@ -8,6 +8,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "Login",
     description: `Sign in to ${systemName}.`,
+    alternates: { canonical: "/login" },
   };
 }
 

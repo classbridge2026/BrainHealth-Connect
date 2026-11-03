@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
+import { InstallApp } from "@/components/install-app";
 import { BrandMark } from "./brand-mark";
 import { LandingIcon } from "./icons";
 import { btnGhost, btnPrimary, btnSecondary, focusRing } from "./styles";
@@ -18,10 +19,11 @@ const navItems = [
 const linkClass = `shrink-0 rounded-lg px-1.5 py-2 text-sm font-semibold whitespace-nowrap text-brand-navy hover:bg-brand-ice 2xl:px-2.5 ${focusRing}`;
 const barButton = "inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold";
 
-function Actions({ onNavigate, stacked }: { onNavigate?: () => void; stacked?: boolean }) {
+function Actions({ onNavigate, stacked, systemName }: { onNavigate?: () => void; stacked?: boolean; systemName: string }) {
   if (!stacked) {
     return (
       <div className="flex items-center gap-1.5 2xl:gap-2">
+        <InstallApp systemName={systemName} placement="bar" />
         <Link href="/login" prefetch={false} className={`${barButton} text-brand-navy hover:bg-brand-ice ${focusRing}`} onClick={onNavigate}>
           Log In
         </Link>
@@ -38,6 +40,7 @@ function Actions({ onNavigate, stacked }: { onNavigate?: () => void; stacked?: b
   const full = "w-full";
   return (
     <div className="flex w-full flex-col gap-2">
+      <InstallApp systemName={systemName} placement="menu" />
       <Link href="/login" prefetch={false} className={`${btnGhost} ${full}`} onClick={onNavigate}>
         Log In
       </Link>
@@ -103,7 +106,7 @@ export function SiteHeader({ systemName }: { systemName: string }) {
         </nav>
 
         <div className="hidden shrink-0 xl:block">
-          <Actions />
+          <Actions systemName={systemName} />
         </div>
 
         <button
@@ -142,7 +145,7 @@ export function SiteHeader({ systemName }: { systemName: string }) {
             ))}
           </nav>
           <div className="mt-4 border-t border-brand-line pt-4">
-            <Actions stacked onNavigate={close} />
+            <Actions stacked onNavigate={close} systemName={systemName} />
           </div>
         </div>
       ) : null}

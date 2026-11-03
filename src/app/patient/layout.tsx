@@ -1,4 +1,6 @@
+import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
+import { privateRobots } from "@/lib/brand/seo";
 import { PatientShell } from "@/components/patient/shell";
 import { PATIENT_ROLE_CODE } from "@/lib/auth/constants";
 import { getSystemName } from "@/lib/brand/system-name";
@@ -6,6 +8,7 @@ import { requireStoredRoles } from "@/lib/auth/require-role";
 import { prisma } from "@/lib/db/prisma";
 import { loadInAppNoticeSummary } from "@/lib/notifications/delivery";
 
+export const metadata: Metadata = { robots: privateRobots };
 export const dynamic = "force-dynamic";
 
 async function loadPatientChrome(userId: string) {

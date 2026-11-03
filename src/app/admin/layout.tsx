@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { privateRobots } from "@/lib/brand/seo";
 import { unstable_cache } from "next/cache";
 import "./admin.css";
 import { ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
@@ -10,7 +11,7 @@ import { prisma } from "@/lib/db/prisma";
 import { loadInAppNoticeSummary } from "@/lib/notifications/delivery";
 import { redirectOffline } from "@/lib/db/offline-redirect";
 
-export const metadata: Metadata = { title: "Administration" };
+export const metadata: Metadata = { title: "Administration", robots: privateRobots };
 export const dynamic = "force-dynamic";
 
 async function loadAdminAccount(userId: string) {

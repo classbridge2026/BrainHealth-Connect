@@ -19,6 +19,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders.map((header) => ({ ...header })) },
+      { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }] },
       { source: "/patient/:path*", headers: portalNoStoreHeaders.map((header) => ({ ...header })) },
       { source: "/doctor/:path*", headers: portalNoStoreHeaders.map((header) => ({ ...header })) },
       { source: "/admin/:path*", headers: portalNoStoreHeaders.map((header) => ({ ...header })) },

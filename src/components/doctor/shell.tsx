@@ -29,6 +29,7 @@ import {
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { signOutAction } from "@/app/admin/account-actions";
 import { CareCircleMark } from "@/components/brand";
+import { InstallApp } from "@/components/install-app";
 import { LiveSearchInput } from "@/components/live-query";
 import { NotificationBell, type BellItem } from "@/components/notifications/bell";
 import { ProfilePhoto } from "@/components/profile-photo";
@@ -173,6 +174,7 @@ export function DoctorShell({
             <LiveSearchInput id="doctor-search" destination="/doctor/patients" placeholder="Search patients by name or ID..." />
           </form>
           <div className="portal-navbar-end">
+            <InstallApp systemName={systemName} />
             <NotificationBell unread={unread ?? 0} href="/doctor/notifications" items={notices} watch="doctor" />
             <div className="portal-account" ref={accountRef}>
               <button

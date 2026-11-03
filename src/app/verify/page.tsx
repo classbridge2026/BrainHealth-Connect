@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AuthCard, AuthShell } from "@/components/auth-shell";
+import { privateRobots } from "@/lib/brand/seo";
 import { getSystemName } from "@/lib/brand/system-name";
 import { ResendForm } from "./resend-form";
 
@@ -9,6 +10,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "Verify your account",
     description: `Verify a ${systemName} patient account.`,
+    robots: privateRobots,
   };
 }
 

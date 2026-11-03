@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { privateRobots } from "@/lib/brand/seo";
 import { RECORDS_OFFLINE_MESSAGE } from "@/lib/db/offline";
 import { safeReturnPath } from "@/lib/db/return-path";
 import { TryAgain } from "@/components/return-path";
 
-export const metadata: Metadata = { title: "Records unavailable" };
+export const metadata: Metadata = { title: "Records unavailable", robots: privateRobots };
 export const dynamic = "force-dynamic";
 
 export default async function OfflinePage({ searchParams }: { searchParams: Promise<{ from?: string }> }) {

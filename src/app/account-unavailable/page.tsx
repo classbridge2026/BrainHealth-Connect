@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { privateRobots } from "@/lib/brand/seo";
 import { getSystemName } from "@/lib/brand/system-name";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -7,6 +8,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "Account unavailable",
     description: `This ${systemName} account cannot open the patient dashboard.`,
+    robots: privateRobots,
   };
 }
 

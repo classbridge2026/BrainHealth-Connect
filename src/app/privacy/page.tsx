@@ -9,6 +9,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "Privacy Notice",
     description: `Privacy notice for a ${systemName} account.`,
+    alternates: { canonical: "/privacy" },
   };
 }
 

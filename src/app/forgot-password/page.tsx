@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LoginLayout } from "@/app/login/login-layout";
+import { privateRobots } from "@/lib/brand/seo";
 import { getSystemName } from "@/lib/brand/system-name";
 import { ForgotPasswordForm } from "./forgot-password-form";
 
@@ -8,6 +9,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "Reset your password",
     description: `Request a ${systemName} password reset.`,
+    robots: privateRobots,
   };
 }
 

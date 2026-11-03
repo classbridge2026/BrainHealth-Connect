@@ -9,6 +9,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "Account support",
     description: `Send an account support request to ${systemName}.`,
+    alternates: { canonical: "/support" },
   };
 }
 
