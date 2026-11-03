@@ -9,7 +9,7 @@ import { requireStoredRoles } from "@/lib/auth/require-role";
 import { appointmentStatusLabel } from "@/lib/admin/labels";
 import { listPatientAppointments } from "@/lib/appointments/queries";
 import { prisma } from "@/lib/db/prisma";
-import { listPatientFollowUps, listPatientPayments, loadPatientAccount } from "@/lib/patient/portal";
+import { listPatientFollowUpHome, listPatientPayments, loadPatientAccount } from "@/lib/patient/portal";
 import "./patient-home.css";
 
 export const metadata: Metadata = { title: "Patient dashboard" };
@@ -17,24 +17,20 @@ export const dynamic = "force-dynamic";
 
 export default async function PatientPage() {
   const user = await requireStoredRoles([PATIENT_ROLE_CODE]);
-  const [account, appointments, payments, dueToday, overdue, upcomingFollow] = await Promise.all([
+  const [account, appointments, payments, follows] = await Promise.all([
     loadPatientAccount(prisma, user.id),
     listPatientAppointments(prisma, user.id),
     listPatientPayments(prisma, user.id),
-    listPatientFollowUps(prisma, user.id, "today"),
-    listPatientFollowUps(prisma, user.id, "overdue"),
-    listPatientFollowUps(prisma, user.id, "upcoming"),
+    listPatientFollowUpHome(prisma, user.id),
   ]);
   const name = account.ok && account.profile ? account.profile.fullName : "there";
   const first = name.split(" ")[0] ?? name;
   const photoSrc = account.ok && account.profile?.imageVersion ? profileImageSrc(user.id, account.profile.imageVersion) : "/default-avatar.svg";
   const upcoming = appointments.ok ? [...appointments.upcoming].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime()) : [];
   const next = upcoming[0] ?? null;
-  const dueFollows = [
-    ...(dueToday.ok ? dueToday.visits : []),
-    ...(overdue.ok ? overdue.visits : []),
-    ...(upcomingFollow.ok ? upcomingFollow.visits : []),
-  ].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  const dueFollows = (follows.ok ? [...follows.today, ...follows.overdue, ...follows.upcoming] : []).sort(
+    (a, b) => a.startsAt.getTime() - b.startsAt.getTime(),
+  );
   const nextFollow = dueFollows[0] ?? null;
   const lastPayment = payments.ok ? payments.payments[0] ?? null : null;
 
@@ -62,7 +58,7 @@ export default async function PatientPage() {
           icon="followUp"
           tone="amber"
           label="Follow-ups Due"
-          value={dueToday.ok && overdue.ok && upcomingFollow.ok ? dueFollows.length : 0}
+          value={follows.ok ? dueFollows.length : 0}
           note={nextFollow ? `Next: ${shortDay(nextFollow.startsAt)}` : "None due"}
         />
         <Stat

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatQualification, isLeadSpecialty, normalizePublicContact, publicLanguages, publicSessionFee, readPublicContact, uniqueConsultationModes } from "./landing";
+import { formatQualification, isLeadSpecialty, normalizePublicContact, publicLanguages, publicSessionFee, publishedServiceFee, readPublicContact, uniqueConsultationModes } from "./landing";
 
 describe("public landing data", () => {
   it("publishes only the configured contact fields", () => {
@@ -72,5 +72,19 @@ describe("public landing data", () => {
       ]),
     ).toBeNull();
     expect(publicSessionFee([{ price: { toString: () => "0" }, currency: "SLL" }])).toBeNull();
+    expect(
+      publishedServiceFee({
+        offerings: [{ price: { toString: () => "0" }, priceAmountMinor: 10000, currency: "SLL" }],
+        defaultFee: { toString: () => "25.00" },
+        currency: "SLL",
+      }),
+    ).toBe("SLL 100 / session");
+    expect(
+      publishedServiceFee({
+        offerings: [{ price: { toString: () => "0" }, currency: "SLL" }],
+        defaultFee: { toString: () => "100.00" },
+        currency: "SLL",
+      }),
+    ).toBe("SLL 100 / session");
   });
 });

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { unstable_cache } from "next/cache";
 import { redirect } from "next/navigation";
 import { DashIcon, type DashIconName } from "@/components/doctor/dash-icons";
 import { HeroClock } from "@/components/doctor/hero-clock";
@@ -16,12 +17,28 @@ import "./doctor-home.css";
 export const metadata: Metadata = { title: "Doctor dashboard" };
 export const dynamic = "force-dynamic";
 
+const readDoctorBoard = unstable_cache(
+  async (doctorId: string, displayName: string) => {
+    const board = await loadDoctorDashboard(prisma, { id: doctorId, displayName });
+    if (!board.ok) throw new Error(board.code);
+    return board;
+  },
+  ["doctor-home"],
+  { revalidate: 30 },
+);
+
 export default async function DoctorPage() {
   const portal = await requireClinicalPortal();
   if (portal.staff) redirect("/doctor/appointments");
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
   if (portal.access !== "ready" || !portal.doctor) return <RestrictedPractice access={portal.access} />;
-  const [board, chrome] = await Promise.all([loadDoctorDashboard(prisma, portal.doctor), loadDoctorChrome()]);
+  const [board, chrome] = await Promise.all([
+    readDoctorBoard(portal.doctor.id, portal.doctor.displayName).catch((error: unknown) => {
+      const code = error instanceof Error && error.message === "SCHEMA" ? "SCHEMA" : "UNAVAILABLE";
+      return { ok: false as const, code: code as "SCHEMA" | "UNAVAILABLE" };
+    }),
+    loadDoctorChrome(),
+  ]);
   if (!board.ok) return <RecordsUnavailable code={board.code} />;
   const name = board.displayName ?? portal.doctor.displayName;
   const first = name.split(" ")[0] ?? name;

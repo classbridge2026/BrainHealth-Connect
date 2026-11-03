@@ -57,33 +57,79 @@ export async function loadDoctorDashboard(db: PrismaClient, doctor: { id: string
       patient: { select: { id: true, fullName: true, user: { select: { id: true, profileImageUpdatedAt: true } } } },
       consultationService: { select: { name: true, code: true } },
     } as const;
-    const [today, upcomingCount, followUpCount, followUpsThisWeek, inProgress, unreleased, openVisits, patientGroups] = await Promise.all([
+    const openList = OPEN.join(",");
+    const closedList = CLOSED.join(",");
+    const [today, openVisits, snapshotRows] = await Promise.all([
       db.appointment.findMany({
         where: { doctorProfileId: doctor.id, startsAt: { gte: dayStart, lt: dayEnd } },
         orderBy: { startsAt: "desc" },
         take: 20,
         select: visitSelect,
       }),
-      db.appointment.count({ where: { doctorProfileId: doctor.id, startsAt: { gte: dayEnd }, status: { in: [...OPEN] } } }),
-      db.appointment.count({ where: { ...followUpWhere(doctor.id), startsAt: { gte: now }, status: { in: [...OPEN] } } }),
-      db.appointment.count({ where: { ...followUpWhere(doctor.id), startsAt: { gte: now, lt: weekEnd }, status: { in: [...OPEN] } } }),
-      db.appointment.count({ where: { doctorProfileId: doctor.id, status: "IN_PROGRESS", endsAt: { gt: now } } }),
-      db.clinicalNote.count({
-        where: { authorDoctorProfileId: doctor.id, archivedAt: null, kind: "PATIENT_SUMMARY", summaryReleaseStatus: "NOT_RELEASED" },
-      }),
       db.appointment.findMany({
         where: { doctorProfileId: doctor.id, status: "IN_PROGRESS", endsAt: { gt: now } },
         select: { id: true, encounter: { select: { notes: { where: { kind: "PRIVATE_WORKING", archivedAt: null }, select: { id: true }, take: 1 } } } },
         take: 50,
       }),
-      db.appointment.groupBy({
-        by: ["patientProfileId"],
-        where: { doctorProfileId: doctor.id, status: { notIn: [...CLOSED] } },
-        _min: { createdAt: true },
-      }),
+      db.$queryRaw<Array<{ upcoming: number; followUps: number; followUpsThisWeek: number; inProgress: number; unreleased: number; activePatients: number; newPatients: number }>>`
+        SELECT
+          (SELECT count(*)::int FROM "Appointment"
+            WHERE "doctorProfileId"::text = ${doctor.id}
+              AND "startsAt" >= ${dayEnd}
+              AND status::text = ANY(string_to_array(${openList}, ','))
+          ) AS upcoming,
+          (SELECT count(*)::int FROM "Appointment" a
+            LEFT JOIN "ConsultationService" s ON s.id = a."consultationServiceId"
+            WHERE a."doctorProfileId"::text = ${doctor.id}
+              AND a."startsAt" >= ${now}
+              AND a.status::text = ANY(string_to_array(${openList}, ','))
+              AND (a."followUpOfId" IS NOT NULL OR s.code ILIKE '%FOLLOW%' OR s.name ILIKE '%follow%')
+          ) AS "followUps",
+          (SELECT count(*)::int FROM "Appointment" a
+            LEFT JOIN "ConsultationService" s ON s.id = a."consultationServiceId"
+            WHERE a."doctorProfileId"::text = ${doctor.id}
+              AND a."startsAt" >= ${now}
+              AND a."startsAt" < ${weekEnd}
+              AND a.status::text = ANY(string_to_array(${openList}, ','))
+              AND (a."followUpOfId" IS NOT NULL OR s.code ILIKE '%FOLLOW%' OR s.name ILIKE '%follow%')
+          ) AS "followUpsThisWeek",
+          (SELECT count(*)::int FROM "Appointment"
+            WHERE "doctorProfileId"::text = ${doctor.id}
+              AND status::text = 'IN_PROGRESS'
+              AND "endsAt" > ${now}
+          ) AS "inProgress",
+          (SELECT count(*)::int FROM "ClinicalNote"
+            WHERE "authorDoctorProfileId"::text = ${doctor.id}
+              AND "archivedAt" IS NULL
+              AND kind::text = 'PATIENT_SUMMARY'
+              AND "summaryReleaseStatus"::text = 'NOT_RELEASED'
+          ) AS unreleased,
+          (SELECT count(*)::int FROM (
+            SELECT "patientProfileId"
+            FROM "Appointment"
+            WHERE "doctorProfileId"::text = ${doctor.id}
+              AND NOT (status::text = ANY(string_to_array(${closedList}, ',')))
+            GROUP BY "patientProfileId"
+          ) patients) AS "activePatients",
+          (SELECT count(*)::int FROM (
+            SELECT "patientProfileId"
+            FROM "Appointment"
+            WHERE "doctorProfileId"::text = ${doctor.id}
+              AND NOT (status::text = ANY(string_to_array(${closedList}, ',')))
+            GROUP BY "patientProfileId"
+            HAVING min("createdAt") >= ${weekStart} AND min("createdAt") < ${weekEnd}
+          ) recent_patients) AS "newPatients"
+      `,
     ]);
+    const snapshot = snapshotRows[0];
+    const upcomingCount = Number(snapshot?.upcoming) || 0;
+    const followUpCount = Number(snapshot?.followUps) || 0;
+    const followUpsThisWeek = Number(snapshot?.followUpsThisWeek) || 0;
+    const inProgress = Number(snapshot?.inProgress) || 0;
+    const unreleased = Number(snapshot?.unreleased) || 0;
+    const activePatients = Number(snapshot?.activePatients) || 0;
+    const newThisWeek = Number(snapshot?.newPatients) || 0;
     const missingNotes = openVisits.filter((visit) => !visit.encounter || visit.encounter.notes.length === 0).length;
-    const newThisWeek = patientGroups.filter((group) => group._min.createdAt && group._min.createdAt >= weekStart && group._min.createdAt < weekEnd).length;
     const pendingToday = today.filter((row) => {
       const status = shownAppointmentStatus(row.status, row.endsAt, now);
       return status !== "COMPLETED" && !status.startsWith("CANCELLED") && status !== "NO_SHOW" && status !== "EXPIRED_UNPAID" && status !== "RESCHEDULED";
@@ -101,7 +147,7 @@ export async function loadDoctorDashboard(db: PrismaClient, doctor: { id: string
         upcoming: upcomingCount,
         followUps: followUpCount,
         followUpsThisWeek,
-        activePatients: patientGroups.length,
+        activePatients,
         newPatients: newThisWeek,
         pendingNotes: unreleased + missingNotes,
         inProgress,

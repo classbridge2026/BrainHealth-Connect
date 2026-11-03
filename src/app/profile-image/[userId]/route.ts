@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { readApiSession } from "@/lib/auth/current-user";
-import { SESSION_COOKIE } from "@/lib/auth/session";
+import { SESSION_COOKIE } from "@/lib/auth/constants";
 import { isRecordsOffline } from "@/lib/db/offline";
 import { prisma } from "@/lib/db/prisma";
 import { openProfileImage } from "@/lib/profile/image";
-
-export const dynamic = "force-dynamic";
 
 const missing = new NextResponse(null, { status: 404, headers: { "Cache-Control": "private, no-store" } });
 
@@ -22,11 +19,24 @@ function rememberedImage(key: string) {
   return hit;
 }
 
-export async function GET(_request: Request, context: { params: Promise<{ userId: string }> }) {
+function sessionToken(cookieHeader: string | null): string | undefined {
+  if (!cookieHeader) return undefined;
+  for (const part of cookieHeader.split(";")) {
+    const trimmed = part.trim();
+    const split = trimmed.indexOf("=");
+    if (split <= 0) continue;
+    if (trimmed.slice(0, split) !== SESSION_COOKIE) continue;
+    const value = trimmed.slice(split + 1);
+    return value ? decodeURIComponent(value) : undefined;
+  }
+  return undefined;
+}
+
+export async function GET(request: Request, context: { params: Promise<{ userId: string }> }) {
   const { userId } = await context.params;
   try {
-    const cookieStore = await cookies();
-    const session = await readApiSession(prisma, cookieStore.get(SESSION_COOKIE)?.value, new Date());
+    const token = sessionToken(request.headers.get("cookie"));
+    const session = token ? await readApiSession(prisma, token, new Date()) : { offline: false as const, user: null };
     if (session.offline) return missing;
     const viewer = session.user ? { id: session.user.id, roleCodes: session.user.roleCodes } : null;
     const cacheKey = `${viewer?.id ?? "public"}:${userId}`;
@@ -46,6 +56,7 @@ export async function GET(_request: Request, context: { params: Promise<{ userId
         "Content-Length": String(result.body.byteLength),
         // The photo address includes the save time, so the browser can keep this copy.
         "Cache-Control": result.shared ? "public, max-age=86400, immutable" : "private, max-age=86400",
+        ...(result.shared ? { "CDN-Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800" } : {}),
         "X-Content-Type-Options": "nosniff",
       },
     });

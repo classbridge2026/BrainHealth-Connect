@@ -61,17 +61,18 @@ export function OnboardingForm({
           </p>
         ) : null}
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Full name" name="fullName" defaultValue={values.fullName} error={errors.fullName} disabled={!editable} />
-          <Field label="Professional display name" name="displayName" defaultValue={values.displayName} error={errors.displayName} disabled={!editable} />
+          <Field label="Full name" name="fullName" defaultValue={values.fullName} error={errors.fullName} disabled={!editable} placeholder="Aminata Kamara" />
+          <Field label="Professional display name" name="displayName" defaultValue={values.displayName} error={errors.displayName} disabled={!editable} placeholder="Dr. Aminata Kamara" hint="This is the name patients see." />
           <label className="text-sm font-medium">
             Professional email
             <input value={values.email} readOnly className={`${textInputClass} mt-1 bg-brand-paper`} />
           </label>
-          <Field label="Phone number" name="phone" defaultValue={values.phone} error={errors.phone} disabled={!editable} />
+          <Field label="Phone number" name="phone" defaultValue={values.phone} error={errors.phone} disabled={!editable} placeholder="076 123 456" hint="Example: 076 123 456, or +232 76 123 456." />
         </div>
         <label className="text-sm font-medium">
           Professional biography
-          <textarea name="biography" defaultValue={values.biography} disabled={!editable} className={`${textAreaClass} mt-1`} />
+          <textarea name="biography" defaultValue={values.biography} disabled={!editable} placeholder="I provide mental health consultations for adults in Freetown, in Krio and English." className={`${textAreaClass} mt-1`} />
+          <span className="mt-1 block font-normal text-brand-muted">At least 40 characters. Example: I provide mental health consultations for adults in Freetown, in Krio and English.</span>
           {errors.biography ? <span className="mt-1 block text-sm text-brand-danger">{errors.biography}</span> : null}
         </label>
         <div className="grid gap-4 md:grid-cols-2">
@@ -86,10 +87,12 @@ export function OnboardingForm({
                 </option>
               ))}
             </select>
+            <span className="mt-1 block font-normal text-brand-muted">Example: Psychiatry.</span>
             {errors.primarySpecialtyId ? <span className="mt-1 block text-sm text-brand-danger">{errors.primarySpecialtyId}</span> : null}
           </label>
           <fieldset className="text-sm font-medium">
             <legend>Additional specialties</legend>
+            <span className="mt-1 block font-normal text-brand-muted">Example: also tick Psychology when you practise in more than one area.</span>
             <div className="mt-2 grid gap-2">
               {specialties.map((specialty) => (
                 <label key={specialty.id} className="flex items-center gap-2 font-normal">
@@ -115,16 +118,17 @@ export function OnboardingForm({
                 </option>
               ))}
             </select>
+            <span className="mt-1 block font-normal text-brand-muted">Example: Medical degree.</span>
             {errors.qualificationKind ? <span className="mt-1 block text-sm text-brand-danger">{errors.qualificationKind}</span> : null}
           </label>
-          <Field label="Qualification" name="qualificationTitle" defaultValue={values.qualificationTitle} error={errors.qualificationTitle} disabled={!editable} />
-          <Field label="Institution" name="qualificationInstitution" defaultValue={values.qualificationInstitution} error={errors.qualificationInstitution} disabled={!editable} />
-          <Field label="Qualification year" name="qualificationYear" defaultValue={values.qualificationYear} error={errors.qualificationYear} disabled={!editable} />
+          <Field label="Qualification" name="qualificationTitle" defaultValue={values.qualificationTitle} error={errors.qualificationTitle} disabled={!editable} placeholder="BSc Hons Clinical Psychology" />
+          <Field label="Institution" name="qualificationInstitution" defaultValue={values.qualificationInstitution} error={errors.qualificationInstitution} disabled={!editable} placeholder="University of Sierra Leone" />
+          <Field label="Qualification year" name="qualificationYear" defaultValue={values.qualificationYear} error={errors.qualificationYear} disabled={!editable} placeholder="2016" />
           {showLicenseFields ? (
             <>
-              <Field label="Registration or licence number" name="licenseNumber" defaultValue={values.licenseNumber} error={errors.licenseNumber} disabled={!editable} />
-              <Field label="Licensing or registration authority" name="licenseAuthority" defaultValue={values.licenseAuthority} error={errors.licenseAuthority} disabled={!editable} />
-              <Field label="Licence expiry, if applicable" name="licenseExpiresOn" type="date" defaultValue={values.licenseExpiresOn} error={errors.licenseExpiresOn} disabled={!editable} required={false} />
+              <Field label="Registration or licence number" name="licenseNumber" defaultValue={values.licenseNumber} error={errors.licenseNumber} disabled={!editable} placeholder="SLMC-10483" />
+              <Field label="Licensing or registration authority" name="licenseAuthority" defaultValue={values.licenseAuthority} error={errors.licenseAuthority} disabled={!editable} placeholder="Sierra Leone Medical and Dental Council" />
+              <Field label="Licence expiry, if applicable" name="licenseExpiresOn" type="date" defaultValue={values.licenseExpiresOn} error={errors.licenseExpiresOn} disabled={!editable} required={false} hint="Optional. Example: 31 Dec 2028." />
             </>
           ) : (
             <>
@@ -133,8 +137,8 @@ export function OnboardingForm({
               <input type="hidden" name="licenseExpiresOn" value={values.licenseExpiresOn} />
             </>
           )}
-          <Field label="Years of experience" name="yearsExperience" defaultValue={values.yearsExperience} error={errors.yearsExperience} disabled={!editable} />
-          <Field label="Languages spoken" name="languages" defaultValue={values.languages} error={errors.languages} disabled={!editable} hint="Separate languages with commas." />
+          <Field label="Years of experience" name="yearsExperience" defaultValue={values.yearsExperience} error={errors.yearsExperience} disabled={!editable} placeholder="8" />
+          <Field label="Languages spoken" name="languages" defaultValue={values.languages} error={errors.languages} disabled={!editable} placeholder="Krio, English" hint="Separate languages with commas. Example: Krio, English." />
         </div>
         {showConsultationPreferences ? (
           <fieldset className="text-sm font-medium">
@@ -268,6 +272,7 @@ function Field({
   type = "text",
   required = true,
   hint,
+  placeholder,
 }: {
   label: string;
   name: string;
@@ -277,11 +282,12 @@ function Field({
   type?: string;
   required?: boolean;
   hint?: string;
+  placeholder?: string;
 }) {
   return (
     <label className="text-sm font-medium">
       {label}
-      <input name={name} type={type} defaultValue={defaultValue} disabled={disabled} required={required} className={`${textInputClass} mt-1`} />
+      <input name={name} type={type} defaultValue={defaultValue} disabled={disabled} required={required} placeholder={placeholder} className={`${textInputClass} mt-1`} />
       {hint ? <span className="mt-1 block font-normal text-brand-muted">{hint}</span> : null}
       {error ? <span className="mt-1 block text-sm text-brand-danger">{error}</span> : null}
     </label>

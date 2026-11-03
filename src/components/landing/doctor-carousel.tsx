@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { PublicDoctor } from "@/lib/public/landing";
@@ -27,7 +28,7 @@ function DoctorCard({ doctor }: { doctor: PublicDoctor }) {
     <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-[#d7e6f2] bg-white shadow-[0_10px_30px_rgba(18,48,74,0.08)]">
       <div className="relative h-28 bg-gradient-to-b from-[#e7f3f8] to-[#d5ebe8] sm:h-32">
         {doctor.photo ? (
-          <img className="absolute inset-0 h-full w-full object-cover object-top" src={profileImageSrc(doctor.photo.userId, doctor.photo.version)} alt="" />
+          <Image className="object-cover object-top" src={profileImageSrc(doctor.photo.userId, doctor.photo.version)} alt="" fill sizes="240px" quality={55} />
         ) : (
           <p className="absolute inset-0 flex items-center justify-center text-2xl font-semibold tracking-tight text-brand-navy" aria-hidden="true">
             {initials(doctor.displayName)}
@@ -50,6 +51,7 @@ function DoctorCard({ doctor }: { doctor: PublicDoctor }) {
         {doctor.languages.length > 0 ? <p className="mt-0.5 truncate text-xs text-brand-muted">Languages: {doctor.languages.join(", ")}</p> : null}
         <Link
           href={`/patient/doctors/${doctor.id}`}
+          prefetch={false}
           className={`mt-3 inline-flex h-9 w-full items-center justify-center rounded-lg bg-brand-navy text-sm font-semibold text-white hover:bg-[#0c2438] ${focusRing}`}
         >
           Book Appointment

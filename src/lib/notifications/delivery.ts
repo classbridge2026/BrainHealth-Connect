@@ -125,24 +125,38 @@ export async function reminderChannelAllowed(
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/** The signed-in person's unread in-app notices, with a stamp the open portal can compare. */
-export async function loadNoticePulse(db: PrismaClient, userId: string, role: "patient" | "doctor" | "admin") {
-  const [unread, items] = await Promise.all([
-    db.notification.count({ where: { recipientId: userId, channel: "IN_APP", readAt: null } }),
-    recentInAppNotices(db, userId, role),
-  ]);
-  return { unread, items, stamp: noticeStamp(unread, items.map((item) => item.id)) };
-}
+type NoticeRow = {
+  id: string;
+  title: string;
+  preview: string | null;
+  readAt: Date | null;
+  createdAt: Date;
+  entityType: string | null;
+  entityId: string | null;
+  unread: number;
+};
 
-export async function recentInAppNotices(db: PrismaClient, userId: string, role: "patient" | "doctor" | "admin") {
+/** Unread in-app notices and their total, in one database read. */
+export async function loadInAppNoticeSummary(db: PrismaClient, userId: string, role: "patient" | "doctor" | "admin") {
   try {
-    const rows = await db.notification.findMany({
-      where: { recipientId: userId, channel: "IN_APP", readAt: null, status: { not: "CANCELLED" } },
-      orderBy: { createdAt: "desc" },
-      take: 8,
-      select: { id: true, title: true, preview: true, readAt: true, createdAt: true, entityType: true, entityId: true },
-    });
-    return rows.map((row) => ({
+    const rows = await db.$queryRaw<NoticeRow[]>`
+      SELECT id::text AS id,
+             title,
+             preview,
+             "readAt",
+             "createdAt",
+             "entityType",
+             "entityId"::text AS "entityId",
+             count(*) OVER ()::int AS unread
+      FROM "Notification"
+      WHERE "recipientId"::text = ${userId}
+        AND channel::text = 'IN_APP'
+        AND "readAt" IS NULL
+        AND status::text <> 'CANCELLED'
+      ORDER BY "createdAt" DESC
+      LIMIT 8
+    `;
+    const items = rows.map((row) => ({
       id: row.id,
       title: row.title,
       preview: row.preview?.replace(/\s+/g, " ").trim().slice(0, 140) || null,
@@ -150,9 +164,21 @@ export async function recentInAppNotices(db: PrismaClient, userId: string, role:
       read: row.readAt !== null,
       href: safeInternalHref(role, row.entityType, row.entityId),
     }));
+    return { unread: Number(rows[0]?.unread) || 0, items };
   } catch {
-    return [];
+    return { unread: 0, items: [] as Array<{ id: string; title: string; preview: string | null; when: string; read: boolean; href: string | null }> };
   }
+}
+
+/** The signed-in person's unread in-app notices, with a stamp the open portal can compare. */
+export async function loadNoticePulse(db: PrismaClient, userId: string, role: "patient" | "doctor" | "admin") {
+  const summary = await loadInAppNoticeSummary(db, userId, role);
+  return { unread: summary.unread, items: summary.items, stamp: noticeStamp(summary.unread, summary.items.map((item) => item.id)) };
+}
+
+export async function recentInAppNotices(db: PrismaClient, userId: string, role: "patient" | "doctor" | "admin") {
+  const summary = await loadInAppNoticeSummary(db, userId, role);
+  return summary.items;
 }
 
 /** Marks every unread in-app notice for this person. Email and SMS rows stay as they are. */

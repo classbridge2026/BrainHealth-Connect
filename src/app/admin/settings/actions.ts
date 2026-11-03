@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { updateDefaultCurrency } from "@/lib/catalog/configuration";
@@ -28,6 +28,7 @@ export async function updateSystemNameAction(_previous: AdminActionState, formDa
     db: prisma,
     actor: { userId: user.id, roleCodes: user.roleCodes },
   });
+  updateTag("system-name");
   revalidatePath("/", "layout");
   revalidatePath("/admin", "layout");
   revalidatePath("/patient", "layout");

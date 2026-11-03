@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { cache } from "react";
 import { ADMIN_ROLE_CODE, DOCTOR_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { isPortalAdministrator } from "@/lib/admin/rules";
@@ -6,24 +7,16 @@ import { prisma } from "@/lib/db/prisma";
 import { isRecordsOffline } from "@/lib/db/offline";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
 import { redirectOffline } from "@/lib/db/offline-redirect";
-import { recentInAppNotices } from "@/lib/notifications/delivery";
+import { loadInAppNoticeSummary } from "@/lib/notifications/delivery";
 import { clinicalAccess, type ClinicalAccess } from "./present";
 
 export const DOCTOR_PORTAL_ROLES = [DOCTOR_ROLE_CODE, ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE];
 
-const loadDoctorAccount = cache(async () => {
-  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
-  let name = "Clinician";
-  let specialty = "Clinician";
-  let imageVersion: string | null = null;
-  let unread: number | null = null;
-  let notices: Awaited<ReturnType<typeof recentInAppNotices>> = [];
-  let access: ClinicalAccess = "missing";
-  let doctor: { id: string; displayName: string; verificationStatus: string } | null = null;
-  try {
-    const [account, unreadCount, recent] = await Promise.all([
+const readDoctorProfileChrome = unstable_cache(
+  async (userId: string) => {
+    const [account, notices] = await Promise.all([
       prisma.user.findUnique({
-        where: { id: user.id },
+        where: { id: userId },
         select: {
           profileImageUpdatedAt: true,
           doctorProfile: {
@@ -40,24 +33,47 @@ const loadDoctorAccount = cache(async () => {
           },
         },
       }),
-      prisma.notification.count({ where: { recipientId: user.id, readAt: null, channel: "IN_APP" } }),
-      recentInAppNotices(prisma, user.id, "doctor"),
+      loadInAppNoticeSummary(prisma, userId, "doctor"),
     ]);
     const profile = account?.doctorProfile;
-    name = profile?.displayName || name;
-    specialty = profile?.specialties[0]?.specialty.name || specialty;
-    imageVersion = account?.profileImageUpdatedAt?.toISOString() ?? null;
-    unread = unreadCount;
-    notices = recent;
-    const clinicDoctor = !profile && isPortalAdministrator(user.roleCodes);
-    access = clinicDoctor ? "ready" : clinicalAccess(profile?.verificationStatus);
+    return {
+      displayName: profile?.displayName ?? null,
+      specialtyName: profile?.specialties[0]?.specialty.name ?? null,
+      imageVersion: account?.profileImageUpdatedAt?.toISOString() ?? null,
+      unread: notices.unread,
+      notices: notices.items,
+      doctor: profile
+        ? { id: profile.id, displayName: profile.displayName, verificationStatus: profile.verificationStatus }
+        : null,
+    };
+  },
+  ["doctor-chrome"],
+  { revalidate: 30 },
+);
+
+const loadDoctorAccount = cache(async () => {
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
+  let name = "Clinician";
+  let specialty = "Clinician";
+  let imageVersion: string | null = null;
+  let unread: number | null = null;
+  let notices: Awaited<ReturnType<typeof loadInAppNoticeSummary>>["items"] = [];
+  let access: ClinicalAccess = "missing";
+  let doctor: { id: string; displayName: string; verificationStatus: string } | null = null;
+  try {
+    const account = await readDoctorProfileChrome(user.id);
+    name = account.displayName || name;
+    specialty = account.specialtyName || specialty;
+    imageVersion = account.imageVersion;
+    unread = account.unread;
+    notices = account.notices;
+    const clinicDoctor = !account.doctor && isPortalAdministrator(user.roleCodes);
+    access = clinicDoctor ? "ready" : clinicalAccess(account.doctor?.verificationStatus);
     if (clinicDoctor) {
       name = "Administrator";
       specialty = "Doctor workspace";
     }
-    doctor = profile
-      ? { id: profile.id, displayName: profile.displayName, verificationStatus: profile.verificationStatus }
-      : null;
+    doctor = account.doctor;
   } catch (error) {
     if (isRecordsOffline(error)) await redirectOffline();
     if (!isSchemaMismatch(error)) throw error;

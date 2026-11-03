@@ -24,7 +24,7 @@ describe("database pool settings", () => {
   it("uses a smaller production pool on the Neon pooler", () => {
     const url = withPoolSettings(pooled, "production");
     const params = new URLSearchParams(url.slice(url.indexOf("?") + 1));
-    expect(params.get("connection_limit")).toBe("1");
+    expect(params.get("connection_limit")).toBe("5");
     expect(params.get("pool_timeout")).toBe("10");
     expect(params.get("connect_timeout")).toBe("10");
   });

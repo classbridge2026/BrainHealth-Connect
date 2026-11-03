@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { cache } from "react";
 import type { PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
@@ -32,5 +33,7 @@ export async function loadSystemName(db: Pick<PrismaClient, "platformSetting">):
   }
 }
 
-/** Current name for pages and titles. Reads the database on each request. */
-export const getSystemName = cache(async () => loadSystemName(prisma));
+const readCachedSystemName = unstable_cache(() => loadSystemName(prisma), ["system-name"], { revalidate: 300, tags: ["system-name"] });
+
+/** Current name for pages and titles. Cached for a few minutes; saving the name clears it. */
+export const getSystemName = cache(() => readCachedSystemName());

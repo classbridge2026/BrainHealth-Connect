@@ -2,6 +2,14 @@ import type { NextConfig } from "next";
 import { portalNoStoreHeaders, securityHeaders } from "./src/lib/security/headers";
 
 const nextConfig: NextConfig = {
+  images: {
+    minimumCacheTTL: 60 * 60 * 24,
+    localPatterns: [
+      { pathname: "/hero-consultation.jpg" },
+      { pathname: "/carecircle-logo.png" },
+      { pathname: "/profile-image/**" },
+    ],
+  },
   serverExternalPackages: ["nodemailer", "livekit-server-sdk"],
   experimental: {
     serverActions: {

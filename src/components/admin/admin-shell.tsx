@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CareCircleMark } from "@/components/brand";
@@ -8,9 +9,10 @@ import { LiveSearchInput } from "@/components/live-query";
 import { NotificationBell, type BellItem } from "@/components/notifications/bell";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { signOutAction } from "@/app/admin/account-actions";
-import { AdminGuide } from "./admin-guide";
 import { AdminNoticesContext } from "./admin-notices";
 import { AdminIcon, type AdminIconName } from "./admin-icons";
+
+const AdminGuide = dynamic(() => import("./admin-guide").then((mod) => mod.AdminGuide), { ssr: false });
 
 type Item = { href: string; label: string; icon: AdminIconName; exact?: boolean };
 

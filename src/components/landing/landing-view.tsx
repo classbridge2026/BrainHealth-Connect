@@ -57,7 +57,7 @@ const benefits = [
 ];
 
 function modeLabel(mode: "ONLINE" | "IN_PERSON") {
-  return mode === "ONLINE" ? "Online appointment" : "In-person appointment";
+  return mode === "ONLINE" ? "Online" : "In person";
 }
 
 function UnavailableNotice() {
@@ -78,20 +78,17 @@ function ServiceCard({ service }: { service: PublicService }) {
             {service.bookable ? "Open" : "Closed"}
           </span>
         </div>
-        {service.modes.length > 0 ? (
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {service.modes.map((mode) => (
-              <li key={mode} className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25">
-                {modeLabel(mode)}
-              </li>
-            ))}
-          </ul>
-        ) : null}
       </header>
       <div className="flex flex-1 flex-col bg-[#f7fafc] px-5 py-4">
         {service.description ? <p className="line-clamp-3 flex-1 text-sm leading-6 text-[#3a4a60]">{service.description}</p> : <div className="flex-1" />}
-        {service.durationLabel || service.fee ? (
-          <dl className={`mt-4 grid gap-3 ${service.durationLabel && service.fee ? "grid-cols-[auto_minmax(max-content,1fr)]" : "grid-cols-1"}`}>
+        {service.modes.length > 0 || service.durationLabel || service.fee ? (
+          <dl className="mt-4 grid grid-cols-2 gap-3">
+            {service.modes.length > 0 ? (
+              <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-[#d5deea]">
+                <dt className="text-[11px] font-semibold tracking-wide text-[#5b6d84] uppercase">Visit</dt>
+                <dd className="mt-1 text-sm font-semibold text-brand-navy">{service.modes.map(modeLabel).join(" and ")}</dd>
+              </div>
+            ) : null}
             {service.durationLabel ? (
               <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-[#d5deea]">
                 <dt className="text-[11px] font-semibold tracking-wide text-[#5b6d84] uppercase">Length</dt>
@@ -99,15 +96,15 @@ function ServiceCard({ service }: { service: PublicService }) {
               </div>
             ) : null}
             {service.fee ? (
-              <div className="rounded-xl bg-[#e7f3f1] px-3 py-2 ring-1 ring-[#b7ddd6]">
-                <dt className="text-[11px] font-semibold tracking-wide text-brand-teal uppercase">Fee</dt>
-                <dd className="mt-1 text-sm font-semibold whitespace-nowrap text-[#0b5f59]">{service.fee}</dd>
+              <div className="col-span-2 rounded-xl bg-[#e7f3f1] px-3 py-2 ring-1 ring-[#b7ddd6]">
+                <dt className="text-[11px] font-semibold tracking-wide text-brand-teal uppercase">Price</dt>
+                <dd className="mt-1 text-sm font-semibold text-[#0b5f59]">{service.fee}</dd>
               </div>
             ) : null}
           </dl>
         ) : null}
         {service.bookable ? (
-          <Link href={`/patient/find?service=${service.id}`} className={`${btnPrimary} mt-4 w-full`}>
+          <Link href={`/patient/find?service=${service.id}`} prefetch={false} className={`${btnPrimary} mt-4 w-full`}>
             Book now
           </Link>
         ) : (
@@ -131,7 +128,7 @@ function DoctorsSection({ content }: { content: PublicLanding }) {
               Approved doctors with a verified specialty. A consultation service appears here when an administrator assigns it. Sign in to choose a time.
             </p>
           </div>
-          <Link href="/patient/find" className={`shrink-0 text-sm font-semibold text-brand-navy underline-offset-4 hover:underline ${focusRing}`}>
+          <Link href="/patient/find" prefetch={false} className={`shrink-0 text-sm font-semibold text-brand-navy underline-offset-4 hover:underline ${focusRing}`}>
             View all doctors
           </Link>
         </div>
@@ -262,7 +259,7 @@ export function LandingView({ content, year, systemName }: { content: PublicLand
                 Connect with qualified healthcare professionals, explore available services, and access care that fits your needs. {systemName} is building a more connected healthcare experience for Sierra Leone.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link href="/patient/find" className={`${btnOnNavy} w-full sm:w-auto`}>
+                <Link href="/patient/find" prefetch={false} className={`${btnOnNavy} w-full sm:w-auto`}>
                   Find a Doctor
                 </Link>
                 <Link href="/#how-it-works" className={`${btnOnNavyOutline} w-full sm:w-auto`}>
@@ -280,6 +277,7 @@ export function LandingView({ content, year, systemName }: { content: PublicLand
                 alt="A physician in a white coat listens to a patient during a clinic consultation."
                 fill
                 priority
+                quality={60}
                 sizes="(min-width: 1024px) 50vw, 100vw"
                 className="object-cover object-[center_22%]"
               />
@@ -317,7 +315,7 @@ export function LandingView({ content, year, systemName }: { content: PublicLand
               ))}
             </ol>
             <div className="mt-10 text-center">
-              <Link href="/patient/find" className={btnPrimary}>
+              <Link href="/patient/find" prefetch={false} className={btnPrimary}>
                 Start booking
               </Link>
             </div>
@@ -357,13 +355,13 @@ export function LandingView({ content, year, systemName }: { content: PublicLand
               Create a patient account, or sign in to look through available doctors and choose a published appointment time.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-              <Link href="/patient/find" className={btnOnNavy}>
+              <Link href="/patient/find" prefetch={false} className={btnOnNavy}>
                 Find a Doctor
               </Link>
-              <Link href="/register" className={btnOnNavyOutline}>
+              <Link href="/register" prefetch={false} className={btnOnNavyOutline}>
                 Create a Patient Account
               </Link>
-              <Link href="/login" className={btnOnNavyGhost}>
+              <Link href="/login" prefetch={false} className={btnOnNavyGhost}>
                 Log In
               </Link>
             </div>
@@ -383,10 +381,10 @@ export function LandingView({ content, year, systemName }: { content: PublicLand
                 {systemName} connects patients with healthcare professionals and is being built to expand access to care. Mental health is the first specialty. Other specialties can be introduced as real services are ready, rather than promised in advance.
               </p>
               <div className="mt-8 flex w-full flex-col gap-3 sm:flex-row">
-                <Link href="/patient/find" className={`${btnPrimary} w-full sm:flex-1`}>
+                <Link href="/patient/find" prefetch={false} className={`${btnPrimary} w-full sm:flex-1`}>
                   Find a Doctor
                 </Link>
-                <Link href="/register" className={`${btnSecondary} w-full sm:flex-1`}>
+                <Link href="/register" prefetch={false} className={`${btnSecondary} w-full sm:flex-1`}>
                   Create a Patient Account
                 </Link>
               </div>

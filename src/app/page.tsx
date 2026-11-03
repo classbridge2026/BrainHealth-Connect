@@ -27,7 +27,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export const revalidate = 60;
+export const revalidate = 300;
 
 export default async function HomePage() {
   const [content, systemName] = await Promise.all([loadPublicLanding(prisma), getSystemName()]);

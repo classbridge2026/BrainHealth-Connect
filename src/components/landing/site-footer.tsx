@@ -39,7 +39,7 @@ export function SiteFooter({ year, contact, systemName }: { year: number; contac
               </Link>
             </li>
             <li>
-              <Link className={footerLink} href="/patient/find">
+              <Link className={footerLink} href="/patient/find" prefetch={false}>
                 Find a Doctor
               </Link>
             </li>
@@ -50,17 +50,17 @@ export function SiteFooter({ year, contact, systemName }: { year: number; contac
           <h2 className="text-sm font-semibold">Account</h2>
           <ul className="mt-2 grid gap-1.5 sm:mt-3 sm:gap-2">
             <li>
-              <Link className={footerLink} href="/login">
+              <Link className={footerLink} href="/login" prefetch={false}>
                 Log In
               </Link>
             </li>
             <li>
-              <Link className={footerLink} href="/register">
+              <Link className={footerLink} href="/register" prefetch={false}>
                 Create Patient Account
               </Link>
             </li>
             <li>
-              <Link className={footerLink} href="/patient/find">
+              <Link className={footerLink} href="/patient/find" prefetch={false}>
                 Book an Appointment
               </Link>
             </li>

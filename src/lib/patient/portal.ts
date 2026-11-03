@@ -595,6 +595,52 @@ export async function clearOwnInAppNotifications(db: PrismaClient, userId: strin
   }
 }
 
+/** One read for the patient home, instead of a separate query for each follow-up group. */
+export async function listPatientFollowUpHome(db: PrismaClient, userId: string, now = new Date()) {
+  const dayStart = platformDay(now);
+  const dayEnd = addDays(dayStart, 1);
+  try {
+    const rows = await db.appointment.findMany({
+      where: {
+        patient: { userId },
+        OR: [{ followUpOfId: { not: null } }, { consultationService: followUpService }],
+      },
+      orderBy: { startsAt: "asc" },
+      take: 80,
+      select: {
+        id: true,
+        status: true,
+        startsAt: true,
+        mode: true,
+        doctor: { select: { displayName: true, userId: true, user: { select: { profileImageUpdatedAt: true } } } },
+        consultationService: { select: { name: true } },
+        specialty: { select: { name: true } },
+      },
+    });
+    const visits = rows.map((row) => ({
+      id: row.id,
+      status: row.status,
+      bucket: classifyFollowUp({ status: row.status, startsAt: row.startsAt, dayStart, dayEnd }),
+      startsAt: row.startsAt,
+      when: formatBookingWhen(row.startsAt),
+      mode: row.mode,
+      doctor: row.doctor.displayName,
+      doctorUserId: row.doctor.userId,
+      doctorImageVersion: row.doctor.user.profileImageUpdatedAt?.toISOString() ?? null,
+      service: row.consultationService.name,
+      specialty: row.specialty.name,
+    }));
+    return {
+      ok: true as const,
+      today: visits.filter((row) => row.bucket === "today"),
+      overdue: visits.filter((row) => row.bucket === "overdue"),
+      upcoming: visits.filter((row) => row.bucket === "upcoming"),
+    };
+  } catch (error) {
+    return failed(error);
+  }
+}
+
 export async function listPatientFollowUps(db: PrismaClient, userId: string, view: FollowUpView, now = new Date()) {
   const dayStart = platformDay(now);
   const dayEnd = addDays(dayStart, 1);

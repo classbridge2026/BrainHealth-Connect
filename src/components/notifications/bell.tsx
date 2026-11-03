@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { faBell, faChevronLeft } from "@fortawesome/free-solid-svg-icons";
@@ -65,7 +65,6 @@ export function NotificationBell({
   watch?: NoticeAudience;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const titleId = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -108,8 +107,6 @@ export function NotificationBell({
     if (!watch) return;
     let stop = false;
     let timer = 0;
-    let asked: { stamp: string; tries: number } | null = null;
-    const quiet = () => /\/consultation\/?$/.test(pathname);
 
     async function look() {
       if (stop || document.visibilityState === "hidden") return;
@@ -120,15 +117,9 @@ export function NotificationBell({
         if (stop || !pulse) return;
         if (pulse.stamp === serverStampRef.current) {
           setLive(null);
-          asked = null;
           return;
         }
         setLive(pulse);
-        if (quiet()) return;
-        const tries = asked?.stamp === pulse.stamp ? asked.tries : 0;
-        if (tries >= 2) return;
-        asked = { stamp: pulse.stamp, tries: tries + 1 };
-        router.refresh();
       } catch {
         // The next check tries again.
       }
@@ -137,7 +128,7 @@ export function NotificationBell({
     function schedule(delay: number) {
       timer = window.setTimeout(() => {
         void look().finally(() => {
-          if (!stop) schedule(20000);
+          if (!stop) schedule(45000);
         });
       }, delay);
     }
@@ -146,14 +137,14 @@ export function NotificationBell({
       if (document.visibilityState === "visible") void look();
     }
 
-    schedule(12000);
+    schedule(20000);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       stop = true;
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [watch, pathname, router]);
+  }, [watch]);
 
   const visible = cleared ? [] : shownItems.filter((item) => !item.read && !hidden.has(item.id));
   const pending = shownItems.filter((item) => !item.read && hidden.has(item.id)).length;

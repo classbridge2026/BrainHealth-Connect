@@ -1,6 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
 import type { AdminIconName } from "@/components/admin/admin-icons";
-import { loadCatalogSummary } from "@/lib/catalog/queries";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
 import { adminEntityHref, formatPlatformDay } from "./labels";
 import { PLATFORM_TIMEZONE, freetownDayBounds } from "./rules";
@@ -72,6 +71,40 @@ function activityTitle(action: string): string {
   );
 }
 
+type CountRow = { status: string; count: number };
+type DayRow = { day: string; count: number };
+type SpecialtyRow = { id: string; name: string; count: number };
+type PairRow = { active: number; inactive: number };
+type PatientRow = { total: number; week: number };
+
+type DashboardSnapshot = {
+  doctors: CountRow[] | string | null;
+  patients: PatientRow | string | null;
+  services: PairRow | string | null;
+  locations: PairRow | string | null;
+  today: CountRow[] | string | null;
+  statuses: CountRow[] | string | null;
+  trend: DayRow[] | string | null;
+  specialties: SpecialtyRow[] | string | null;
+};
+
+function asJson<T>(value: T | string | null | undefined, fallback: T): T {
+  if (value == null) return fallback;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return fallback;
+    }
+  }
+  return value;
+}
+
+function countRows(value: DashboardSnapshot["doctors"]): CountRow[] {
+  const rows = asJson<CountRow[]>(value, []);
+  return Array.isArray(rows) ? rows.map((row) => ({ status: String(row.status), count: Number(row.count) || 0 })) : [];
+}
+
 function activityIcon(action: string, entityType: string): AdminIconName {
   const key = `${action} ${entityType}`.toLowerCase();
   if (key.includes("verif") || key.includes("approved")) return "check";
@@ -90,84 +123,132 @@ export async function loadHomeDashboard(db: PrismaClient, actorId: string, now =
   const trendStart = new Date(day.start.getTime() - 6 * 86_400_000);
   const week = weekStart(now);
   try {
-    const [account, doctors, patients, patientsThisWeek, todayGroups, statusGroups, trendRows, specialtyGroups, approvals, activities, catalog] =
-      await Promise.all([
-        db.user.findUnique({
-          where: { id: actorId },
-          select: {
-            email: true,
-            patientProfile: { select: { fullName: true } },
-            doctorProfile: { select: { fullName: true } },
-          },
-        }),
-        db.doctorProfile.groupBy({
-          by: ["verificationStatus"],
-          where: { user: { deletedAt: null } },
-          _count: { _all: true },
-        }),
-        db.patientProfile.count({ where: { archivedAt: null } }),
-        db.patientProfile.count({ where: { archivedAt: null, createdAt: { gte: week } } }),
-        db.appointment.groupBy({
-          by: ["status"],
-          where: { startsAt: { gte: day.start, lt: day.end } },
-          _count: { _all: true },
-        }),
-        db.appointment.groupBy({ by: ["status"], _count: { _all: true } }),
-        db.appointment.findMany({
-          where: { startsAt: { gte: trendStart, lt: day.end } },
-          select: { startsAt: true },
-        }),
-        db.appointment.groupBy({
-          by: ["specialtyId"],
-          _count: { _all: true },
-          orderBy: { _count: { specialtyId: "desc" } },
-          take: 5,
-        }),
-        db.doctorProfile.findMany({
-          where: { verificationStatus: { in: ["SUBMITTED", "UNDER_REVIEW"] }, user: { deletedAt: null } },
-          orderBy: [{ submittedAt: "asc" }, { createdAt: "asc" }],
-          take: 5,
-          select: {
-            id: true,
-            fullName: true,
-            qualificationTitle: true,
-            submittedAt: true,
-            createdAt: true,
-            specialties: { select: { isPrimary: true, specialty: { select: { name: true } } } },
-          },
-        }),
-        db.auditLog.findMany({
-          orderBy: { occurredAt: "desc" },
-          take: 5,
-          select: {
-            id: true,
-            action: true,
-            entityType: true,
-            entityId: true,
-            occurredAt: true,
-            actor: { select: { email: true } },
-          },
-        }),
-        loadCatalogSummary(db),
-      ]);
-    if (!catalog.ok) return catalog;
-
-    const specialtyNames = specialtyGroups.length
-      ? await db.specialty.findMany({
-          where: { id: { in: specialtyGroups.map((row) => row.specialtyId) } },
-          select: { id: true, name: true },
-        })
-      : [];
-    const specialtyName = new Map(specialtyNames.map((row) => [row.id, row.name]));
-    const doctorCount = (status: string) => doctors.find((row) => row.verificationStatus === status)?._count._all ?? 0;
+    const [account, snapshotRows, approvals, activities] = await Promise.all([
+      db.user.findUnique({
+        where: { id: actorId },
+        select: {
+          email: true,
+          patientProfile: { select: { fullName: true } },
+          doctorProfile: { select: { fullName: true } },
+        },
+      }),
+      db.$queryRaw<DashboardSnapshot[]>`
+        SELECT
+          coalesce((
+            SELECT json_agg(json_build_object('status', status, 'count', count))
+            FROM (
+              SELECT d."verificationStatus"::text AS status, count(*)::int AS count
+              FROM "DoctorProfile" d
+              INNER JOIN "User" u ON u.id = d."userId"
+              WHERE u."deletedAt" IS NULL
+              GROUP BY 1
+            ) doctors
+          ), '[]'::json) AS doctors,
+          (
+            SELECT json_build_object(
+              'total', count(*)::int,
+              'week', count(*) FILTER (WHERE "createdAt" >= ${week})::int
+            )
+            FROM "PatientProfile"
+            WHERE "archivedAt" IS NULL
+          ) AS patients,
+          (
+            SELECT json_build_object(
+              'active', count(*) FILTER (WHERE "isActive")::int,
+              'inactive', count(*) FILTER (WHERE NOT "isActive")::int
+            )
+            FROM "ConsultationService"
+          ) AS services,
+          (
+            SELECT json_build_object(
+              'active', count(*) FILTER (WHERE "isActive")::int,
+              'inactive', count(*) FILTER (WHERE NOT "isActive")::int
+            )
+            FROM "Location"
+          ) AS locations,
+          coalesce((
+            SELECT json_agg(json_build_object('status', status, 'count', count))
+            FROM (
+              SELECT status::text AS status, count(*)::int AS count
+              FROM "Appointment"
+              WHERE "startsAt" >= ${day.start} AND "startsAt" < ${day.end}
+              GROUP BY 1
+            ) today
+          ), '[]'::json) AS today,
+          coalesce((
+            SELECT json_agg(json_build_object('status', status, 'count', count))
+            FROM (
+              SELECT status::text AS status, count(*)::int AS count
+              FROM "Appointment"
+              GROUP BY 1
+            ) statuses
+          ), '[]'::json) AS statuses,
+          coalesce((
+            SELECT json_agg(json_build_object('day', day, 'count', count))
+            FROM (
+              SELECT to_char(timezone('Africa/Freetown', "startsAt"), 'YYYY-MM-DD') AS day,
+                     count(*)::int AS count
+              FROM "Appointment"
+              WHERE "startsAt" >= ${trendStart} AND "startsAt" < ${day.end}
+              GROUP BY 1
+            ) trend
+          ), '[]'::json) AS trend,
+          coalesce((
+            SELECT json_agg(json_build_object('id', id, 'name', name, 'count', count) ORDER BY count DESC)
+            FROM (
+              SELECT s.id::text AS id, s.name, count(a.id)::int AS count
+              FROM "Appointment" a
+              INNER JOIN "Specialty" s ON s.id = a."specialtyId"
+              GROUP BY s.id, s.name
+              ORDER BY count DESC
+              LIMIT 5
+            ) specialties
+          ), '[]'::json) AS specialties
+      `,
+      db.doctorProfile.findMany({
+        where: { verificationStatus: { in: ["SUBMITTED", "UNDER_REVIEW"] }, user: { deletedAt: null } },
+        orderBy: [{ submittedAt: "asc" }, { createdAt: "asc" }],
+        take: 5,
+        select: {
+          id: true,
+          fullName: true,
+          qualificationTitle: true,
+          submittedAt: true,
+          createdAt: true,
+          specialties: { select: { isPrimary: true, specialty: { select: { name: true } } } },
+        },
+      }),
+      db.auditLog.findMany({
+        orderBy: { occurredAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          action: true,
+          entityType: true,
+          entityId: true,
+          occurredAt: true,
+          actor: { select: { email: true } },
+        },
+      }),
+    ]);
+    const snapshot = snapshotRows[0];
+    if (!snapshot) return { ok: false as const, code: "UNAVAILABLE" as const };
+    const doctors = countRows(snapshot.doctors);
+    const todayGroups = countRows(snapshot.today);
+    const statusGroups = countRows(snapshot.statuses);
+    const patients = asJson<PatientRow>(snapshot.patients, { total: 0, week: 0 });
+    const services = asJson<PairRow>(snapshot.services, { active: 0, inactive: 0 });
+    const locations = asJson<PairRow>(snapshot.locations, { active: 0, inactive: 0 });
+    const trendRows = asJson<DayRow[]>(snapshot.trend, []);
+    const specialtyRows = asJson<SpecialtyRow[]>(snapshot.specialties, []);
+    const doctorCount = (status: string) => doctors.find((row) => row.status === status)?.count ?? 0;
     const approved = doctorCount("APPROVED");
     const pendingDoctors = doctorCount("SUBMITTED") + doctorCount("UNDER_REVIEW");
     const todayCount = (matches: (status: string) => boolean) =>
-      todayGroups.reduce((sum, row) => sum + (matches(row.status) ? row._count._all : 0), 0);
+      todayGroups.reduce((sum, row) => sum + (matches(row.status) ? row.count : 0), 0);
     const countsByDay = new Map<string, number>();
-    for (const row of trendRows) {
-      const key = dayKey(row.startsAt);
-      countsByDay.set(key, (countsByDay.get(key) ?? 0) + 1);
+    for (const row of Array.isArray(trendRows) ? trendRows : []) {
+      countsByDay.set(String(row.day), Number(row.count) || 0);
     }
     const trend = Array.from({ length: 7 }, (_, index) => {
       const date = new Date(trendStart.getTime() + index * 86_400_000);
@@ -180,9 +261,9 @@ export async function loadHomeDashboard(db: PrismaClient, actorId: string, now =
       key: slice.key,
       label: slice.label,
       color: slice.color,
-      count: statusGroups.reduce((sum, row) => sum + (slice.match(row.status) ? row._count._all : 0), 0),
+      count: statusGroups.reduce((sum, row) => sum + (slice.match(row.status) ? row.count : 0), 0),
     })).filter((slice) => slice.count > 0 || ["confirmed", "pending", "completed", "cancelled"].includes(slice.key));
-    const other = statusGroups.reduce((sum, row) => sum + (STATUS_SLICES.some((slice) => slice.match(row.status)) ? 0 : row._count._all), 0);
+    const other = statusGroups.reduce((sum, row) => sum + (STATUS_SLICES.some((slice) => slice.match(row.status)) ? 0 : row.count), 0);
     if (other > 0) statuses.push({ key: "other", label: "Other", color: "#94a3b8", count: other });
 
     return {
@@ -196,21 +277,21 @@ export async function loadHomeDashboard(db: PrismaClient, actorId: string, now =
         timeZone: PLATFORM_TIMEZONE,
       }).format(now),
       year: Number(new Intl.DateTimeFormat("en-US", { year: "numeric", timeZone: PLATFORM_TIMEZONE }).format(now)),
-      doctors: { total: doctors.reduce((sum, row) => sum + row._count._all, 0), approved, pending: pendingDoctors },
-      patients: { total: patients, thisWeek: patientsThisWeek },
+      doctors: { total: doctors.reduce((sum, row) => sum + row.count, 0), approved, pending: pendingDoctors },
+      patients: { total: Number(patients.total) || 0, thisWeek: Number(patients.week) || 0 },
       today: {
-        total: todayGroups.reduce((sum, row) => sum + row._count._all, 0),
+        total: todayGroups.reduce((sum, row) => sum + row.count, 0),
         confirmed: todayCount((status) => CONFIRMED.has(status)),
         pending: todayCount((status) => status === "PENDING_PAYMENT" || status === "PENDING_APPROVAL"),
       },
-      services: { active: catalog.counts.activeServices, inactive: catalog.counts.inactiveServices },
+      services: { active: Number(services.active) || 0, inactive: Number(services.inactive) || 0 },
       locations: {
-        total: catalog.counts.activeLocations + catalog.counts.inactiveLocations,
-        inactive: catalog.counts.inactiveLocations,
+        total: (Number(locations.active) || 0) + (Number(locations.inactive) || 0),
+        inactive: Number(locations.inactive) || 0,
       },
       trend,
       statuses,
-      appointmentTotal: statusGroups.reduce((sum, row) => sum + row._count._all, 0),
+      appointmentTotal: statusGroups.reduce((sum, row) => sum + row.count, 0),
       activities: activities.map((row) => ({
         id: row.id,
         title: activityTitle(row.action),
@@ -229,10 +310,10 @@ export async function loadHomeDashboard(db: PrismaClient, actorId: string, now =
           submitted: formatPlatformDay(row.submittedAt ?? row.createdAt),
         };
       }),
-      specialties: specialtyGroups.map((row) => ({
-        id: row.specialtyId,
-        name: specialtyName.get(row.specialtyId) ?? "Specialty",
-        count: row._count._all,
+      specialties: (Array.isArray(specialtyRows) ? specialtyRows : []).map((row) => ({
+        id: String(row.id),
+        name: row.name || "Specialty",
+        count: Number(row.count) || 0,
       })),
     };
   } catch (error) {

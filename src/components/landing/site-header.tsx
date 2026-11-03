@@ -22,13 +22,13 @@ function Actions({ onNavigate, stacked }: { onNavigate?: () => void; stacked?: b
   if (!stacked) {
     return (
       <div className="flex items-center gap-1.5 2xl:gap-2">
-        <Link href="/login" className={`${barButton} text-brand-navy hover:bg-brand-ice ${focusRing}`} onClick={onNavigate}>
+        <Link href="/login" prefetch={false} className={`${barButton} text-brand-navy hover:bg-brand-ice ${focusRing}`} onClick={onNavigate}>
           Log In
         </Link>
-        <Link href="/register" className={`${barButton} border border-brand-line bg-white text-brand-navy hover:bg-brand-ice ${focusRing}`} onClick={onNavigate}>
+        <Link href="/register" prefetch={false} className={`${barButton} border border-brand-line bg-white text-brand-navy hover:bg-brand-ice ${focusRing}`} onClick={onNavigate}>
           Create Patient Account
         </Link>
-        <Link href="/patient/find" className={`${barButton} bg-brand-teal text-white hover:bg-brand-teal-hover ${focusRing}`} onClick={onNavigate}>
+        <Link href="/patient/find" prefetch={false} className={`${barButton} bg-brand-teal text-white hover:bg-brand-teal-hover ${focusRing}`} onClick={onNavigate}>
           Book an Appointment
         </Link>
       </div>
@@ -38,13 +38,13 @@ function Actions({ onNavigate, stacked }: { onNavigate?: () => void; stacked?: b
   const full = "w-full";
   return (
     <div className="flex w-full flex-col gap-2">
-      <Link href="/login" className={`${btnGhost} ${full}`} onClick={onNavigate}>
+      <Link href="/login" prefetch={false} className={`${btnGhost} ${full}`} onClick={onNavigate}>
         Log In
       </Link>
-      <Link href="/register" className={`${btnSecondary} ${full}`} onClick={onNavigate}>
+      <Link href="/register" prefetch={false} className={`${btnSecondary} ${full}`} onClick={onNavigate}>
         Create Patient Account
       </Link>
-      <Link href="/patient/find" className={`${btnPrimary} ${full}`} onClick={onNavigate}>
+      <Link href="/patient/find" prefetch={false} className={`${btnPrimary} ${full}`} onClick={onNavigate}>
         Book an Appointment
       </Link>
     </div>
@@ -96,7 +96,7 @@ export function SiteHeader({ systemName }: { systemName: string }) {
 
         <nav aria-label="Primary" className="ml-auto hidden items-center gap-0.5 xl:flex 2xl:gap-1">
           {navItems.map((item) => (
-            <Link key={item.href} href={item.href} className={linkClass}>
+            <Link key={item.href} href={item.href} prefetch={item.href.startsWith("/#") ? undefined : false} className={linkClass}>
               {item.label}
             </Link>
           ))}
@@ -133,6 +133,7 @@ export function SiteHeader({ systemName }: { systemName: string }) {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={item.href.startsWith("/#") ? undefined : false}
                 className={`rounded-xl px-3 py-3 text-base font-semibold text-brand-navy hover:bg-brand-ice ${focusRing}`}
                 onClick={close}
               >

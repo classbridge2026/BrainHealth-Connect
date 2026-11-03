@@ -214,7 +214,7 @@ export function publicLanguages(values: string[]): string[] {
 
 export function publicSessionFee(rows: { price: { toString(): string }; currency: string }[]): string | null {
   const priced = rows.flatMap((row) => {
-    const currency = row.currency.trim().toUpperCase();
+    const currency = row.currency.replace(/[^A-Za-z]/g, "").toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) return [];
     let amount: Prisma.Decimal;
     try {
@@ -234,6 +234,26 @@ export function publicSessionFee(rows: { price: { toString(): string }; currency
   const shown = lowest.amount.toFixed(2).replace(/\.00$/, "");
   const varies = priced.some((row) => !row.amount.equals(lowest.amount));
   return `${varies ? "From " : ""}${currency} ${shown} / session`;
+}
+
+/** Offering price first, then the service default when a doctor fee was not stored. */
+export function publishedServiceFee(input: {
+  offerings: Array<{ price: { toString(): string }; priceAmountMinor?: number | null; currency: string }>;
+  defaultFee?: { toString(): string } | null;
+  currency?: string | null;
+}): string | null {
+  const offeringFee = publicSessionFee(input.offerings);
+  if (offeringFee) return offeringFee;
+  const fromMinor = publicSessionFee(
+    input.offerings.flatMap((row) => {
+      const minor = row.priceAmountMinor;
+      if (typeof minor !== "number" || !Number.isSafeInteger(minor) || minor <= 0) return [];
+      return [{ price: { toString: () => new Prisma.Decimal(minor).div(100).toFixed(2) }, currency: row.currency }];
+    }),
+  );
+  if (fromMinor) return fromMinor;
+  if (!input.defaultFee || !input.currency) return null;
+  return publicSessionFee([{ price: input.defaultFee, currency: input.currency }]);
 }
 
 export function excerpt(value: string, max = 220): string {
@@ -270,13 +290,17 @@ async function readPublicLanding(db: PrismaClient, now: Date): Promise<PublicLan
           id: true,
           name: true,
           description: true,
+          mode: true,
+          defaultDurationMinutes: true,
+          defaultFee: true,
+          currency: true,
           offerings: {
             where: {
               isActive: true,
               specialty: { isActive: true },
               doctor: approvedDoctor,
             },
-            select: { mode: true, durationMinutes: true, price: true, currency: true },
+            select: { mode: true, durationMinutes: true, price: true, priceAmountMinor: true, currency: true },
           },
         },
       }),
@@ -426,14 +450,20 @@ async function readPublicLanding(db: PrismaClient, now: Date): Promise<PublicLan
       specialties: orderedSpecialties,
       services: serviceRows.map((service) => {
         const modes = uniqueConsultationModes(service.offerings.map((offering) => offering.mode));
+        const shownModes = modes.length > 0 ? modes : service.mode ? [service.mode] : [];
+        const durations = service.offerings.map((offering) => offering.durationMinutes);
         return {
           id: service.id,
           name: service.name,
           description: cleanText(service.description),
           bookable: modes.length > 0,
-          modes,
-          durationLabel: publicDurationLabel(service.offerings.map((offering) => offering.durationMinutes)),
-          fee: publicSessionFee(service.offerings),
+          modes: shownModes,
+          durationLabel: publicDurationLabel(durations.length > 0 ? durations : [service.defaultDurationMinutes]),
+          fee: publishedServiceFee({
+            offerings: service.offerings,
+            defaultFee: service.defaultFee,
+            currency: service.currency,
+          }),
         };
       }),
       offerings,
@@ -446,8 +476,5 @@ async function readPublicLanding(db: PrismaClient, now: Date): Promise<PublicLan
 }
 
 export async function loadPublicLanding(db: PrismaClient, now = new Date()): Promise<PublicLanding> {
-  const first = await readPublicLanding(db, now);
-  if (first.ok || first.code === "SCHEMA") return first;
-  await new Promise((resolve) => setTimeout(resolve, 800));
   return readPublicLanding(db, now);
 }

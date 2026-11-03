@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { unstable_cache } from "next/cache";
 import { BadgeCheck, Building2, Video } from "lucide-react";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { RecordsUnavailable } from "@/components/records-unavailable";
@@ -10,6 +11,16 @@ import "./find.css";
 
 export const metadata: Metadata = { title: "Find a doctor" };
 export const dynamic = "force-dynamic";
+
+const readOpenDirectory = unstable_cache(
+  async () => {
+    const [result, filters] = await Promise.all([searchVerifiedDoctors(prisma, {}), listBookingFilters(prisma)]);
+    if (!result.ok) throw new Error(result.code);
+    return { result, filters };
+  },
+  ["patient-find-open"],
+  { revalidate: 60 },
+);
 
 type DoctorCard = {
   id: string;
@@ -32,10 +43,17 @@ export default async function FindDoctorPage({ searchParams }: { searchParams: P
   const language = typeof params.language === "string" ? params.language : "";
   const location = typeof params.location === "string" ? params.location : "";
   const visit = typeof params.visit === "string" ? params.visit : "";
-  const [result, filters] = await Promise.all([
-    searchVerifiedDoctors(prisma, { q, specialty, language, location, visit }),
-    listBookingFilters(prisma),
-  ]);
+  const openSearch = !q && !specialty && !language && !location && !visit;
+  const loaded = openSearch
+    ? await readOpenDirectory().catch(async () => {
+        const [found, choices] = await Promise.all([searchVerifiedDoctors(prisma, {}), listBookingFilters(prisma)]);
+        return { result: found, filters: choices };
+      })
+    : await Promise.all([
+        searchVerifiedDoctors(prisma, { q, specialty, language, location, visit }),
+        listBookingFilters(prisma),
+      ]).then(([found, choices]) => ({ result: found, filters: choices }));
+  const { result, filters } = loaded;
   if (!result.ok) return <RecordsUnavailable code={result.code === "NOT_FOUND" ? "NOT_FOUND" : result.code} />;
   const options = filters.ok ? filters : { specialties: [], languages: [], districts: [] };
   const count = result.doctors.length;

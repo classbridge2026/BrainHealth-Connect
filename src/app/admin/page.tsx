@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { unstable_cache } from "next/cache";
 import { AdminIcon, type AdminIconName } from "@/components/admin/admin-icons";
 import { RecordsUnavailable } from "@/components/records-unavailable";
 import { ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
@@ -11,9 +12,25 @@ import { prisma } from "@/lib/db/prisma";
 export const metadata: Metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
 
+const readHomeDashboard = unstable_cache(
+  async (actorId: string) => {
+    const home = await loadHomeDashboard(prisma, actorId);
+    if (!home.ok) throw new Error(home.code);
+    return home;
+  },
+  ["admin-home-dashboard"],
+  { revalidate: 30 },
+);
+
 export default async function AdminDashboardPage() {
   const actor = await requireStoredRoles([ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE]);
-  const [home, systemName] = await Promise.all([loadHomeDashboard(prisma, actor.id), getSystemName()]);
+  const [home, systemName] = await Promise.all([
+    readHomeDashboard(actor.id).catch((error: unknown) => {
+      const code = error instanceof Error && error.message === "SCHEMA" ? "SCHEMA" : "UNAVAILABLE";
+      return { ok: false as const, code: code as "SCHEMA" | "UNAVAILABLE" };
+    }),
+    getSystemName(),
+  ]);
   if (!home.ok) return <RecordsUnavailable code={home.code} />;
   const specialtyMax = Math.max(1, ...home.specialties.map((row) => row.count));
   return (
