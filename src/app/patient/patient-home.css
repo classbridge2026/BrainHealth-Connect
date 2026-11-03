@@ -70,6 +70,21 @@
   gap: 0.35rem 1rem;
 }
 
+.pat-hero-actions .booking-guide-open,
+.pat-empty-guide .booking-guide-open {
+  min-height: 2.55rem;
+  padding: 0 1rem;
+  border: 2px solid #0f766e;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.pat-hero-actions .booking-guide-open:hover,
+.pat-empty-guide .booking-guide-open:hover {
+  border-color: #0b5f59;
+  background: #f3fbf9;
+}
+
 .pat-hero-photo {
   display: block;
   width: 5.25rem;
