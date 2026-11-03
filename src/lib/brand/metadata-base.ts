@@ -9,12 +9,21 @@ function httpOrigin(raw: string | undefined): URL | undefined {
   return undefined;
 }
 
+function productionOrigin(): URL | undefined {
+  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim().replace(/^https?:\/\//, "");
+  if (!host) return undefined;
+  return httpOrigin(`https://${host}`);
+}
+
 /** Absolute origin for Open Graph, Twitter, the sitemap, and canonical URLs. */
 export function metadataBase(): URL | undefined {
   const configured = httpOrigin(process.env.APP_BASE_URL?.trim());
+  const production = productionOrigin();
+  if (configured && production && configured.hostname.endsWith(".vercel.app") && configured.hostname !== production.hostname) {
+    return production;
+  }
   if (configured) return configured;
-  const productionHost = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
-  if (productionHost) return httpOrigin(`https://${productionHost.replace(/^https?:\/\//, "")}`);
+  if (production) return production;
   if (process.env.NODE_ENV !== "production") return new URL("http://localhost:3000");
   return undefined;
 }

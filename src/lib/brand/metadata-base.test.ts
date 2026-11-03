@@ -35,4 +35,11 @@ describe("metadataBase", () => {
     expect(metadataBase()?.origin).toBe("https://brain-health-connect.vercel.app");
     delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
   });
+
+  it("prefers the current Vercel production host over an older vercel.app address", () => {
+    process.env.APP_BASE_URL = "https://care-circle-mind-together.vercel.app";
+    process.env.VERCEL_PROJECT_PRODUCTION_URL = "brain-health-connect.vercel.app";
+    expect(metadataBase()?.origin).toBe("https://brain-health-connect.vercel.app");
+    delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  });
 });
