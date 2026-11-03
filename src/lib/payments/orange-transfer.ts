@@ -3,6 +3,9 @@ import { parseUuid } from "@/lib/catalog/rules";
 import { isUniqueConflict } from "@/lib/doctors/errors";
 import { notifyAppointmentParties } from "@/lib/appointments/email-notice";
 import { saveChannelNotice } from "@/lib/notifications/delivery";
+import { notifyAdminsToVerifyPayment } from "./admin-notice";
+import { actorMayVerifyPayment, loadVerifierIds } from "./verifiers";
+import { giveOriginalSlot } from "./restore-visit";
 import { confirmVerifiedPayment } from "@/lib/appointments/payment-holds";
 import { AFRIMONEY, normalizeSierraLeoneMsisdn } from "./mobile-money";
 import { nextProviderPaymentStatus, paymentAmountsMatch } from "./verification";
@@ -110,7 +113,7 @@ export async function reportOrangeTransfer(
   if (existing) return { message: "This transfer is already waiting for the clinic to confirm it.", tone: "ok" };
 
   try {
-    await db.payment.create({
+    const payment = await db.payment.create({
       data: {
         appointmentId,
         payerUserId: input.actorUserId,
@@ -131,7 +134,9 @@ export async function reportOrangeTransfer(
           },
         },
       },
+      select: { id: true },
     });
+    await notifyAdminsToVerifyPayment(db, { paymentId: payment.id, wallet: "Orange Money", reference });
   } catch (error) {
     if (isUniqueConflict(error)) return { message: "That Orange Money transaction code is already recorded.", tone: "error" };
     throw error;
@@ -157,6 +162,18 @@ export async function reviewOrangeTransfer(
 ): Promise<{ message: string; tone: "ok" | "error" }> {
   const paymentId = parseUuid(input.paymentId);
   if (!paymentId) return { message: "That payment was not found.", tone: "error" };
+  const actor = await db.user.findUnique({
+    where: { id: input.actorUserId },
+    select: { status: true, deletedAt: true, roles: { select: { role: { select: { code: true } } } } },
+  });
+  const roleCodes = actor?.roles.map((row) => row.role.code) ?? [];
+  const allowed = Boolean(
+    actor &&
+      !actor.deletedAt &&
+      actor.status === "ACTIVE" &&
+      actorMayVerifyPayment({ roleCodes, userId: input.actorUserId, verifierIds: await loadVerifierIds(db) }),
+  );
+  if (!allowed) return { message: "Only a selected administrator can verify this payment. A doctor cannot.", tone: "error" };
   const payment = await db.payment.findUnique({
     where: { id: paymentId },
     select: {
@@ -192,12 +209,20 @@ export async function reviewOrangeTransfer(
 
   if (input.decision === "confirm" && payment.appointment.status === "PENDING_PAYMENT") {
     const confirmed = await confirmVerifiedPayment({ appointmentId: payment.appointmentId, paymentId: payment.id }, db);
-    if (!confirmed.ok) return { message: "The payment hold has closed, so this visit was not confirmed.", tone: "error" };
-    return { message: `The ${wallet} transfer is confirmed and the visit is booked.`, tone: "ok" };
+    if (confirmed.ok) return { message: `The ${wallet} transfer is confirmed and the visit is booked.`, tone: "ok" };
+    if (confirmed.code === "LATE_PAYMENT_NEEDS_REVIEW" || confirmed.code === "SLOT_UNAVAILABLE") {
+      const restored = await giveOriginalSlot(db, { userId: input.actorUserId, roleCodes }, payment.id);
+      return { message: restored.message, tone: restored.ok ? "ok" : "error" };
+    }
+    return { message: "The payment hold has closed, so this visit was not confirmed.", tone: "error" };
   }
   const awaitingApproval = payment.appointment.status === "PENDING_APPROVAL";
   const released = payment.appointment.status === "EXPIRED_UNPAID";
-  if (input.decision === "confirm" && !CONFIRMABLE_VISIT.has(payment.appointment.status) && !awaitingApproval && !released) {
+  if (input.decision === "confirm" && released) {
+    const restored = await giveOriginalSlot(db, { userId: input.actorUserId, roleCodes }, payment.id);
+    return { message: restored.message, tone: restored.ok ? "ok" : "error" };
+  }
+  if (input.decision === "confirm" && !CONFIRMABLE_VISIT.has(payment.appointment.status) && !awaitingApproval) {
     return { message: "This visit is not waiting for a payment.", tone: "error" };
   }
 
@@ -228,11 +253,9 @@ export async function reviewOrangeTransfer(
   }
   return {
     message: input.decision === "confirm"
-      ? released
-        ? `The ${wallet} transfer is recorded. The payment hold had already ended, so this time stays released.`
-        : awaitingApproval
-          ? `The ${wallet} transfer is confirmed. The doctor can approve the visit.`
-          : `The ${wallet} transfer is confirmed.`
+      ? awaitingApproval
+        ? `The ${wallet} transfer is confirmed. The doctor can approve the visit.`
+        : `The ${wallet} transfer is confirmed.`
       : "The transfer was not accepted. The patient can send it again.",
     tone: "ok",
   };

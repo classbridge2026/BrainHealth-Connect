@@ -9,7 +9,7 @@ export function joinDenialMessage(code: JoinCode): string {
     case "NOT_ONLINE":
       return "This is an in-person appointment, so there is no video room.";
     case "PAYMENT":
-      return "Pay the visit fee before this consultation can start.";
+      return "This consultation opens after the visit fee is paid and an administrator verifies it.";
     case "AWAITING_APPROVAL":
       return "This booking is waiting for the doctor to approve it.";
     case "CANCELLED":
@@ -86,8 +86,8 @@ export function phaseMessage(phase: string, when: string, audience: "patient" | 
         : "This consultation is in progress. You can join again if you were disconnected. Leaving the video does not complete the visit.";
     case "waiting_payment":
       return patient
-        ? "Pay the visit fee before you can join this consultation."
-        : "The patient has not paid the visit fee. The consultation stays closed until that payment is confirmed.";
+        ? "This consultation opens after the visit fee is paid and an administrator verifies it."
+        : "This consultation stays closed until the visit fee is paid and an administrator verifies it. A doctor cannot verify a payment.";
     case "completed":
       return "This consultation is complete. A patient summary appears only after the clinician releases it.";
     case "cancelled":

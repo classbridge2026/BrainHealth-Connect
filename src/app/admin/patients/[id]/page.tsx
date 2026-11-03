@@ -11,6 +11,7 @@ import { requireStoredRoles } from "@/lib/auth/require-role";
 import { loadPatientDetail } from "@/lib/admin/directories";
 import { formatPlatformDay, formatPlatformWhen, userStatusLabel, userStatusTone } from "@/lib/admin/labels";
 import { prisma } from "@/lib/db/prisma";
+import { GuardianConsentForm } from "./guardian-form";
 
 export const metadata: Metadata = { title: "Patient" };
 export const dynamic = "force-dynamic";
@@ -106,7 +107,7 @@ export default async function PatientDetailPage({ params }: { params: Promise<{ 
           <span className="font-semibold text-brand-navy">{patient.isDependent ? "Yes" : "No"}</span>
         </p>
       </section>
-      <section className="grid gap-2">
+      <section className="grid gap-3">
         <h2 className="text-lg font-semibold text-brand-navy">Guardian relationships</h2>
         {patient.guardianRelationships.length === 0 ? (
           <p className="text-sm text-brand-muted">No guardian relationships are recorded.</p>
@@ -114,11 +115,13 @@ export default async function PatientDetailPage({ params }: { params: Promise<{ 
           <ul className="grid gap-2">
             {patient.guardianRelationships.map((row) => (
               <li key={row.id} className="rounded-2xl border border-brand-line bg-white px-4 py-3 text-sm">
-                {row.relationshipType} · {row.status}
+                <span className="font-semibold text-brand-navy">{row.guardian.patientProfile?.fullName ?? row.guardian.email}</span>
+                <span className="text-brand-muted"> · {row.relationshipType.replaceAll("_", " ").toLowerCase()} · {row.status}</span>
               </li>
             ))}
           </ul>
         )}
+        {patient.archivedAt ? null : <GuardianConsentForm patientId={patient.id} />}
       </section>
     </main>
   );

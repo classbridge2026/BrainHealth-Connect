@@ -66,7 +66,7 @@ export default async function PatientProfilePage({ searchParams }: { searchParam
           <Field label="Nationality" value={profile.nationality ?? "Not recorded"} />
           <Field label="Emergency contact" value={profile.emergencyContactName ?? "Not recorded"} />
           <Field label="Account type" value={profile.isDependent ? "Dependent patient" : "Patient"} />
-          <p className="text-sm leading-6 text-[#5b6b7c] sm:col-span-2">Allergies, medications, and clinician notes are not edited by patients. Released summaries are on the Clinical Summaries page. Minor treatment stays disabled until the platform policy allows it.</p>
+          <p className="text-sm leading-6 text-[#5b6b7c] sm:col-span-2">Allergies, medications, and clinician notes are not edited by patients. Released summaries are on the Clinical Summaries page. A dependent or a patient under 18 needs an authorized guardian before a doctor can add a clinical record. An administrator records that consent on the patient page.</p>
         </section>
       ) : (
         <section className="grid gap-3 rounded-2xl border border-[#d7e3ee] bg-white p-5 text-sm leading-6">

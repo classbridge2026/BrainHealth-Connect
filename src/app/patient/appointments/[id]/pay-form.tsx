@@ -22,7 +22,7 @@ export function VisitPayment({
   code,
   dialHref,
   afriNumber,
-  afriSteps,
+  afriCode,
   afriHref,
   waitingReference,
   waitingWallet,
@@ -43,8 +43,8 @@ export function VisitPayment({
   code: string | null;
   dialHref: string | null;
   afriNumber: string | null;
-  afriSteps: string[] | null;
-  afriHref: string;
+  afriCode: string | null;
+  afriHref: string | null;
   waitingReference: string | null;
   waitingWallet: string | null;
 }) {
@@ -52,7 +52,11 @@ export function VisitPayment({
   const [checked, refresh, checking] = useActionState(refreshWalletPaymentAction, initial);
   const [reported, report, reporting] = useActionState(reportOrangeTransferAction, initial);
   const [copied, setCopied] = useState(false);
-  const [method, setMethod] = useState<"orange" | "afri">(dialNumber ? "orange" : "afri");
+  const [method, setMethod] = useState<"orange" | "afri" | null>(null);
+  const choose = (next: "orange" | "afri" | null) => {
+    setMethod(next);
+    setCopied(false);
+  };
 
   useEffect(() => {
     if (started.paymentUrl) window.location.assign(started.paymentUrl);
@@ -96,57 +100,27 @@ export function VisitPayment({
       ) : walletApi ? (
         <form action={start} className="pay-form">
           <input type="hidden" name="appointmentId" value={appointmentId} />
-          <fieldset className="pay-methods">
-            <legend>Payment method</legend>
-            {orange ? (
-              <label className="pay-method">
-                <input type="radio" name="provider" value="ORANGE_MONEY" required defaultChecked />
-                <span className="pay-mark pay-mark-orange">OM</span>
-                <span>
-                  <strong>Orange Money</strong>
-                  <small>Pay from your Orange Money wallet</small>
-                </span>
+          <WalletChoice orange={orange} afrimoney={afrimoney} method={method} onChoose={choose} />
+          {method ? (
+            <>
+              <input type="hidden" name="provider" value={method === "afri" ? "AFRIMONEY" : "ORANGE_MONEY"} />
+              <label className="pay-field">
+                Wallet number
+                <input name="phone" required defaultValue={phone} inputMode="tel" autoComplete="tel" placeholder="07X XXX XXX" />
               </label>
-            ) : null}
-            {afrimoney ? (
-              <label className="pay-method">
-                <input type="radio" name="provider" value="AFRIMONEY" required defaultChecked={!orange} />
-                <span className="pay-mark pay-mark-afri">AM</span>
-                <span>
-                  <strong>Afrimoney</strong>
-                  <small>Approve the prompt on your phone</small>
-                </span>
-              </label>
-            ) : null}
-          </fieldset>
-          <label className="pay-field">
-            Wallet number
-            <input name="phone" required defaultValue={phone} inputMode="tel" autoComplete="tel" placeholder="07X XXX XXX" />
-          </label>
-          <button className="pay-submit" disabled={starting} type="submit">
-            {starting ? "Contacting the wallet…" : `Pay ${fee}`}
-          </button>
-          {started.message ? <p className={started.tone === "error" ? "pay-alert" : "pay-note"} role={started.tone === "error" ? "alert" : "status"}>{started.message}</p> : null}
-          <p className="pay-secure">Your PIN stays on your phone. CareCircle never asks for it.</p>
+              <button className="pay-submit" disabled={starting} type="submit">
+                {starting ? "Contacting the wallet…" : `Pay ${fee}`}
+              </button>
+              {started.message ? <p className={started.tone === "error" ? "pay-alert" : "pay-note"} role={started.tone === "error" ? "alert" : "status"}>{started.message}</p> : null}
+              <p className="pay-secure">Your PIN stays on your phone. CareCircle never asks for it.</p>
+            </>
+          ) : (
+            <p className="pay-note">Choose Orange Money or Afrimoney. The other method stays hidden after you choose.</p>
+          )}
         </form>
       ) : (
         <div className="pay-form">
-          <div className="pay-methods" role="group" aria-label="Payment method">
-            <button className={`pay-method pay-method-chosen${method === "orange" ? " pay-method-on" : ""}`} type="button" aria-pressed={method === "orange"} onClick={() => { setMethod("orange"); setCopied(false); }}>
-              <span className="pay-mark pay-mark-orange">OM</span>
-              <span>
-                <strong>Orange Money</strong>
-                <small>Dial the Orange code</small>
-              </span>
-            </button>
-            <button className={`pay-method pay-method-chosen${method === "afri" ? " pay-method-on" : ""}`} type="button" aria-pressed={method === "afri"} onClick={() => { setMethod("afri"); setCopied(false); }}>
-              <span className="pay-mark pay-mark-afri">AM</span>
-              <span>
-                <strong>Afrimoney</strong>
-                <small>Pay from *161#</small>
-              </span>
-            </button>
-          </div>
+          <WalletChoice orange afrimoney method={method} onChoose={choose} />
           {method === "orange" ? (
             !dialNumber || !code || !dialHref ? (
               <p className="pay-note">The clinic has not saved an Orange Money number yet. Payment opens here after an administrator adds it.</p>
@@ -169,32 +143,32 @@ export function VisitPayment({
                 </div>
               </>
             )
-          ) : !afriNumber || !afriSteps ? (
-            <p className="pay-note">The clinic has not saved an Afrimoney number yet. Payment opens here after an administrator adds it.</p>
+          ) : method === "afri" ? (
+            !afriNumber || !afriCode || !afriHref ? (
+              <p className="pay-note">The clinic has not saved an Afrimoney number yet. Payment opens here after an administrator adds it.</p>
+            ) : (
+              <>
+                <div className="pay-to">
+                  <span>Send to</span>
+                  <strong>{afriNumber}</strong>
+                </div>
+                <div className="pay-code-block">
+                  <span>Dial this code</span>
+                  <code>{afriCode}</code>
+                  <p>Replace PIN with your Afrimoney PIN on the phone only.</p>
+                </div>
+                <div className="pay-actions">
+                  <a className="pay-submit" href={afriHref}>Open phone dialer</a>
+                  <button className="pay-secondary" type="button" onClick={() => { void navigator.clipboard.writeText(afriCode).then(() => setCopied(true)).catch(() => setCopied(false)); }}>
+                    {copied ? "Code copied" : "Copy code"}
+                  </button>
+                </div>
+              </>
+            )
           ) : (
-            <>
-              <div className="pay-to">
-                <span>Send to</span>
-                <strong>{afriNumber}</strong>
-              </div>
-              <ol className="pay-steps">
-                {afriSteps.map((step, index) => (
-                  <li key={step}>
-                    <b>{index + 1}</b>
-                    <span>{step}</span>
-                  </li>
-                ))}
-              </ol>
-              <p className="pay-secure">Your PIN stays on your phone. CareCircle never asks for it.</p>
-              <div className="pay-actions">
-                <a className="pay-submit" href={afriHref}>Open *161#</a>
-                <button className="pay-secondary" type="button" onClick={() => { void navigator.clipboard.writeText(afriSteps.join("\n")).then(() => setCopied(true)).catch(() => setCopied(false)); }}>
-                  {copied ? "Steps copied" : "Copy steps"}
-                </button>
-              </div>
-            </>
+            <p className="pay-note">Choose Orange Money or Afrimoney. The other method stays hidden after you choose.</p>
           )}
-          {(method === "orange" ? dialNumber && code && dialHref : afriNumber && afriSteps) ? (
+          {(method === "orange" ? dialNumber && code && dialHref : method === "afri" && afriNumber && afriCode && afriHref) ? (
             <form action={report} className="pay-confirm">
               <input type="hidden" name="appointmentId" value={appointmentId} />
               <input type="hidden" name="provider" value={method === "afri" ? "AFRIMONEY" : "ORANGE_MONEY"} />
@@ -233,6 +207,48 @@ export function VisitPayment({
           <button disabled={checking} type="submit">{checking ? "Checking…" : "I have paid — check now"}</button>
           {checked.message ? <p role={checked.tone === "error" ? "alert" : "status"}>{checked.message}</p> : null}
         </form>
+      ) : null}
+    </div>
+  );
+}
+
+function WalletChoice({
+  orange,
+  afrimoney,
+  method,
+  onChoose,
+}: {
+  orange: boolean;
+  afrimoney: boolean;
+  method: "orange" | "afri" | null;
+  onChoose: (method: "orange" | "afri" | null) => void;
+}) {
+  return (
+    <div className="grid gap-2">
+      <div className="pay-methods" role="group" aria-label="Payment method">
+        {orange && method !== "afri" ? (
+          <button className={`pay-method pay-method-chosen${method === "orange" ? " pay-method-on" : ""}`} type="button" aria-pressed={method === "orange"} onClick={() => onChoose("orange")}>
+            <span className="pay-mark pay-mark-orange">OM</span>
+            <span>
+              <strong>Orange Money</strong>
+              <small>Pay from your Orange Money wallet</small>
+            </span>
+          </button>
+        ) : null}
+        {afrimoney && method !== "orange" ? (
+          <button className={`pay-method pay-method-chosen${method === "afri" ? " pay-method-on" : ""}`} type="button" aria-pressed={method === "afri"} onClick={() => onChoose("afri")}>
+            <span className="pay-mark pay-mark-afri">AM</span>
+            <span>
+              <strong>Afrimoney</strong>
+              <small>Pay from your Afrimoney wallet</small>
+            </span>
+          </button>
+        ) : null}
+      </div>
+      {method ? (
+        <button className="pay-secondary" type="button" onClick={() => onChoose(null)}>
+          Change payment method
+        </button>
       ) : null}
     </div>
   );

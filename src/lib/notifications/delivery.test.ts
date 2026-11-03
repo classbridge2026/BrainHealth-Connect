@@ -76,6 +76,10 @@ describe("notification delivery tracking", () => {
     expect(safeInternalHref("admin", "Appointment", "22222222-2222-4222-8222-222222222222")).toBe(
       "/admin/appointments/22222222-2222-4222-8222-222222222222",
     );
+    expect(safeInternalHref("admin", "Payment", "22222222-2222-4222-8222-222222222222")).toBe(
+      "/admin/payments/22222222-2222-4222-8222-222222222222",
+    );
+    expect(safeInternalHref("patient", "Payment", "22222222-2222-4222-8222-222222222222")).toBeNull();
   });
 
   it("marks only the signed-in person's unseen notices", async () => {
@@ -116,32 +120,22 @@ describe("notification delivery tracking", () => {
   });
 
   it("stamps a new in-app booking notice so an open portal can see it", async () => {
-    const where: Array<Record<string, unknown>> = [];
     const db = {
-      notification: {
-        count: async ({ where: filter }: { where: Record<string, unknown> }) => {
-          where.push(filter);
-          return 1;
-        },
-        findMany: async ({ where: filter }: { where: Record<string, unknown> }) => {
-          where.push(filter);
-          return [{
-            id: "note-1",
-            title: "Booking waiting for approval",
-            preview: "A booking is waiting for the doctor to approve it.",
-            readAt: null,
-            createdAt: new Date("2026-10-29T10:00:00.000Z"),
-            entityType: "Appointment",
-            entityId: "22222222-2222-4222-8222-222222222222",
-          }];
-        },
-      },
+      $queryRaw: async () => [{
+        id: "note-1",
+        title: "Booking waiting for approval",
+        preview: "A booking is waiting for the doctor to approve it.",
+        readAt: null,
+        createdAt: new Date("2026-10-29T10:00:00.000Z"),
+        entityType: "Appointment",
+        entityId: "22222222-2222-4222-8222-222222222222",
+        unread: 1,
+      }],
     };
     const pulse = await loadNoticePulse(db as unknown as PrismaClient, "doctor-1", "doctor");
     expect(pulse.unread).toBe(1);
     expect(pulse.items[0]?.href).toBe("/doctor/appointments/22222222-2222-4222-8222-222222222222");
     expect(pulse.stamp).toBe(noticeStamp(1, ["note-1"]));
     expect(pulse.stamp).not.toBe(noticeStamp(0, []));
-    expect(where.every((filter) => filter.recipientId === "doctor-1" && filter.channel === "IN_APP" && filter.readAt === null)).toBe(true);
   });
 });

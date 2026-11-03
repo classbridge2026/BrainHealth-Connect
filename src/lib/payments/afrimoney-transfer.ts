@@ -2,6 +2,7 @@ import { PaymentStatus, type PrismaClient } from "@prisma/client";
 import { parseUuid } from "@/lib/catalog/rules";
 import { isUniqueConflict } from "@/lib/doctors/errors";
 import { AFRIMONEY } from "./mobile-money";
+import { notifyAdminsToVerifyPayment } from "./admin-notice";
 import { formatOrangeDialNumber, orangeDialNumber, ussdAmount } from "./orange-transfer";
 
 /** Afrimoney SMS codes vary. A 4-digit PIN is rejected. */
@@ -16,20 +17,17 @@ export const AFRIMONEY_NUMBER_KEY = "AFRIMONEY_NUMBER";
 
 type Db = PrismaClient;
 
-/** Africell Sierra Leone opens Afrimoney on *161#. The menu asks for the number, the amount, and the PIN. */
-export function afrimoneyDialHref() {
-  return `tel:${encodeURIComponent("*161#")}`;
+function afrimoneyCodeNumber(dialNumber: string) {
+  return dialNumber.replace(/\s+/g, "");
 }
 
-export function afrimoneySteps(dialNumber: string, amount: string) {
-  return [
-    "Dial *161#",
-    "Choose 1, Transfer money",
-    "Choose 1, Transfer to a registered number",
-    `Enter ${dialNumber}`,
-    `Enter ${amount}`,
-    "Check the name, then enter your PIN on the phone",
-  ];
+/** Africell Sierra Leone: *161*1*1*system number*amount*PIN#. The PIN stays on the phone. */
+export function afrimoneyTransferCode(dialNumber: string, amount: string) {
+  return `*161*1*1*${afrimoneyCodeNumber(dialNumber)}*${amount}*PIN#`;
+}
+
+export function afrimoneyDialHref(dialNumber: string, amount: string) {
+  return `tel:${encodeURIComponent(`*161*1*1*${afrimoneyCodeNumber(dialNumber)}*${amount}*`)}`;
 }
 
 export function readStoredAfrimoneyNumber(value: unknown): string | null {
@@ -94,7 +92,7 @@ export async function reportAfrimoneyTransfer(
   if (existing) return { message: "This transfer is already waiting for the clinic to confirm it.", tone: "ok" };
 
   try {
-    await db.payment.create({
+    const payment = await db.payment.create({
       data: {
         appointmentId,
         payerUserId: input.actorUserId,
@@ -113,7 +111,9 @@ export async function reportAfrimoneyTransfer(
           },
         },
       },
+      select: { id: true },
     });
+    await notifyAdminsToVerifyPayment(db, { paymentId: payment.id, wallet: "Afrimoney", reference });
   } catch (error) {
     if (isUniqueConflict(error)) return { message: "That Afrimoney transaction code is already recorded.", tone: "error" };
     throw error;

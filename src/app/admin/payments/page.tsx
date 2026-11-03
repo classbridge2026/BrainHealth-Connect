@@ -1,34 +1,39 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { CatalogPager, PageHeader, catalogQuery } from "@/components/admin/catalog-ui";
-import { Notice, RecordTable, TableCell } from "@/components/admin/portal-ui";
+import { Notice } from "@/components/admin/portal-ui";
 import { LiveQueryForm } from "@/components/live-query";
 import { textInputClass } from "@/components/form-classes";
 import { RecordsUnavailable } from "@/components/records-unavailable";
-import { StatusBadge } from "@/components/status-badge";
 import { ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { loadPayments } from "@/lib/admin/directories";
 import { formatPlatformWhen, paymentStatusLabel, paymentStatusTone } from "@/lib/admin/labels";
 import { readPage, readParam } from "@/lib/catalog/queries";
 import { prisma } from "@/lib/db/prisma";
+import { listPaymentVerifierChoices } from "@/lib/payments/verifiers";
+import { PaymentVerifierForm } from "./verifier-form";
+import { PaymentsBoard } from "./payments-board";
 
 export const metadata: Metadata = { title: "Payments" };
 export const dynamic = "force-dynamic";
 
 export default async function PaymentsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireStoredRoles([ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE]);
+  const user = await requireStoredRoles([ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE]);
   const params = await searchParams;
   const q = readParam(params.q);
   const status = readParam(params.status);
   const date = readParam(params.date);
   const page = readPage(params.page);
-  const result = await loadPayments(prisma, { q, status, date, page });
+  const [result, verifiers] = await Promise.all([
+    loadPayments(prisma, { q, status, date, page }),
+    user.roleCodes.includes(SUPER_ADMIN_ROLE_CODE) ? listPaymentVerifierChoices(prisma).catch(() => []) : Promise.resolve(null),
+  ]);
   if (!result.ok) return <RecordsUnavailable code={result.code} />;
   return (
     <main className="grid gap-6">
-      <PageHeader eyebrow="Operations" title="Payments" description="Orange Money and Afrimoney transfers reported by patients. Open one to confirm the money arrived." />
-      <Notice>Patients send the fee from their own phones. Orange Money uses #144*2*1*the clinic number*amount*PIN#. Afrimoney uses *161#, then Transfer money, then the clinic Afrimoney number. Confirm a transfer only after that amount is on the matching clinic number. A refund is not sent from here.</Notice>
+      <PageHeader eyebrow="Operations" title="Payments" description="Orange Money and Afrimoney transfers reported by patients. A selected administrator confirms the money arrived." />
+      <Notice>Patients send the fee from their own phones. The visit counts as paid only after an administrator verifies the transfer. A doctor cannot verify a payment. A refund is not sent from here.</Notice>
+      {verifiers ? <PaymentVerifierForm choices={verifiers} /> : <Notice>A super administrator chooses which administrators can verify payments.</Notice>}
       <LiveQueryForm
         pathname="/admin/payments"
         className="grid gap-3 rounded-2xl border border-brand-line bg-white p-4 md:grid-cols-[minmax(0,1fr)_12rem_11rem] md:items-end"
@@ -37,54 +42,21 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
           { name: "status", label: "Status", kind: "select", value: status || "ALL", labelClassName: "text-sm font-medium", inputClassName: `${textInputClass} mt-1`, options: [
             { value: "ALL", label: "All statuses" },
             { value: "PENDING", label: "Pending" },
-            { value: "REQUIRES_ACTION", label: "Needs action" },
-            { value: "PAID", label: "Paid" },
+            { value: "REQUIRES_ACTION", label: "Waiting for administrator verification" },
+            { value: "PAID", label: "Verified by administrator" },
             { value: "FAILED_OR_REFUNDED", label: "Failed or refunded" },
             { value: "CANCELLED", label: "Cancelled" },
           ] },
           { name: "date", label: "Created", kind: "date", value: date, labelClassName: "text-sm font-medium", inputClassName: `${textInputClass} mt-1` },
         ]}
       />
-      <RecordTable
-        title="Payments"
-        caption="Payments"
-        empty={result.payments.length === 0 ? "No payments match these filters." : undefined}
-        columns={
-          <colgroup>
-            <col className="pay-col-created" />
-            <col className="pay-col-patient" />
-            <col className="pay-col-amount" />
-            <col className="pay-col-provider" />
-            <col className="pay-col-status" />
-          </colgroup>
-        }
-        head={
-          <>
-            <th>Created</th>
-            <th>Patient</th>
-            <th>Amount</th>
-            <th>Provider</th>
-            <th>Status</th>
-          </>
-        }
-        rows={result.payments.map((row) => (
-          <tr key={row.id}>
-            <TableCell label="Created">
-              <Link className="users-email" href={`/admin/payments/${row.id}`}>
-                {formatPlatformWhen(new Date(row.createdAt))}
-              </Link>
-            </TableCell>
-            <TableCell label="Patient">{row.patient}</TableCell>
-            <TableCell label="Amount">{row.amount}</TableCell>
-            <TableCell label="Provider">
-              {row.providerCode}
-              <span className="users-sub">{row.providerReference ?? "No reference"}</span>
-            </TableCell>
-            <TableCell label="Status">
-              <StatusBadge tone={paymentStatusTone(row.status)}>{paymentStatusLabel(row.status)}</StatusBadge>
-            </TableCell>
-          </tr>
-        ))}
+      <PaymentsBoard
+        payments={result.payments.map((payment) => ({
+          ...payment,
+          createdLabel: formatPlatformWhen(new Date(payment.createdAt)),
+          statusLabel: paymentStatusLabel(payment.status),
+          statusTone: paymentStatusTone(payment.status),
+        }))}
       />
       <CatalogPager page={result.page} pageSize={result.pageSize} total={result.total} query={catalogQuery("/admin/payments", { q, status, date })} label="payment" />
     </main>

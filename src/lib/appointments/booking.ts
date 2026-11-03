@@ -8,7 +8,7 @@ import {
 import { isPortalAdministrator, sanitizeMetadata } from "@/lib/admin/rules";
 import { createRateLimiter, type RateLimiter } from "@/lib/auth/rate-limit";
 import { bookingCatalogDecision, cleanRequiredText, parseUuid } from "@/lib/catalog/rules";
-import { snapshotAppointmentFee } from "@/lib/catalog/money";
+import { snapshotAppointmentFee, visitCharge } from "@/lib/catalog/money";
 import { canReceiveNewAppointment } from "@/lib/doctors/rules";
 import { isUniqueConflict } from "@/lib/doctors/errors";
 import { prisma } from "@/lib/db/prisma";
@@ -102,7 +102,7 @@ export async function bookScheduledSlot(
           currency: true,
           validFrom: true,
           validTo: true,
-          consultationService: { select: { isActive: true, mode: true } },
+          consultationService: { select: { isActive: true, mode: true, defaultFee: true, currency: true } },
           specialty: { select: { isActive: true } },
           doctor: {
             select: {
@@ -156,9 +156,12 @@ export async function bookScheduledSlot(
       ) {
         return { ok: false as const, code: "CATALOG_UNAVAILABLE" as const };
       }
-      const snapshot = snapshotAppointmentFee({
-        offering: { price: offering.price, priceAmountMinor: offering.priceAmountMinor, currency: offering.currency },
-        fallbackMinor: 0,
+      const snapshot = visitCharge({
+        price: offering.price,
+        priceAmountMinor: offering.priceAmountMinor,
+        currency: offering.currency,
+        defaultFee: offering.consultationService.defaultFee,
+        defaultCurrency: offering.consultationService.currency,
       });
       if (!snapshot) return { ok: false as const, code: "CATALOG_UNAVAILABLE" as const };
 

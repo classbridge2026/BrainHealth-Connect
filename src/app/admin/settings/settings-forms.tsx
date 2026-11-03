@@ -100,7 +100,7 @@ export function OrangeNumberForm({ number }: { number: string }) {
 export function AfrimoneyNumberForm({ number }: { number: string }) {
   const [state, action, pending] = useActionState(updateAfrimoneyNumberAction, initial);
   return (
-    <SettingForm action={action} title="Afrimoney" icon="payment" pending={pending} submitLabel="Save Afrimoney number" state={state} intro="This is the Africell number that receives visit payments. Patients dial *161#, choose Transfer money, then Transfer to a registered number, and enter this number. The PIN is never entered here.">
+    <SettingForm action={action} title="Afrimoney" icon="payment" pending={pending} submitLabel="Save Afrimoney number" state={state} intro="This is the Africell number that receives visit payments. Patients dial *161*1*1*this number*amount*PIN# on their own phones. The PIN is never entered here.">
       <label className="text-sm font-medium text-brand-navy">
         Receiving number
         <input name="afrimoneyNumber" required inputMode="tel" autoComplete="tel" defaultValue={number} placeholder="077 000 000" className={`${textInputClass} mt-1`} />

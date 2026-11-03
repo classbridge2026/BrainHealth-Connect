@@ -24,7 +24,7 @@ function rule() {
   };
 }
 
-function offering(status = "APPROVED") {
+function offering(status = "APPROVED", fee?: { amount: string; minor: number; defaultFee: string }) {
   return {
     id: OFFERING,
     isActive: true,
@@ -33,22 +33,22 @@ function offering(status = "APPROVED") {
     specialtyId: "specialty-1",
     mode: "ONLINE" as const,
     durationMinutes: 60,
-    price: new Prisma.Decimal("2500.00"),
-    priceAmountMinor: 250000,
+    price: new Prisma.Decimal(fee?.amount ?? "2500.00"),
+    priceAmountMinor: fee?.minor ?? 250000,
     currency: "SLL",
     validFrom: null,
     validTo: null,
-    consultationService: { isActive: true, mode: null },
+    consultationService: { isActive: true, mode: null, defaultFee: new Prisma.Decimal(fee?.defaultFee ?? "0"), currency: "SLL" },
     specialty: { isActive: true },
     doctor: { verificationStatus: status, user: { status: "ACTIVE", deletedAt: null } },
   };
 }
 
-function database(options?: { status?: string; rules?: ReturnType<typeof rule>[]; create?: () => Promise<{ id: string }> }) {
+function database(options?: { status?: string; rules?: ReturnType<typeof rule>[]; create?: () => Promise<{ id: string }>; fee?: { amount: string; minor: number; defaultFee: string } }) {
   const created: Array<Record<string, unknown>> = [];
   const tx = {
     patientProfile: { findUnique: async () => ({ id: "profile-actor", archivedAt: null, user: { status: "ACTIVE", deletedAt: null } }) },
-    doctorOffering: { findUnique: async () => offering(options?.status) },
+    doctorOffering: { findUnique: async () => offering(options?.status, options?.fee) },
     doctorProfile: {
       findUnique: async () => ({ specialties: [{ claimStatus: "VERIFIED", specialty: { isActive: true } }] }),
     },
@@ -112,6 +112,20 @@ describe("scheduled booking", () => {
       offeringId: OFFERING,
       paymentHoldExpiresAt: new Date("2026-10-19T08:10:00.000Z"),
       patientConcern: CONCERN,
+    });
+  });
+
+  it("holds payment at the administrator service price when the doctor fee is zero", async () => {
+    const store = database({ fee: { amount: "0", minor: 0, defaultFee: "100.00" } });
+    const result = await bookScheduledSlot(
+      { actorUserId: "actor-1", offeringId: OFFERING, startsAt: SLOT, concern: CONCERN, channel: "VIDEO" },
+      { db: store.db as never, now: NOW, rateLimiter: createRateLimiter({ limit: 10, windowMs: 60_000 }) },
+    );
+    expect(result.ok).toBe(true);
+    expect(store.created[0]).toMatchObject({
+      status: "PENDING_PAYMENT",
+      feeAmountMinor: 10000,
+      currency: "SLL",
     });
   });
 

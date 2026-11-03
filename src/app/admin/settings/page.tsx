@@ -70,7 +70,7 @@ export default async function SettingsPage() {
         <Snapshot label="Public contact" value={contactValue} note={contactReady ? "Shown on the homepage" : "Homepage notice is showing"} icon="location" tone={contactReady ? "#0f766e" : "#d97706"} />
         <Snapshot label="Currency" value={settings.currency} note="New catalog prices" icon="fee" tone="#0369a1" />
         <Snapshot label="Orange Money" value={orangeDial || "Not saved"} note={orangeApi ? "API connected" : "Patients dial this number"} icon="payment" tone={orangeDial ? "#0f766e" : "#d97706"} />
-        <Snapshot label="Afrimoney" value={afriDial || "Not saved"} note={afriApi ? "API connected" : "Patients use *161#"} icon="payment" tone={afriDial ? "#15803d" : "#d97706"} />
+        <Snapshot label="Afrimoney" value={afriDial || "Not saved"} note={afriApi ? "API connected" : "Patients dial *161*1*1*"} icon="payment" tone={afriDial ? "#15803d" : "#d97706"} />
         <Snapshot label="Payment hold" value={settings.holdMinutes === null ? "10 min" : `${settings.holdMinutes} min`} note={settings.holdMinutes === null ? "Default until you save" : "Unpaid bookings expire"} icon="clock" tone="#12304a" />
       </section>
       <div className="grid items-start gap-4 xl:grid-cols-2">
@@ -202,10 +202,10 @@ export default async function SettingsPage() {
                 <span className="admin-feed-meta">
                   {afriApi
                     ? "Afrimoney API is connected."
-                    : "Afrimoney API is not connected yet. Add AFRIMONEY_API_BASE, AFRIMONEY_API_KEY, and AFRIMONEY_CALLBACK_SECRET on the server when Africell issues them. Until then, patients pay the Afrimoney number above from *161#."}
+                    : "Afrimoney API is not connected yet. Add AFRIMONEY_API_BASE, AFRIMONEY_API_KEY, and AFRIMONEY_CALLBACK_SECRET on the server when Africell issues them. Until then, patients dial *161*1*1*this number*amount*PIN#."}
                 </span>
               </span>
-              <StatusChip ready={afriApi} readyLabel="Connected" offLabel="*161#" />
+              <StatusChip ready={afriApi} readyLabel="Connected" offLabel="Dial code" />
             </div>
           </li>
         </ul>

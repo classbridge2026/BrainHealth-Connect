@@ -83,7 +83,7 @@ describe("consultation eligibility", () => {
     expect(decide({ status: "RESCHEDULED" })).toEqual({ ok: false, code: "RESCHEDULED" });
     expect(decide({ status: "PENDING_PAYMENT", paymentStatuses: ["PENDING"] })).toEqual({ ok: false, code: "PAYMENT" });
     expect(decide({ status: "EXPIRED_UNPAID" })).toEqual({ ok: false, code: "PAYMENT" });
-    expect(decide({ paymentStatuses: ["REFUNDED"] })).toEqual({ ok: true, role: "patient" });
+    expect(decide({ paymentStatuses: ["REFUNDED"] })).toEqual({ ok: false, code: "PAYMENT" });
     expect(decide({}, {}, new Date("2026-10-19T09:00:00.000Z"))).toEqual({ ok: false, code: "TOO_EARLY" });
     expect(decide({}, { userId: DOCTOR, roleCodes: ["DOCTOR"] }, new Date("2026-10-19T09:00:00.000Z"))).toEqual({ ok: true, role: "doctor" });
     expect(decide({}, {}, new Date("2026-10-19T11:01:00.000Z"))).toEqual({ ok: false, code: "EXPIRED" });
@@ -105,9 +105,10 @@ describe("consultation eligibility", () => {
 
   it("issues a join decision for the assigned patient or doctor without starting the visit", () => {
     expect(decide()).toEqual({ ok: true, role: "patient" });
-    expect(decide({ paymentStatuses: [], feeAmountMinor: 5000 })).toEqual({ ok: true, role: "patient" });
+    expect(decide({ paymentStatuses: [], feeAmountMinor: 5000 })).toEqual({ ok: false, code: "PAYMENT" });
     expect(decide({ paymentStatuses: [], feeAmountMinor: 0 })).toEqual({ ok: true, role: "patient" });
-    expect(decide({ paymentStatuses: ["REQUIRES_ACTION"] }, { userId: DOCTOR, roleCodes: ["DOCTOR"] })).toEqual({ ok: true, role: "doctor" });
+    expect(decide({ paymentStatuses: ["REQUIRES_ACTION"] }, { userId: DOCTOR, roleCodes: ["DOCTOR"] })).toEqual({ ok: false, code: "PAYMENT" });
+    expect(decide({ paymentStatuses: ["PAID"] }, { userId: DOCTOR, roleCodes: ["DOCTOR"] })).toEqual({ ok: true, role: "doctor" });
     expect(decide({ status: "IN_PROGRESS" }, {}, new Date("2026-10-19T10:45:00.000Z"))).toEqual({ ok: true, role: "patient" });
     expect(decide({ status: "IN_PROGRESS" }, {}, new Date("2026-10-19T11:01:00.000Z"))).toEqual({ ok: false, code: "EXPIRED" });
     expect(appointmentStatusAfterDisconnect("CONFIRMED")).toBe("CONFIRMED");

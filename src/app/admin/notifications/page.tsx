@@ -104,6 +104,11 @@ export default async function NotificationsPage({ searchParams }: { searchParams
                         Open the appointment
                       </Link>
                     ) : null}
+                    {note.entityType === "Payment" && note.entityId && adminEntityHref("Payment", note.entityId) ? (
+                      <Link className="notice-link" href={adminEntityHref("Payment", note.entityId) ?? "/admin/payments"}>
+                        Verify the payment
+                      </Link>
+                    ) : null}
                   </div>
                   <div className="notice-side">
                     <StatusBadge tone={note.readAt ? "slate" : failed ? "red" : "teal"}>{note.readAt ? "Read" : failed ? "Failed" : "Unread"}</StatusBadge>

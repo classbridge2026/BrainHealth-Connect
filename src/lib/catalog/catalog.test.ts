@@ -5,7 +5,7 @@ import { createSpecialty, updateSpecialty } from "@/lib/doctors/specialties";
 import { updateDefaultCurrency } from "./configuration";
 import { placesFromNominatim } from "./geocode";
 import { createLocation, updateLocation } from "./locations";
-import { decimalToMinorUnits, formatMoneyAmount, parseMoney, sameMoney, snapshotAppointmentFee } from "./money";
+import { decimalToMinorUnits, formatMoneyAmount, parseMoney, sameMoney, snapshotAppointmentFee, visitCharge } from "./money";
 import { createDoctorOffering, updateDoctorOffering, updateOfferingFee } from "./offerings";
 import { activeOfferingBlocker, bookingCatalogDecision, referencedDeleteDecision } from "./rules";
 import { createConsultationService, updateServiceFee } from "./services";
@@ -93,6 +93,26 @@ describe("catalog money", () => {
     expect(snapshot?.feeAmountMinor).toBe(1550);
     expect(snapshot?.feeAmount.toFixed(2)).toBe("15.50");
     expect(snapshot?.currency).toBe("SLL");
+  });
+
+  it("uses the administrator service price when a doctor fee was left at zero", () => {
+    const charge = visitCharge({
+      price: new Prisma.Decimal("0"),
+      priceAmountMinor: 0,
+      currency: "SLL",
+      defaultFee: new Prisma.Decimal("100.00"),
+      defaultCurrency: "SLL",
+    });
+    expect(charge?.feeAmountMinor).toBe(10000);
+    expect(charge?.feeAmount.toFixed(2)).toBe("100.00");
+    const kept = visitCharge({
+      price: new Prisma.Decimal("15.50"),
+      priceAmountMinor: 1550,
+      currency: "SLL",
+      defaultFee: "100.00",
+      defaultCurrency: "SLL",
+    });
+    expect(kept?.feeAmountMinor).toBe(1550);
   });
 });
 

@@ -118,9 +118,9 @@ export function paymentStatusLabel(status: string): string {
     case "PENDING":
       return "Pending";
     case "REQUIRES_ACTION":
-      return "Needs action";
+      return "Waiting for administrator verification";
     case "PAID":
-      return "Paid";
+      return "Verified by administrator";
     case "FAILED":
       return "Failed";
     case "REFUNDED":

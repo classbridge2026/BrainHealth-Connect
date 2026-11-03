@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { faBell, faChevronLeft } from "@fortawesome/free-solid-svg-icons";
@@ -65,6 +65,7 @@ export function NotificationBell({
   watch?: NoticeAudience;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const titleId = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -76,6 +77,7 @@ export function NotificationBell({
   const [cleared, setCleared] = useState(false);
   const [live, setLive] = useState<NoticeSnapshot | null>(null);
   const unreadRef = useRef(unread);
+  const openedPayment = useRef(unread);
   const serverStamp = noticeStamp(unread, items.map((item) => item.id));
   const serverStampRef = useRef(serverStamp);
   serverStampRef.current = serverStamp;
@@ -92,6 +94,18 @@ export function NotificationBell({
     setCleared(false);
     setHidden(new Set());
   }, [shownUnread]);
+
+  useEffect(() => {
+    if (watch !== "admin") return;
+    if (shownUnread <= openedPayment.current) {
+      openedPayment.current = shownUnread;
+      return;
+    }
+    openedPayment.current = shownUnread;
+    const payment = shownItems[0];
+    if (!payment?.href?.startsWith("/admin/payments/") || pathname === payment.href) return;
+    router.push(payment.href);
+  }, [watch, shownUnread, shownItems, pathname, router]);
 
   useEffect(() => {
     const arm = () => armNoticeSound();

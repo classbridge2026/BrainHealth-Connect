@@ -1397,11 +1397,12 @@
 .appt-col-fee { width: 14%; }
 .appt-col-status { width: 16%; }
 
-.pay-col-created { width: 18%; }
-.pay-col-patient { width: 22%; }
-.pay-col-amount { width: 16%; }
-.pay-col-provider { width: 24%; }
-.pay-col-status { width: 20%; }
+.pay-col-created { width: 16%; }
+.pay-col-patient { width: 18%; }
+.pay-col-amount { width: 14%; }
+.pay-col-provider { width: 20%; }
+.pay-col-status { width: 18%; }
+.pay-col-actions { width: 14%; }
 
 .patient-col-name { width: 32%; }
 .patient-col-account { width: 16%; }

@@ -188,8 +188,8 @@ export default async function DoctorAppointmentPage({
           </div>
         ) : null}
         {!online && !visit.place ? <p className="doc-banner">Location details have not been provided yet.</p> : null}
-        {visit.status === "PENDING_PAYMENT" ? (
-          <p className="doc-banner">The patient is holding this time and still needs to pay. The visit is confirmed when the payment arrives.</p>
+        {visit.feeAmountMinor > 0 && !paid ? (
+          <p className="doc-banner">This visit stays closed until the payment is received and an administrator verifies it. A doctor cannot verify a payment.</p>
         ) : null}
         {visit.patientConcern && !pendingApproval ? (
           <div className="doc-concern">

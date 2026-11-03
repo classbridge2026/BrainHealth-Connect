@@ -73,7 +73,11 @@ export default async function AppointmentDetailPage({ params }: { params: Promis
         </p>
       </section>
       {visit.holdExpired ? <Notice>This unpaid hold has passed its expiry and still occupies the slot until it is processed.</Notice> : null}
-      {visit.status === "EXPIRED_UNPAID" ? <Notice>The slot was released because payment was not confirmed before the hold ended.</Notice> : null}
+      {visit.status === "EXPIRED_UNPAID" ? (
+        <Notice>
+          The time was released because the hold ended. If the patient already paid, open the payment and give that time back, or choose another time. The patient does not pay again.
+        </Notice>
+      ) : null}
       {visit.cancellationReason ? <Notice>Cancellation reason: {visit.cancellationReason}</Notice> : null}
       {visit.overlaps.length > 0 ? (
         <Notice>

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { PATIENT_ROLE_CODE, DOCTOR_ROLE_CODE, ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { parseUuid } from "@/lib/catalog/rules";
 import { clinicianMayDocument } from "@/lib/clinical/rules";
+import { adminVerifiedPayment } from "@/lib/payments/verifiers";
 
 /**
  * Consultation rooms are named from the appointment id only.
@@ -88,8 +89,7 @@ export function appointmentStatusAfterDisconnect(status: string): string {
 export function paymentAllowsConsultation(status: string, paymentStatuses: string[], feeAmountMinor: number): boolean {
   if (status === "PENDING_PAYMENT" || status === "EXPIRED_UNPAID") return false;
   if (!JOINABLE.has(status)) return false;
-  if (!Number.isSafeInteger(feeAmountMinor) || feeAmountMinor < 0) return false;
-  return true;
+  return adminVerifiedPayment(feeAmountMinor, paymentStatuses);
 }
 
 export function joinDecision(input: {

@@ -250,7 +250,14 @@ export async function loadPatientDetail(db: PrismaClient, id: string) {
         createdAt: true,
         archivedAt: true,
         user: { select: { id: true, email: true, phoneE164: true, status: true, profileImageUpdatedAt: true } },
-        guardianRelationships: { select: { id: true, relationshipType: true, status: true } },
+        guardianRelationships: {
+          select: {
+            id: true,
+            relationshipType: true,
+            status: true,
+            guardian: { select: { email: true, patientProfile: { select: { fullName: true } } } },
+          },
+        },
         _count: { select: { appointments: true } },
       },
     });

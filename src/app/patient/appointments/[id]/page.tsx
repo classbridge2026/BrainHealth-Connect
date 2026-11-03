@@ -19,7 +19,7 @@ import { describeVisitJoin } from "@/lib/consultations/view";
 import { readPublicContact } from "@/lib/public/landing";
 import { afrimoneyConfigured, orangeConfigured } from "@/lib/payments/mobile-money";
 import { refreshVisitPayment } from "@/lib/payments/collect";
-import { afrimoneyDialHref, afrimoneySteps, loadAfrimoneyDialNumber } from "@/lib/payments/afrimoney-transfer";
+import { afrimoneyDialHref, afrimoneyTransferCode, loadAfrimoneyDialNumber } from "@/lib/payments/afrimoney-transfer";
 import { formatOrangeDialNumber, loadOrangeDialNumber, orangeDialHref, orangeTransferCode, ussdAmount } from "@/lib/payments/orange-transfer";
 import { CancelAppointmentForm } from "./cancel-form";
 import { VisitPreparation } from "./prepare-form";
@@ -99,7 +99,9 @@ export default async function PatientAppointmentPage({
 
   const holdOpen = visit.status === "PENDING_PAYMENT" && visit.paymentHoldExpiresAt && visit.paymentHoldExpiresAt > now;
   const paid = visit.paymentStatuses.includes("PAID");
-  const canPay = !paid && visit.feeAmountMinor > 0 && (visit.status === "CONFIRMED" || visit.status === "PENDING_PAYMENT" || visit.status === "EXPIRED_UNPAID");
+  const waiting = payments.ok ? payments.payments.find((payment) => payment.status === "REQUIRES_ACTION" || payment.status === "PENDING") : undefined;
+  const alreadySubmitted = paid || Boolean(waiting);
+  const canPay = !alreadySubmitted && visit.feeAmountMinor > 0 && (visit.status === "CONFIRMED" || visit.status === "PENDING_PAYMENT" || visit.status === "EXPIRED_UNPAID");
   const walletApi = canPay && (orangeConfigured() || afrimoneyConfigured());
   const account = walletApi
     ? await prisma.user.findUnique({ where: { id: user.id }, select: { phoneE164: true } }).catch(() => null)
@@ -108,7 +110,6 @@ export default async function PatientAppointmentPage({
   const [orangeDial, afriDial] = canPay && !walletApi
     ? await Promise.all([loadOrangeDialNumber(prisma).catch(() => null), loadAfrimoneyDialNumber(prisma).catch(() => null)])
     : [null, null];
-  const waiting = payments.ok ? payments.payments.find((payment) => payment.status === "REQUIRES_ACTION" || payment.status === "PENDING") : undefined;
   const online = visit.mode === "ONLINE";
   const channelLabel = visitChannelLabel(visit.visitChannel, visit.mode);
   const preparing = visit.status === "PENDING_PAYMENT" || visit.status === "CONFIRMED" || visit.status === "CHECKED_IN" || visit.status === "IN_PROGRESS";
@@ -207,8 +208,14 @@ export default async function PatientAppointmentPage({
       ) : null}
       {visit.status === "EXPIRED_UNPAID" ? (
         <div className="visit-banner">
-          <p>This payment hold ended, so the time was released.</p>
-          <Link href="/patient/find">Find a Doctor</Link>
+          {alreadySubmitted ? (
+            <p>The original time was released because the payment was not verified in time. An administrator will give that time back if it is still free, or choose another time. You do not pay again.</p>
+          ) : (
+            <>
+              <p>This payment hold ended, so the time was released.</p>
+              <Link href="/patient/find">Find a Doctor</Link>
+            </>
+          )}
         </div>
       ) : null}
       {preparing ? (
@@ -241,8 +248,8 @@ export default async function PatientAppointmentPage({
               code={orangeDial && transferAmount ? orangeTransferCode(orangeDial, transferAmount) : null}
               dialHref={orangeDial && transferAmount ? orangeDialHref(orangeDial, transferAmount) : null}
               afriNumber={afriDial ? formatOrangeDialNumber(afriDial) : null}
-              afriSteps={afriDial && transferAmount ? afrimoneySteps(formatOrangeDialNumber(afriDial), transferAmount) : null}
-              afriHref={afrimoneyDialHref()}
+              afriCode={afriDial && transferAmount ? afrimoneyTransferCode(afriDial, transferAmount) : null}
+              afriHref={afriDial && transferAmount ? afrimoneyDialHref(afriDial, transferAmount) : null}
               waitingReference={waiting?.reference ?? null}
               waitingWallet={waiting?.providerCode === "AFRIMONEY" ? "Afrimoney" : waiting ? "Orange Money" : null}
             />

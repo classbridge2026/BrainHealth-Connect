@@ -261,5 +261,6 @@ export function safeInternalHref(role: "patient" | "doctor" | "admin", entityTyp
     return `/admin/appointments/${entityId}`;
   }
   if (role === "admin" && entityType === "DoctorProfile") return `/admin/doctors/${entityId}`;
+  if (role === "admin" && entityType === "Payment") return `/admin/payments/${entityId}`;
   return null;
 }

@@ -10,38 +10,60 @@ import { requireStoredRoles } from "@/lib/auth/require-role";
 import { loadPaymentDetail } from "@/lib/admin/directories";
 import { appointmentStatusLabel, formatPlatformWhen, paymentStatusLabel, paymentStatusTone, reconciliationLabel } from "@/lib/admin/labels";
 import { prisma } from "@/lib/db/prisma";
+import { actorMayVerifyPayment, loadVerifierIds } from "@/lib/payments/verifiers";
+import { describeReleasedVisit } from "@/lib/payments/restore-visit";
 import { OrangeReviewForm } from "./review-form";
+import { RestoreVisitForm } from "./restore-form";
 
 export const metadata: Metadata = { title: "Payment" };
 export const dynamic = "force-dynamic";
 
 export default async function PaymentDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireStoredRoles([ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE]);
+  const user = await requireStoredRoles([ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE]);
   const { id } = await params;
-  const result = await loadPaymentDetail(prisma, id);
+  const [result, verifierIds] = await Promise.all([loadPaymentDetail(prisma, id), loadVerifierIds(prisma)]);
   if (!result.ok) {
     if (result.code === "NOT_FOUND") notFound();
     return <RecordsUnavailable code={result.code} />;
   }
   const payment = result.payment;
+  const waiting = payment.status === "REQUIRES_ACTION" && (payment.providerCode === "ORANGE_MONEY" || payment.providerCode === "AFRIMONEY") && payment.providerReference;
+  const canVerify = actorMayVerifyPayment({ roleCodes: user.roleCodes, userId: user.id, verifierIds });
+  const holdClosed = payment.appointment.paymentHoldExpiresAt !== null && new Date(payment.appointment.paymentHoldExpiresAt).getTime() <= Date.now();
+  const released = payment.appointment.status === "EXPIRED_UNPAID" || (payment.appointment.status === "PENDING_PAYMENT" && holdClosed);
+  const covered = payment.status === "PAID" || payment.status === "REQUIRES_ACTION" || payment.status === "PENDING";
+  const releasedVisit = released && canVerify && covered ? await describeReleasedVisit(prisma, payment.appointment.id) : null;
   return (
     <main className="grid gap-6">
       <PageHeader eyebrow="Operations" title={payment.amount} description={`${payment.payer.email} · ${payment.providerCode}`} />
       {payment.receiptMime ? (
         <img
-          className="max-h-[32rem] w-full rounded-2xl border border-brand-line bg-white object-contain"
+          className="h-auto w-full max-w-sm rounded-2xl border border-brand-line bg-white object-contain md:max-h-64 md:max-w-[16rem]"
           src={`/admin/payments/${payment.id}/receipt`}
           alt="Screenshot of the transaction details"
         />
       ) : null}
-      {payment.status === "REQUIRES_ACTION" && (payment.providerCode === "ORANGE_MONEY" || payment.providerCode === "AFRIMONEY") && payment.providerReference ? (
-        <OrangeReviewForm paymentId={payment.id} reference={payment.providerReference} wallet={payment.providerCode === "AFRIMONEY" ? "Afrimoney" : "Orange Money"} />
+      {releasedVisit ? (
+        <RestoreVisitForm
+          paymentId={payment.id}
+          when={releasedVisit.when}
+          choice={releasedVisit.choice}
+          slots={releasedVisit.slots}
+          canReject={payment.status !== "PAID"}
+        />
+      ) : waiting && canVerify ? (
+        <OrangeReviewForm paymentId={payment.id} reference={payment.providerReference ?? ""} wallet={payment.providerCode === "AFRIMONEY" ? "Afrimoney" : "Orange Money"} />
+      ) : waiting ? (
+        <Notice>This transfer is waiting for a selected administrator to verify it. A doctor cannot verify a payment.</Notice>
       ) : (
         <Notice>Confirm a phone transfer only after the patient has submitted the SMS transaction code and the amount is on the clinic number.</Notice>
       )}
       {payment.flags.length > 0 ? (
         <Notice>
-          {payment.flags.map((flag) => reconciliationLabel(flag)).join(" ")} A late payment does not confirm an appointment whose slot was released.
+          {payment.flags.map((flag) => reconciliationLabel(flag)).join(" ")}{" "}
+          {releasedVisit
+            ? "Give the original time back if it is still free, or choose another time. The patient does not pay again."
+            : "A late payment does not confirm an appointment whose slot was released."}
         </Notice>
       ) : null}
       <section className="grid gap-4 rounded-2xl border border-brand-line bg-white p-5 sm:grid-cols-2">

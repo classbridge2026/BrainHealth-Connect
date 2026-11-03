@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { countryName } from "@/lib/catalog/countries";
-import { formatFee } from "@/lib/catalog/money";
+import { formatFee, visitCharge } from "@/lib/catalog/money";
 import { parseUuid } from "@/lib/catalog/rules";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
 import { canReceiveNewAppointment } from "@/lib/doctors/rules";
@@ -97,11 +97,12 @@ export async function loadPublicDoctor(db: PrismaClient, doctorId: string) {
             mode: true,
             durationMinutes: true,
             price: true,
+            priceAmountMinor: true,
             currency: true,
             notes: true,
             specialtyId: true,
             specialty: { select: { name: true, isActive: true } },
-            consultationService: { select: { name: true, isActive: true, description: true } },
+            consultationService: { select: { name: true, isActive: true, description: true, defaultFee: true, currency: true } },
           },
         },
       },
@@ -132,17 +133,26 @@ export async function loadPublicDoctor(db: PrismaClient, doctorId: string) {
         languages: doctor.languages,
         bookable,
         specialties: doctor.specialties.map((row) => row.specialty.name),
-        offerings: doctor.offerings.map((row) => ({
-          id: row.id,
-          specialtyId: row.specialtyId,
-          specialty: row.specialty.name,
-          service: row.consultationService.name,
-          description: row.consultationService.description,
-          mode: row.mode,
-          durationMinutes: row.durationMinutes,
-          fee: formatFee(row.price, row.currency),
-          notes: row.notes,
-        })),
+        offerings: doctor.offerings.map((row) => {
+          const charge = visitCharge({
+            price: row.price,
+            priceAmountMinor: row.priceAmountMinor,
+            currency: row.currency,
+            defaultFee: row.consultationService.defaultFee,
+            defaultCurrency: row.consultationService.currency,
+          });
+          return {
+            id: row.id,
+            specialtyId: row.specialtyId,
+            specialty: row.specialty.name,
+            service: row.consultationService.name,
+            description: row.consultationService.description,
+            mode: row.mode,
+            durationMinutes: row.durationMinutes,
+            fee: formatFee(charge?.feeAmount ?? row.price, charge?.currency ?? row.currency),
+            notes: row.notes,
+          };
+        }),
       },
     };
   } catch (error) {
@@ -176,7 +186,7 @@ export async function loadOfferingSlots(
         doctorProfileId: true,
         specialtyId: true,
         specialty: { select: { name: true, isActive: true } },
-        consultationService: { select: { name: true, isActive: true } },
+        consultationService: { select: { name: true, isActive: true, defaultFee: true, currency: true } },
         doctor: { select: { id: true, displayName: true, verificationStatus: true, user: { select: { id: true, status: true, deletedAt: true, profileImageUpdatedAt: true } } } },
       },
     });
@@ -241,6 +251,13 @@ export async function loadOfferingSlots(
       label: formatNormalClock(minutesFromClock(slot.startsAt)),
       availability: slot.availability,
     }));
+    const charge = visitCharge({
+      price: offering.price,
+      priceAmountMinor: offering.priceAmountMinor,
+      currency: offering.currency,
+      defaultFee: offering.consultationService.defaultFee,
+      defaultCurrency: offering.consultationService.currency,
+    });
     return {
       ok: true as const,
       offering: {
@@ -253,8 +270,8 @@ export async function loadOfferingSlots(
         service: offering.consultationService.name,
         mode: offering.mode,
         durationMinutes: offering.durationMinutes,
-        fee: formatFee(offering.price, offering.currency),
-        priceAmountMinor: offering.priceAmountMinor,
+        fee: formatFee(charge?.feeAmount ?? offering.price, charge?.currency ?? offering.currency),
+        priceAmountMinor: charge?.feeAmountMinor ?? offering.priceAmountMinor,
       },
       locations: locations.map((row) => ({ id: row.id, label: `${row.name}, ${row.locality}, ${row.district}` })),
       slots: schedule.filter((slot) => slot.availability === "open").map(({ startsAt, label }) => ({ startsAt, label })),
