@@ -196,7 +196,7 @@ describe("button busy spinner", () => {
       selectNodeContents() {},
       getBoundingClientRect: () =>
         ({ x: 90, y: 14, top: 14, left: 90, right: 190, bottom: 34, width: 100, height: 20, toJSON() { return {}; } }) as DOMRect,
-    }) as Range;
+    }) as unknown as Range;
     button.addEventListener("click", () => {
       void window.fetch("/save", { method: "POST" });
     });
