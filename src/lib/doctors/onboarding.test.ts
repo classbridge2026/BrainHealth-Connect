@@ -824,8 +824,10 @@ describe("doctor onboarding rules", () => {
     expect(removed).toEqual(["link-b"]);
   });
 
-  it("saves an administrator profile when a verified specialty in use stays on the profile", async () => {
+  it("lets an administrator replace a verified specialty that already has a service", async () => {
     const specialtyUpdates: Array<Record<string, unknown>> = [];
+    const removed: string[] = [];
+    const moved: Array<Record<string, unknown>> = [];
     const db = {
       doctorProfile: {
         findUnique: async () => ({
@@ -833,7 +835,7 @@ describe("doctor onboarding rules", () => {
           userId: doctorUserId,
           verificationStatus: "APPROVED",
           fullName: "Osman Tholley",
-          displayName: "Osman Tholley",
+          displayName: "Dr. Osman Tholley",
           biography: "Old biography",
           user: { id: doctorUserId, email: "osman@example.com", phoneE164: "+23276111222", status: "ACTIVE" },
           specialties: [{ id: "link-a", specialtyId, isPrimary: true, claimStatus: "VERIFIED" }],
@@ -847,10 +849,16 @@ describe("doctor onboarding rules", () => {
       platformSetting: { findUnique: async () => null },
       user: { update: async () => ({}) },
       appointment: { count: async () => 1 },
-      doctorOffering: { count: async () => 0 },
+      doctorOffering: {
+        count: async () => 1,
+        updateMany: async ({ data }: { data: Record<string, unknown> }) => {
+          moved.push(data);
+          return { count: 1 };
+        },
+      },
       doctorSpecialty: {
-        delete: async () => {
-          throw new Error("in-use specialty should stay");
+        delete: async ({ where }: { where: { id: string } }) => {
+          removed.push(where.id);
         },
         update: async ({ data }: { data: Record<string, unknown> }) => specialtyUpdates.push(data),
         create: async ({ data }: { data: Record<string, unknown> }) => specialtyUpdates.push(data),
@@ -861,7 +869,7 @@ describe("doctor onboarding rules", () => {
       doctorUserId,
       {
         fullName: "Osman Tholley",
-        displayName: "Dr Osman Tholley",
+        displayName: "Osman Tholley",
         phone: "+23276111222",
         biography: "Mental health consultations in Freetown.",
         primarySpecialtyId: otherSpecialtyId,
@@ -880,12 +888,10 @@ describe("doctor onboarding rules", () => {
       },
       { db: db as never, mode: "draft", preserveApproval: true, now: new Date("2026-10-18T00:00:00Z") },
     );
-    expect(saved).toEqual({
-      ok: true,
-      message: "Profile saved and verified. A specialty that already has appointments or services was kept.",
-    });
-    expect(specialtyUpdates.some((item) => item.profile === "Dr Osman Tholley")).toBe(true);
-    expect(specialtyUpdates).toContainEqual({ isPrimary: false });
+    expect(saved).toEqual({ ok: true, message: "Profile saved and verified." });
+    expect(specialtyUpdates.some((item) => item.profile === "Osman Tholley")).toBe(true);
+    expect(removed).toEqual(["link-a"]);
+    expect(moved).toEqual([{ specialtyId: otherSpecialtyId }]);
     expect(specialtyUpdates).toContainEqual(expect.objectContaining({ specialtyId: otherSpecialtyId, isPrimary: true, claimStatus: "VERIFIED" }));
   });
 

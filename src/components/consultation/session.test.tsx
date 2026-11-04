@@ -70,7 +70,7 @@ describe("consultation session", () => {
   });
 
   it("opens an audio booking without the camera", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/token")) return { ok: true, json: async () => ({ serverUrl: "wss://example.livekit.cloud", token: "token" }) };
       return { ok: true, json: async () => ({ calling: false }) };

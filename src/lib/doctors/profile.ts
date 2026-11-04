@@ -138,10 +138,8 @@ export async function saveDoctorProfile(
     }
   }
 
-  let keptSpecialtyInUse = false;
   try {
     await deps.db.$transaction(async (tx) => {
-      keptSpecialtyInUse = false;
       if (data.phoneE164 && data.phoneE164 !== profile.user.phoneE164) {
         await tx.user.update({ where: { id: profile.userId }, data: { phoneE164: data.phoneE164 } });
       }
@@ -204,13 +202,12 @@ export async function saveDoctorProfile(
             tx.appointment.count({ where: { doctorProfileId: profile.id, specialtyId: existing.specialtyId } }),
             tx.doctorOffering.count({ where: { doctorProfileId: profile.id, specialtyId: existing.specialtyId } }),
           ]);
-          if (appointments + offerings > 0) {
-            if (!verifyNow) throw new Error("SPECIALTY_IN_USE");
-            keptSpecialtyInUse = true;
-            if (existing.isPrimary && existing.specialtyId !== data.primarySpecialtyId) {
-              await tx.doctorSpecialty.update({ where: { id: existing.id }, data: { isPrimary: false } });
-            }
-            continue;
+          if (appointments + offerings > 0 && !verifyNow) throw new Error("SPECIALTY_IN_USE");
+          if (verifyNow && offerings > 0 && data.primarySpecialtyId && data.primarySpecialtyId !== existing.specialtyId) {
+            await tx.doctorOffering.updateMany({
+              where: { doctorProfileId: profile.id, specialtyId: existing.specialtyId },
+              data: { specialtyId: data.primarySpecialtyId },
+            });
           }
           await tx.doctorSpecialty.delete({ where: { id: existing.id } });
         }
@@ -298,12 +295,7 @@ export async function saveDoctorProfile(
   }
 
   if (verifyNow) {
-    return {
-      ok: true,
-      message: keptSpecialtyInUse
-        ? "Profile saved and verified. A specialty that already has appointments or services was kept."
-        : "Profile saved and verified.",
-    };
+    return { ok: true, message: "Profile saved and verified." };
   }
   if (deps.mode === "submit") {
     await notifyAdministratorsOfDoctorReview(deps.db, {

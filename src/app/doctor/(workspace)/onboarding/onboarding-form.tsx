@@ -78,7 +78,7 @@ export function OnboardingForm({
         ) : null}
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Full name" name="fullName" defaultValue={values.fullName} error={errors.fullName} disabled={!editable} placeholder="Aminata Kamara" />
-          <Field label="Professional display name" name="displayName" defaultValue={values.displayName} error={errors.displayName} disabled={!editable} placeholder="Dr. Aminata Kamara" hint="This is the name patients see." />
+          <Field label="Professional display name" name="displayName" defaultValue={values.displayName} error={errors.displayName} disabled={!editable} placeholder="Osman Tholley" hint="This is the name patients see. A title such as Dr. is optional." />
           <label className="text-sm font-medium">
             Professional email
             <input value={values.email} readOnly className={`${textInputClass} mt-1 bg-brand-paper`} />
