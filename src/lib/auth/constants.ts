@@ -3,6 +3,8 @@ export const PATIENT_ROLE_CODE = "PATIENT";
 export const DOCTOR_ROLE_CODE = "DOCTOR";
 export const ADMIN_ROLE_CODE = "ADMIN";
 export const SUPER_ADMIN_ROLE_CODE = "SUPER_ADMIN";
+/** Operator account. It can use the admin area and is left out of the user directory. */
+export const DEVELOPER_ROLE_CODE = "DEVELOPER";
 
 export const TERMS_DOCUMENT_VERSION = "2026-10-18";
 export const PRIVACY_DOCUMENT_VERSION = "2026-10-18";

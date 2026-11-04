@@ -22,6 +22,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "node prisma/seed.mjs",
+    "db:seed:developer": "node prisma/seed-developer.mjs",
     "db:expire-holds": "node scripts/expire-appointment-holds.mjs",
     "email:test": "node scripts/send-test-email.mjs"
   },

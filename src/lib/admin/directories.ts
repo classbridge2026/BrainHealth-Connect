@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { DEVELOPER_ROLE_CODE } from "@/lib/auth/constants";
 import { forgetRemembered, rememberFor } from "@/lib/db/remember";
 import { formatFee } from "@/lib/catalog/money";
 import { HOLD_MINUTES_SETTING_KEY } from "@/lib/appointments/payment-holds";
@@ -55,7 +56,7 @@ const userListSelect = {
 export async function loadUsers(db: PrismaClient, filters: { q?: string; status?: string; role?: string; page?: number }) {
   const page = pageOf(filters.page);
   const q = (filters.q ?? "").trim().slice(0, 80);
-  const and: Prisma.UserWhereInput[] = [{ deletedAt: null }];
+  const and: Prisma.UserWhereInput[] = [{ deletedAt: null }, { roles: { none: { role: { code: DEVELOPER_ROLE_CODE } } } }];
   if (q) {
     and.push({
       OR: [
@@ -137,7 +138,9 @@ export async function loadUserDetail(db: PrismaClient, id: string, now = new Dat
         },
       },
     });
-    if (!user || user.deletedAt) return { ok: false as const, code: "NOT_FOUND" as const };
+    if (!user || user.deletedAt || user.roles.some((entry) => entry.role.code === DEVELOPER_ROLE_CODE)) {
+      return { ok: false as const, code: "NOT_FOUND" as const };
+    }
     return {
       ok: true as const,
       user: {
@@ -682,7 +685,10 @@ export async function loadAdministrators(db: PrismaClient, page = 1) {
   const current = pageOf(page);
   const where: Prisma.UserWhereInput = {
     deletedAt: null,
-    roles: { some: { role: { code: { in: ["ADMIN", "SUPER_ADMIN"] } } } },
+    AND: [
+      { roles: { some: { role: { code: { in: ["ADMIN", "SUPER_ADMIN"] } } } } },
+      { roles: { none: { role: { code: DEVELOPER_ROLE_CODE } } } },
+    ],
   };
   try {
     const [total, rows] = await Promise.all([
