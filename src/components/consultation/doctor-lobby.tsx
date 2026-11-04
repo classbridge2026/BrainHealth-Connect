@@ -53,6 +53,7 @@ export function DoctorLobby({
   videoInput,
   waitingName,
   callNotice,
+  bookedChannel = null,
 }: {
   aside: ReactNode;
   audioInput: string;
@@ -91,6 +92,7 @@ export function DoctorLobby({
   videoInput: string;
   waitingName: string | null;
   callNotice: "declined" | "left" | null;
+  bookedChannel?: "audio" | "video" | null;
 }) {
   const [panel, setPanel] = useState(false);
   const subtitle = [specialty, service].filter(Boolean).join(" · ");
@@ -159,10 +161,14 @@ export function DoctorLobby({
                       </select>
                     </label>
                   </div>
-                  <label className="dr-check" title="The microphone is still required.">
-                    <input checked={audioOnly} type="checkbox" onChange={(event) => onAudioOnly(event.target.checked)} />
-                    Audio only
-                  </label>
+                  {bookedChannel ? (
+                    <p className="dr-quiet">{bookedChannel === "audio" ? "The patient booked this visit as audio. You join with the microphone only." : "The patient booked this visit as video. You join with camera and microphone."}</p>
+                  ) : (
+                    <label className="dr-check" title="The microphone is still required.">
+                      <input checked={audioOnly} type="checkbox" onChange={(event) => onAudioOnly(event.target.checked)} />
+                      Audio only
+                    </label>
+                  )}
                   <ul className="dr-meters" aria-label="Device check">
                     <li><span>Internet</span><strong>{meter(internet)}</strong></li>
                     <li><span>Camera</span><strong>{audioOnly ? "Off" : meter(cameraStatus)}</strong></li>

@@ -32,6 +32,7 @@ import { ConnectionQuality, ConnectionState, ParticipantEvent, RoomEvent, Track 
 import { CareCircleMark } from "@/components/brand";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { connectionQualityLabel, mediaAccessMessage } from "@/lib/consultations/messages";
+import { enableConsultationCamera } from "@/lib/consultations/video-quality";
 import { useVoice, VoiceFrame } from "./voice-frame";
 import "./patient-consult.css";
 
@@ -250,6 +251,7 @@ export function PatientLobby({
   onTest,
   arrived,
   onArrive,
+  channelLocked = false,
 }: {
   systemName: string;
   counterpart: string;
@@ -281,6 +283,7 @@ export function PatientLobby({
   onTest: () => void;
   arrived: boolean;
   onArrive: () => void;
+  channelLocked?: boolean;
 }) {
   const [devicesOpen, setDevicesOpen] = useState(false);
   const blocked = !configured || !canJoin;
@@ -336,7 +339,7 @@ export function PatientLobby({
               {checking ? <LoaderCircle size={18} aria-hidden="true" /> : <Mic size={18} aria-hidden="true" />}
               <span className="pc-label">{checking ? "Testing" : "Test devices"}</span>
             </button>
-            <button className={`pc-ctrl${audioOnly ? " is-off" : ""}`} type="button" aria-label={audioOnly ? "Audio only" : "Camera on"} aria-pressed={audioOnly} onClick={() => onAudioOnly(!audioOnly)}>
+            <button className={`pc-ctrl${audioOnly ? " is-off" : ""}`} type="button" disabled={channelLocked} aria-label={audioOnly ? "Audio only" : "Camera on"} aria-pressed={audioOnly} title={channelLocked ? (audioOnly ? "This visit was booked as audio." : "This visit was booked as video.") : undefined} onClick={() => onAudioOnly(!audioOnly)}>
               {audioOnly ? <VideoOff size={18} aria-hidden="true" /> : <Video size={18} aria-hidden="true" />}
               <span className="pc-label">{audioOnly ? "Audio only" : "Camera on"}</span>
             </button>
@@ -514,7 +517,8 @@ export function PatientLiveStage({
     if (audioOnly || controlBusy) return;
     setControlBusy("camera");
     try {
-      await localParticipant.setCameraEnabled(!isCameraEnabled);
+      if (isCameraEnabled) await localParticipant.setCameraEnabled(false);
+      else await enableConsultationCamera(localParticipant);
     } finally {
       setControlBusy(null);
     }

@@ -5,6 +5,7 @@ import { RoomAudioRenderer, RoomContext, useConnectionState } from "@livekit/com
 import "@livekit/components-styles";
 import { ConnectionError, ConnectionErrorReason, ConnectionState, DisconnectReason, Room, RoomEvent } from "livekit-client";
 import { connectionFailureMessage } from "@/lib/consultations/messages";
+import { consultationRoomOptions, enableConsultationCamera } from "@/lib/consultations/video-quality";
 import { DoctorStage } from "./doctor-stage";
 import { PatientLiveStage } from "./patient-consult";
 import "./consult.css";
@@ -141,7 +142,7 @@ export function LiveSession({
   systemName?: string;
   statusLabel?: string;
 }) {
-  const [room] = useState(() => new Room({ adaptiveStream: true, dynacast: true }));
+  const [room] = useState(() => new Room(consultationRoomOptions()));
   const [starting, setStarting] = useState(true);
   const onConnectionFailedRef = useRef(onConnectionFailed);
   const onDoctorEndedRef = useRef(onDoctorEnded);
@@ -174,7 +175,7 @@ export function LiveSession({
         }
         if (!audioOnly) {
           try {
-            await room.localParticipant.setCameraEnabled(true, videoDeviceId ? { deviceId: { exact: videoDeviceId } } : undefined);
+            await enableConsultationCamera(room.localParticipant, videoDeviceId);
           } catch {
             // Audio can continue when the camera is busy or missing.
           }

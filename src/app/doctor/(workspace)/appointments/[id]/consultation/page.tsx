@@ -139,6 +139,7 @@ export default async function DoctorConsultationPage({ params }: { params: Promi
 
   return (
     <ConsultationSession
+      accept={visit.visitChannel === "AUDIO" ? "audio" : "video"}
       appointmentId={visit.id}
       aside={workspace}
       canJoin={join.canJoin}

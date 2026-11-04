@@ -9,6 +9,7 @@ import { primeRingtone } from "./ringtone";
 type IncomingCall = {
   appointmentId: string;
   callId: string;
+  channel?: "audio" | "video";
   doctorName: string;
   doctorUserId?: string;
   doctorImageVersion?: string | null;
@@ -70,21 +71,20 @@ export function PatientCallAlert() {
     }).catch(() => undefined);
   }
 
+  const channel = call.channel === "audio" ? "audio" : "video";
+
   return (
     <IncomingCallDialog
+      channel={channel}
       doctorName={call.doctorName}
       doctorUserId={call.doctorUserId}
       doctorImageVersion={call.doctorImageVersion}
       error={null}
       joining={joining}
       when={call.when}
-      onAcceptAudio={() => {
+      onAccept={() => {
         setJoining(true);
-        router.push(`/patient/appointments/${call.appointmentId}/consultation?accept=audio`);
-      }}
-      onAcceptVideo={() => {
-        setJoining(true);
-        router.push(`/patient/appointments/${call.appointmentId}/consultation?accept=video`);
+        router.push(`/patient/appointments/${call.appointmentId}/consultation?accept=${channel}`);
       }}
       onDecline={decline}
     />

@@ -28,6 +28,7 @@ import {
 } from "@livekit/components-react";
 import { ConnectionQuality, ConnectionState, ParticipantEvent, RoomEvent, Track } from "livekit-client";
 import { mediaAccessMessage } from "@/lib/consultations/messages";
+import { enableConsultationCamera } from "@/lib/consultations/video-quality";
 import { useVoice, VoiceFrame } from "./voice-frame";
 import "./doctor-room.css";
 
@@ -196,7 +197,8 @@ export function DoctorStage({
     if (audioOnly || controlBusy) return;
     setControlBusy("camera");
     try {
-      await localParticipant.setCameraEnabled(!isCameraEnabled);
+      if (isCameraEnabled) await localParticipant.setCameraEnabled(false);
+      else await enableConsultationCamera(localParticipant);
     } finally {
       setControlBusy(null);
     }

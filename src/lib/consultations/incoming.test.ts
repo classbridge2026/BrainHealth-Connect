@@ -4,7 +4,7 @@ import { createRateLimiter } from "@/lib/auth/rate-limit";
 import type { LiveKitConfigResult } from "@/lib/livekit/config";
 import { beginDoctorCall, resetDoctorCallsForTests } from "./calling";
 import { phaseMessage } from "./messages";
-import { incomingCallFromParticipants, listIncomingCalls, readAppointmentCall } from "./incoming";
+import { callChannel, incomingCallFromParticipants, listIncomingCalls, readAppointmentCall } from "./incoming";
 
 const PATIENT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const DOCTOR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -39,6 +39,7 @@ function row() {
       user: { status: "ACTIVE", deletedAt: null },
     },
     feeAmountMinor: 5000,
+    visitChannel: "VIDEO",
     payments: [{ status: "PAID" }],
   };
 }
@@ -59,6 +60,12 @@ function database(current = row()) {
 describe("incoming consultation calls", () => {
   beforeEach(() => {
     resetDoctorCallsForTests();
+  });
+
+  it("rings an audio booking as audio and a video booking as video", () => {
+    expect(callChannel("AUDIO")).toBe("audio");
+    expect(callChannel("VIDEO")).toBe("video");
+    expect(callChannel(null)).toBe("video");
   });
 
   it("rings only when the assigned doctor is in the room", () => {
@@ -91,8 +98,23 @@ describe("incoming consultation calls", () => {
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.call).toMatchObject({ appointmentId: APPOINTMENT, callId: "PA_doctor", doctorName: "Dr. Kamara" });
+      expect(result.call).toMatchObject({ appointmentId: APPOINTMENT, callId: "PA_doctor", channel: "video", doctorName: "Dr. Kamara" });
     }
+  });
+
+  it("rings an audio booking as an audio call", async () => {
+    const result = await readAppointmentCall(
+      database({ ...row(), visitChannel: "AUDIO" }),
+      { actorUserId: PATIENT, actorStatus: "ACTIVE", roleCodes: ["PATIENT"], appointmentId: APPOINTMENT, now: NOW },
+      {
+        limiter: createRateLimiter({ limit: 5, windowMs: 60_000 }),
+        config: configured,
+        now: NOW,
+        listParticipants: async () => [{ sid: "PA_doctor", identity: `user:${DOCTOR}` }],
+      },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.call?.channel).toBe("audio");
   });
 
   it("stays quiet when the doctor has not joined, and hides the room from anyone else", async () => {

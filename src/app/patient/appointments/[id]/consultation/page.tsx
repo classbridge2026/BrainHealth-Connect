@@ -82,7 +82,7 @@ export default async function PatientConsultationPage({
 
   return (
     <ConsultationSession
-      accept={readAccept(query.accept) ?? storedAccept}
+      accept={storedAccept ?? readAccept(query.accept) ?? "video"}
       appointmentId={visit.id}
       aside={(
         <PatientVisitPanel

@@ -14,8 +14,8 @@ export function IncomingCallDialog({
   when,
   joining,
   error,
-  onAcceptVideo,
-  onAcceptAudio,
+  channel,
+  onAccept,
   onDecline,
 }: {
   doctorName: string;
@@ -24,11 +24,12 @@ export function IncomingCallDialog({
   when: string;
   joining: boolean;
   error: string | null;
-  onAcceptVideo: () => void;
-  onAcceptAudio: () => void;
+  channel: "audio" | "video";
+  onAccept: () => void;
   onDecline: () => void;
 }) {
-  const videoRef = useRef<HTMLButtonElement>(null);
+  const acceptRef = useRef<HTMLButtonElement>(null);
+  const audio = channel === "audio";
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export function IncomingCallDialog({
   }, []);
 
   useEffect(() => {
-    videoRef.current?.focus();
+    acceptRef.current?.focus();
   }, [mounted]);
 
   useEffect(() => {
@@ -69,20 +70,16 @@ export function IncomingCallDialog({
         </div>
         <h2 id="incoming-consultation-title">{doctorName} is calling</h2>
         <p className="incoming-when">{when} · Africa/Freetown</p>
-        <p className="incoming-note">Accept to enter the consultation. You can join with video or with audio only.</p>
+        <p className="incoming-note">{audio ? "This visit was booked as audio. Accept to join with your microphone." : "This visit was booked as video. Accept to join with your camera."}</p>
         {error ? <p className="incoming-error" role="alert">{error}</p> : null}
         <div className="incoming-actions">
           <button className="incoming-decline" type="button" disabled={joining} onClick={onDecline}>
             <span><PhoneOff size={22} aria-hidden="true" /></span>
             Decline
           </button>
-          <button className="incoming-audio" type="button" disabled={joining} onClick={onAcceptAudio}>
-            <span><Mic size={22} aria-hidden="true" /></span>
-            Accept audio
-          </button>
-          <button ref={videoRef} className="incoming-video" type="button" disabled={joining} onClick={onAcceptVideo}>
-            <span><Video size={22} aria-hidden="true" /></span>
-            {joining ? "Connecting…" : "Accept video"}
+          <button ref={acceptRef} className={audio ? "incoming-audio" : "incoming-video"} type="button" disabled={joining} onClick={onAccept}>
+            <span>{audio ? <Mic size={22} aria-hidden="true" /> : <Video size={22} aria-hidden="true" />}</span>
+            {joining ? "Connecting…" : audio ? "Accept audio" : "Accept video"}
           </button>
         </div>
       </section>

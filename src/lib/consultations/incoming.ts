@@ -27,6 +27,7 @@ const callSelect = {
     },
   },
   feeAmountMinor: true,
+  visitChannel: true,
   payments: { select: { status: true } },
 } satisfies Prisma.AppointmentSelect;
 
@@ -35,11 +36,16 @@ type CallRow = Prisma.AppointmentGetPayload<{ select: typeof callSelect }>;
 export type IncomingCall = {
   appointmentId: string;
   callId: string;
+  channel: "audio" | "video";
   doctorName: string;
   doctorUserId: string;
   doctorImageVersion: string | null;
   when: string;
 };
+
+export function callChannel(value: string | null | undefined): "audio" | "video" {
+  return value === "AUDIO" ? "audio" : "video";
+}
 
 export function incomingCallFromParticipants(input: {
   participants: RoomParticipant[];
@@ -92,6 +98,7 @@ async function callForRow(
       callId: marked,
       doctorName: row.doctor.displayName,
       doctorUserId: row.doctor.userId,
+      channel: callChannel(row.visitChannel),
       doctorImageVersion: row.doctor.user.profileImageUpdatedAt?.toISOString() ?? null,
       when: formatBookingWhen(row.startsAt),
     };
@@ -119,6 +126,7 @@ async function callForRow(
     callId: found.callId,
     doctorName: row.doctor.displayName,
     doctorUserId: row.doctor.userId,
+    channel: callChannel(row.visitChannel),
     doctorImageVersion: row.doctor.user.profileImageUpdatedAt?.toISOString() ?? null,
     when: formatBookingWhen(row.startsAt),
   };

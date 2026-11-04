@@ -61,6 +61,30 @@ describe("consultation session", () => {
     expect(screen.getByText(/not open yet/i)).toBeTruthy();
   });
 
+  it("keeps the doctor on the visit the patient booked", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ waiting: false, calling: false }) })));
+    render(<ConsultationSession {...shared} accept="audio" counterpart="A Patient" role="doctor" />);
+    expect(screen.getByText(/booked this visit as audio/i)).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "Audio only" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Join consultation" })).toBeTruthy();
+  });
+
+  it("opens an audio booking without the camera", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/token")) return { ok: true, json: async () => ({ serverUrl: "wss://example.livekit.cloud", token: "token" }) };
+      return { ok: true, json: async () => ({ calling: false }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ConsultationSession {...shared} accept="audio" role="patient" />);
+    await waitFor(() => {
+      const tokenCall = fetchMock.mock.calls.find((call) => String(call[0]).includes("/token"));
+      const init = tokenCall?.[1];
+      const body = init && typeof init === "object" && "body" in init ? String(init.body) : "";
+      expect(body).toContain('"audioOnly":true');
+    });
+  });
+
   it("keeps join consultation for the doctor", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ waiting: false }) })));
     render(<ConsultationSession {...shared} counterpart="A Patient" role="doctor" />);

@@ -62,7 +62,7 @@ export function ConsultationSession({
   const previewRef = useRef<HTMLVideoElement>(null);
   const previewStream = useRef<MediaStream | null>(null);
   const leaving = useRef(false);
-  const [audioOnly, setAudioOnly] = useState(false);
+  const [audioOnly, setAudioOnly] = useState(accept === "audio");
   const [checking, setChecking] = useState(false);
   const [ready, setReady] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
@@ -176,7 +176,12 @@ export function ConsultationSession({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: nextAudio ? { deviceId: { exact: nextAudio } } : true,
-        video: nextAudioOnly ? false : nextVideo ? { deviceId: { exact: nextVideo } } : true,
+        video: nextAudioOnly ? false : {
+          ...(nextVideo ? { deviceId: { exact: nextVideo } } : {}),
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 },
+        },
       });
       previewStream.current = stream;
       const found = await navigator.mediaDevices.enumerateDevices();
@@ -260,8 +265,9 @@ export function ConsultationSession({
     if (declinedCallIds().includes(incoming.callId)) return;
     if (autoCall.current === incoming.callId) return;
     autoCall.current = incoming.callId;
-    void joinRef.current(audioOnly);
-  }, [audioOnly, configured, connection, incoming, role]);
+    const booked = accept === "audio" ? true : accept === "video" ? false : audioOnly;
+    void joinRef.current(booked);
+  }, [accept, audioOnly, configured, connection, incoming, role]);
 
   useEffect(() => {
     if (role !== "patient" || !accept || started.current || !configured) return;
@@ -561,7 +567,8 @@ export function ConsultationSession({
           systemName={systemName}
           videoInput={videoInput}
           onAudioInput={(value) => { setAudioInput(value); void checkDevices(audioOnly, value, videoInput); }}
-          onAudioOnly={(value) => { setAudioOnly(value); setReady(false); setCameraStatus(value ? "Not used for audio only" : "Not tested"); }}
+          channelLocked={accept !== null}
+          onAudioOnly={(value) => { if (accept) return; setAudioOnly(value); setReady(false); setCameraStatus(value ? "Not used for audio only" : "Not tested"); }}
           onAudioOutput={setAudioOutput}
           arrived={arrived}
           onArrive={() => setArrived(true)}
@@ -595,7 +602,8 @@ export function ConsultationSession({
       message={message}
       micStatus={micStatus}
       onAudioInput={(value) => { setAudioInput(value); void checkDevices(audioOnly, value, videoInput); }}
-      onAudioOnly={(value) => { setAudioOnly(value); setReady(false); setCameraStatus(value ? "Not used for audio only" : "Not tested"); }}
+      bookedChannel={accept}
+      onAudioOnly={(value) => { if (accept) return; setAudioOnly(value); setReady(false); setCameraStatus(value ? "Not used for audio only" : "Not tested"); }}
       onAudioOutput={setAudioOutput}
       onBack={exit}
       onCallAgain={() => void callAgain()}
