@@ -68,7 +68,7 @@ async function loadOwnedProfile(db: PrismaClient, actorUserId: string) {
 export async function saveDoctorProfile(
   actorUserId: string,
   input: unknown,
-  deps: { db: PrismaClient; mode: "draft" | "submit"; now: Date; logError?: (code: string) => void },
+  deps: { db: PrismaClient; mode: "draft" | "submit"; now: Date; preserveApproval?: boolean; logError?: (code: string) => void },
 ): Promise<{ ok: true; message: string } | { ok: false; formMessage?: string; fieldErrors?: Record<string, string> }> {
   const parsed = parseDoctorProfile(input, deps.mode);
   if (!parsed.ok) {
@@ -79,14 +79,18 @@ export async function saveDoctorProfile(
   if (!profile || profile.userId !== actorUserId) {
     return { ok: false, formMessage: "Your doctor profile is not available." };
   }
-  if (deps.mode === "draft" && !profileIsEditable(profile.verificationStatus)) {
+  if (profile.verificationStatus === "SUSPENDED") {
+    return { ok: false, formMessage: "This profile cannot be edited while it is suspended." };
+  }
+  const verifyNow = deps.preserveApproval === true;
+  if (!verifyNow && deps.mode === "draft" && !profileIsEditable(profile.verificationStatus)) {
     return { ok: false, formMessage: "This profile cannot be edited while it is under review or suspended." };
   }
-  if (deps.mode === "submit" && !canSubmitProfile(profile.verificationStatus)) {
+  if (!verifyNow && deps.mode === "submit" && !canSubmitProfile(profile.verificationStatus)) {
     return { ok: false, formMessage: "This profile cannot be submitted in its current state." };
   }
   const wasApproved = profile.verificationStatus === "APPROVED";
-  if (deps.mode === "draft" && wasApproved) {
+  if (deps.mode === "draft" && wasApproved && !verifyNow) {
     return { ok: false, formMessage: "Approved profile changes are sent for verification. Submit the profile instead of saving a draft." };
   }
 
@@ -106,7 +110,7 @@ export async function saveDoctorProfile(
   }
 
   const identityRequired = await identityDocumentRequired(deps.db);
-  if (deps.mode === "submit") {
+  if (deps.mode === "submit" && !verifyNow) {
     const preview: ProfileFields = {
       fullName: data.fullName,
       displayName: data.displayName,
@@ -139,11 +143,16 @@ export async function saveDoctorProfile(
       if (data.phoneE164 && data.phoneE164 !== profile.user.phoneE164) {
         await tx.user.update({ where: { id: profile.userId }, data: { phoneE164: data.phoneE164 } });
       }
+      const fullName = data.fullName || profile.fullName;
+      const displayName =
+        data.fullName && data.fullName !== profile.fullName && (!data.displayName || data.displayName === profile.displayName)
+          ? data.fullName
+          : data.displayName || fullName || profile.displayName;
       await tx.doctorProfile.update({
         where: { id: profile.id },
         data: {
-          fullName: data.fullName || profile.fullName,
-          displayName: data.displayName || data.fullName || profile.displayName,
+          fullName,
+          displayName,
           biography: data.biography,
           yearsExperience: data.yearsExperience,
           qualificationKind: data.qualificationKind,
@@ -155,14 +164,23 @@ export async function saveDoctorProfile(
           licenseExpiresOn: data.licenseExpiresOn,
           languages: data.languages,
           consultationModes: data.consultationModes,
-          verificationStatus: profile.verificationStatus,
-          ...(deps.mode === "submit"
+          ...(verifyNow
             ? {
-                verificationStatus: "SUBMITTED" as const,
-                submittedAt: deps.now,
+                verificationStatus: "APPROVED" as const,
                 rejectionReason: null,
+                correctionNotes: null,
+                ...(wasApproved ? {} : { verifiedAt: deps.now }),
               }
-            : {}),
+            : {
+                verificationStatus: profile.verificationStatus,
+                ...(deps.mode === "submit"
+                  ? {
+                      verificationStatus: "SUBMITTED" as const,
+                      submittedAt: deps.now,
+                      rejectionReason: null,
+                    }
+                  : {}),
+              }),
         },
       });
 
@@ -197,7 +215,9 @@ export async function saveDoctorProfile(
         if (existing) {
           await tx.doctorSpecialty.update({
             where: { id: existing.id },
-            data: { isPrimary },
+            data: verifyNow
+              ? { isPrimary, claimStatus: "VERIFIED", verifiedAt: deps.now, verifiedByUserId: actorUserId }
+              : { isPrimary },
           });
         } else {
           await tx.doctorSpecialty.create({
@@ -205,14 +225,36 @@ export async function saveDoctorProfile(
               doctorProfileId: profile.id,
               specialtyId,
               isPrimary,
-              claimStatus: "DECLARED",
+              claimStatus: verifyNow ? "VERIFIED" : "DECLARED",
+              ...(verifyNow ? { verifiedAt: deps.now, verifiedByUserId: actorUserId } : {}),
             },
           });
         }
       }
       }
 
-      if (deps.mode === "submit") {
+      if (verifyNow && !wasApproved) {
+        await tx.doctorVerificationEvent.create({
+          data: {
+            doctorProfileId: profile.id,
+            actorUserId,
+            action: "profile_completed",
+            fromStatus: profile.verificationStatus,
+            toStatus: "APPROVED",
+            reason: "Verified by the administrator on their own profile.",
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorUserId,
+            action: "doctor.verification.completed",
+            entityType: "DoctorProfile",
+            entityId: profile.id,
+          },
+        });
+      }
+
+      if (deps.mode === "submit" && !verifyNow) {
         await tx.doctorVerificationEvent.create({
           data: {
             doctorProfileId: profile.id,
@@ -249,6 +291,9 @@ export async function saveDoctorProfile(
     return { ok: false, formMessage: "The profile could not be saved. Try again." };
   }
 
+  if (verifyNow) {
+    return { ok: true, message: "Profile saved and verified." };
+  }
   if (deps.mode === "submit") {
     await notifyAdministratorsOfDoctorReview(deps.db, {
       doctorProfileId: profile.id,

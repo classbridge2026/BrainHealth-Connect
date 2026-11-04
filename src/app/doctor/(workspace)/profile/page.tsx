@@ -62,7 +62,9 @@ export default async function DoctorProfilePage() {
     distinct: ["locationId"],
   });
   const verification = verificationBadge(profile.verificationStatus);
-  const editable = profileIsEditable(profile.verificationStatus);
+  const administrator = isPortalAdministrator(user.roleCodes);
+  const inPlace = administrator && profile.verificationStatus !== "SUSPENDED";
+  const editable = inPlace || profileIsEditable(profile.verificationStatus);
   const primary = profile.specialties.find((item) => item.isPrimary);
   const specialties = await prisma.specialty.findMany({
     where: { OR: [{ isActive: true }, { doctors: { some: { doctorProfileId: profile.id } } }] },
@@ -75,7 +77,11 @@ export default async function DoctorProfilePage() {
       <div className="grid gap-4">
         <section className="rounded-2xl border border-[#d7e3ee] bg-white p-5">
           <h1 className="text-2xl font-semibold text-[#0C2B45]">Profile</h1>
-          <p className="mt-1 text-sm text-[#5b6b7c]">Update your professional details and documents here. An administrator receives a message and verifies the profile before it is approved.</p>
+          <p className="mt-1 text-sm text-[#5b6b7c]">
+            {inPlace
+              ? "Update your professional details here. Saving verifies this profile immediately, with no separate review."
+              : "Update your professional details and documents here. An administrator receives a message and verifies the profile before it is approved."}
+          </p>
           <div className="mt-4">
             <ProfilePhotoEditor userId={user.id} name={profile.displayName} version={photo?.profileImageUpdatedAt?.toISOString() ?? null} />
           </div>
@@ -91,9 +97,10 @@ export default async function DoctorProfilePage() {
           <div className="mt-4">
             <OnboardingForm
               editable={editable}
-              showLicenseFields={false}
+              inPlace={inPlace}
+              showLicenseFields
               showConsultationPreferences={false}
-              resubmit={profile.verificationStatus === "APPROVED"}
+              resubmit={profile.verificationStatus === "APPROVED" && !inPlace}
               specialties={specialties.map((specialty) => ({ id: specialty.id, name: specialty.name, active: specialty.isActive }))}
               selectedAdditional={profile.specialties.filter((item) => !item.isPrimary).map((item) => item.specialtyId)}
               credentials={profile.credentials.map((credential) => ({

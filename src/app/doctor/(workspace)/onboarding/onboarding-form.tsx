@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { primaryButtonClass, secondaryButtonClass, textAreaClass, textInputClass } from "@/components/form-classes";
 import { CREDENTIAL_TYPES, QUALIFICATION_KINDS, QUALIFICATION_LABELS } from "@/lib/validation/doctor";
 import { credentialLabel } from "@/lib/doctors/rules";
@@ -20,6 +21,7 @@ export function OnboardingForm({
   resubmit = false,
   showLicenseFields = true,
   showConsultationPreferences = true,
+  inPlace = false,
 }: {
   values: {
     fullName: string;
@@ -47,8 +49,13 @@ export function OnboardingForm({
   resubmit?: boolean;
   showLicenseFields?: boolean;
   showConsultationPreferences?: boolean;
+  inPlace?: boolean;
 }) {
+  const router = useRouter();
   const [state, action, pending] = useActionState(saveProfileAction, initial);
+  useEffect(() => {
+    if (state.tone === "ok" && !pending) router.refresh();
+  }, [state.tone, state.message, pending, router]);
   const [uploadState, upload, uploadPending] = useActionState(uploadCredentialAction, initial);
   const [deleteState, remove, deletePending] = useActionState(deleteCredentialAction, initial);
   const confirmRemove = useConfirmedSubmit({
@@ -185,20 +192,28 @@ export function OnboardingForm({
         )}
         {editable ? (
           <div className="grid gap-3">
-            {resubmit ? (
+            {resubmit && !inPlace ? (
               <p className="text-sm leading-6 text-brand-muted">
                 Saving sends these details to an administrator for verification. Patients can book you again after the review is approved.
               </p>
             ) : null}
             <div className="flex flex-wrap gap-3">
-              {resubmit ? null : (
-                <button className={secondaryButtonClass} name="intent" value="draft" disabled={pending} type="submit">
-                  {pending ? "Saving…" : "Save draft"}
+              {inPlace ? (
+                <button className={primaryButtonClass} name="intent" value="draft" disabled={pending} type="submit">
+                  {pending ? "Saving…" : "Save changes"}
                 </button>
+              ) : (
+                <>
+                  {resubmit ? null : (
+                    <button className={secondaryButtonClass} name="intent" value="draft" disabled={pending} type="submit">
+                      {pending ? "Saving…" : "Save draft"}
+                    </button>
+                  )}
+                  <button className={primaryButtonClass} name="intent" value="submit" disabled={pending} type="submit">
+                    {pending ? "Saving…" : resubmit ? "Save and send for verification" : "Submit for verification"}
+                  </button>
+                </>
               )}
-              <button className={primaryButtonClass} name="intent" value="submit" disabled={pending} type="submit">
-                {pending ? "Saving…" : resubmit ? "Save and send for verification" : "Submit for verification"}
-              </button>
             </div>
           </div>
         ) : (

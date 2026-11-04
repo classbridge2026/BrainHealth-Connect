@@ -695,6 +695,62 @@ describe("doctor onboarding rules", () => {
     });
   });
 
+  it("lets an administrator update an approved profile without sending it back for review", async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const db = {
+      doctorProfile: {
+        findUnique: async () => ({
+          id: profileId,
+          userId: doctorUserId,
+          verificationStatus: "APPROVED",
+          fullName: "Osman Tholley",
+          displayName: "Osman Tholley",
+          user: { id: doctorUserId, email: "osman@example.com", phoneE164: "+23276111222", status: "ACTIVE" },
+          specialties: [{ id: "link", specialtyId, isPrimary: true, claimStatus: "VERIFIED" }],
+          credentials: [],
+        }),
+        update: async ({ data }: { data: Record<string, unknown> }) => updates.push(data),
+      },
+      specialty: { findMany: async () => [{ id: specialtyId, isActive: true }] },
+      platformSetting: { findUnique: async () => null },
+      user: { update: async () => ({}) },
+      doctorSpecialty: {
+        update: async ({ data }: { data: Record<string, unknown> }) => updates.push({ specialtyClaim: data.claimStatus }),
+      },
+      doctorVerificationEvent: { create: async () => { throw new Error("should not record a new review"); } },
+      notification: { create: async () => { throw new Error("should not notify"); } },
+      $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
+    };
+    const saved = await saveDoctorProfile(
+      doctorUserId,
+      {
+        fullName: "Osman Tholley",
+        displayName: "Dr Osman Tholley",
+        phone: "+23276111222",
+        biography: "Mental health consultations in Freetown.",
+        primarySpecialtyId: specialtyId,
+        additionalSpecialtyIds: [],
+        qualificationKind: "",
+        qualificationTitle: "",
+        qualificationInstitution: "",
+        qualificationYear: "",
+        licenseNumber: "",
+        licenseAuthority: "",
+        licenseExpiresOn: "",
+        yearsExperience: "5",
+        languages: "English",
+        consultationOnline: true,
+        consultationInPerson: false,
+      },
+      { db: db as never, mode: "draft", preserveApproval: true, now: new Date("2026-10-18T00:00:00Z") },
+    );
+    expect(saved).toEqual({ ok: true, message: "Profile saved and verified." });
+    expect(updates[0]?.verificationStatus).toBe("APPROVED");
+    expect(updates[0]?.biography).toBe("Mental health consultations in Freetown.");
+    expect(updates[0]?.displayName).toBe("Dr Osman Tholley");
+    expect(updates.some((item) => item.specialtyClaim === "VERIFIED")).toBe(true);
+  });
+
   it("does not describe a failed delivery as sent", () => {
     const message = invitationOutcomeMessage({ delivered: false, reason: "provider_failed", baseUrlMissing: false });
     expect(message.emailSent).toBe(false);
