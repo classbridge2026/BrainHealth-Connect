@@ -4,6 +4,7 @@ import { useActionState, useCallback, useEffect, useState, type ReactNode } from
 import { AdminIcon } from "@/components/admin/admin-icons";
 import { StatusBadge, verificationBadge } from "@/components/status-badge";
 import { createOfferingAction, deleteOfferingAction, updateOfferingAction, type OfferingActionState } from "./actions";
+import type { SelfDoctorOption } from "@/lib/catalog/self-doctor";
 
 const initial: OfferingActionState = {};
 
@@ -69,16 +70,22 @@ export function OfferingsBoard({
   offerings,
   doctors,
   services,
+  specialties,
+  self,
+  selfRole,
   currency,
 }: {
   offerings: OfferingRecord[];
   doctors: DoctorOption[];
   services: ServiceOption[];
+  specialties: Array<{ id: string; name: string }>;
+  self: SelfDoctorOption;
+  selfRole: string;
   currency: string;
 }) {
   const [panel, setPanel] = useState<Panel>(null);
   const close = useCallback(() => setPanel(null), []);
-  const ready = doctors.length > 0 && services.length > 0;
+  const ready = services.length > 0 && (doctors.length > 0 || !self.blocked);
 
   return (
     <section className="users-card">
@@ -174,7 +181,9 @@ export function OfferingsBoard({
           </table>
         </div>
       )}
-      {panel?.kind === "create" ? <CreateDialog doctors={doctors} services={services} currency={currency} ready={ready} onClose={close} /> : null}
+      {panel?.kind === "create" ? (
+        <CreateDialog doctors={doctors} services={services} specialties={specialties} self={self} selfRole={selfRole} currency={currency} ready={ready} onClose={close} />
+      ) : null}
       {panel?.kind === "view" ? (
         <ViewDialog offering={panel.offering} onClose={close} onEdit={(offering) => setPanel({ kind: "edit", offering })} onDelete={(offering) => setPanel({ kind: "delete", offering })} />
       ) : null}
@@ -196,26 +205,40 @@ function FormMessage({ state }: { state: OfferingActionState }) {
 function CreateDialog({
   doctors,
   services,
+  specialties,
+  self,
+  selfRole,
   currency,
   ready,
   onClose,
 }: {
   doctors: DoctorOption[];
   services: ServiceOption[];
+  specialties: Array<{ id: string; name: string }>;
+  self: SelfDoctorOption;
+  selfRole: string;
   currency: string;
   ready: boolean;
   onClose: () => void;
 }) {
+  const youId = self.profileId ?? "self";
+  const youLabel = self.fullName ? `${self.fullName} (you)` : `${selfRole} (you)`;
+  const choices: DoctorOption[] = self.blocked
+    ? doctors
+    : [{ id: youId, fullName: youLabel, specialties }, ...doctors.filter((item) => item.id !== self.profileId)];
   const [state, action, pending] = useActionState(createOfferingAction, initial);
-  const [doctorId, setDoctorId] = useState(doctors[0]?.id ?? "");
-  const doctor = doctors.find((item) => item.id === doctorId) ?? doctors[0];
-  const [specialtyId, setSpecialtyId] = useState(doctor?.specialties[0]?.id ?? "");
+  const [doctorId, setDoctorId] = useState(choices[0]?.id ?? "");
+  const doctor = choices.find((item) => item.id === doctorId) ?? choices[0];
+  const assigningYou = !self.blocked && doctorId === youId;
+  const [specialtyId, setSpecialtyId] = useState((assigningYou ? specialties[0]?.id : doctor?.specialties[0]?.id) ?? "");
   const [serviceId, setServiceId] = useState(services[0]?.id ?? "");
   const service = services.find((item) => item.id === serviceId) ?? services[0];
   const [mode, setMode] = useState<"ONLINE" | "IN_PERSON">(service?.mode ?? "ONLINE");
   const [duration, setDuration] = useState(service ? String(service.durationMinutes) : "");
   const [fee, setFee] = useState("");
   const [currencyCode, setCurrencyCode] = useState(service?.currency || currency);
+  const [fullName, setFullName] = useState(self.fullName);
+  const specialtyChoices = assigningYou ? specialties : (doctor?.specialties ?? []);
   useEffect(() => {
     if (state.tone === "ok") onClose();
   }, [state, onClose]);
@@ -224,30 +247,44 @@ function CreateDialog({
     <Modal title="Assign a service" onClose={onClose}>
       {ready ? (
         <form action={action} className="user-form">
-          <p className="user-form-note">Only an approved, active doctor with a verified specialty can receive an active offering. Suspended, rejected, and unverified doctors are not listed.</p>
+          <p className="user-form-note">
+            {assigningYou
+              ? "Patients will book this service with you. Publish weekly hours on Availability so they can choose a time."
+              : "Only an approved, active doctor with a verified specialty can receive an active offering. Suspended, rejected, and unverified doctors are not listed."}
+          </p>
+          {self.blocked ? <p className="user-form-note">{self.blocked}</p> : null}
+          {assigningYou ? <input type="hidden" name="selfAssign" value="on" /> : null}
           <div className="service-fields service-fields-2">
             <label>
               Doctor
               <select
-                name="doctorProfileId"
+                name={assigningYou ? undefined : "doctorProfileId"}
                 value={doctorId}
                 onChange={(event) => {
-                  const next = doctors.find((item) => item.id === event.target.value);
-                  setDoctorId(event.target.value);
-                  setSpecialtyId(next?.specialties[0]?.id ?? "");
+                  const nextId = event.target.value;
+                  const next = choices.find((item) => item.id === nextId);
+                  const yours = !self.blocked && nextId === youId;
+                  setDoctorId(nextId);
+                  setSpecialtyId((yours ? specialties[0]?.id : next?.specialties[0]?.id) ?? "");
                 }}
               >
-                {doctors.map((item) => (
+                {choices.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.fullName}
                   </option>
                 ))}
               </select>
             </label>
+            {assigningYou && !self.fullName ? (
+              <label>
+                Name patients will see
+                <input name="fullName" required value={fullName} onChange={(event) => setFullName(event.target.value)} autoComplete="name" />
+              </label>
+            ) : null}
             <label>
               Specialty
               <select name="specialtyId" value={specialtyId} onChange={(event) => setSpecialtyId(event.target.value)}>
-                {(doctor?.specialties ?? []).map((item) => (
+                {specialtyChoices.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
@@ -332,7 +369,7 @@ function CreateDialog({
         </form>
       ) : (
         <div className="user-form">
-          <p className="user-form-note">An offering can be added when there is an active service and an approved, active doctor with a verified specialty.</p>
+          <p className="user-form-note">An offering can be added when there is an active service. An approved doctor can receive it, and you can assign it to your own account.</p>
           <div className="user-form-actions">
             <button type="button" className="users-cancel" onClick={onClose}>
               Close

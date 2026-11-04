@@ -48,7 +48,7 @@ const readDoctorProfileChrome = unstable_cache(
     };
   },
   ["doctor-chrome"],
-  { revalidate: 30 },
+  { revalidate: 30, tags: ["doctor-chrome"] },
 );
 
 const loadDoctorAccount = cache(async () => {

@@ -6,6 +6,7 @@ import { RecordsUnavailable } from "@/components/records-unavailable";
 import { ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { loadOfferingWorkspace, readPage, readParam } from "@/lib/catalog/queries";
+import { loadSelfDoctorOption } from "@/lib/catalog/self-doctor";
 import { prisma } from "@/lib/db/prisma";
 import { formatWhen } from "@/lib/doctors/invitation-email";
 import { OfferingsBoard, type OfferingRecord } from "./offering-forms";
@@ -18,7 +19,7 @@ export default async function OfferingsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireStoredRoles([ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE]);
+  const user = await requireStoredRoles([ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE]);
   const params = await searchParams;
   const q = readParam(params.q);
   const doctorId = readParam(params.doctorId);
@@ -27,7 +28,10 @@ export default async function OfferingsPage({
   const status = readParam(params.status);
   const mode = readParam(params.mode);
   const page = readPage(params.page);
-  const result = await loadOfferingWorkspace(prisma, { q, doctorId, specialtyId, serviceId, status, mode, page });
+  const [result, self] = await Promise.all([
+    loadOfferingWorkspace(prisma, { q, doctorId, specialtyId, serviceId, status, mode, page }),
+    loadSelfDoctorOption(prisma, user.id),
+  ]);
   if (!result.ok) return <RecordsUnavailable code={result.code} />;
   const query = catalogQuery("/admin/offerings", { q, doctorId, specialtyId, serviceId, status, mode });
   const offerings: OfferingRecord[] = result.rows.map((offering) => ({
@@ -52,7 +56,15 @@ export default async function OfferingsPage({
           ] },
         ]}
       />
-      <OfferingsBoard offerings={offerings} doctors={result.eligibleDoctors} services={result.services} currency={result.currency} />
+      <OfferingsBoard
+        offerings={offerings}
+        doctors={result.eligibleDoctors}
+        services={result.services}
+        specialties={result.specialties}
+        self={self}
+        selfRole={user.roleCodes.includes(SUPER_ADMIN_ROLE_CODE) ? "Super administrator" : "Administrator"}
+        currency={result.currency}
+      />
       <CatalogPager page={result.page} pageSize={result.pageSize} total={result.total} query={query} label="offering" />
     </main>
   );
