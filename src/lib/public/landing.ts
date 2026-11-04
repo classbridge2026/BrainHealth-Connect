@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { listBookableSpecialties } from "@/lib/appointments/queries";
+import { notDeveloper } from "@/lib/auth/visibility";
 import { rememberFor } from "@/lib/db/remember";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
 
@@ -12,7 +13,7 @@ const CONTACT_KEYS = [PUBLIC_CONTACT_EMAIL_KEY, PUBLIC_CONTACT_PHONE_KEY, PUBLIC
 
 const approvedDoctor = {
   verificationStatus: "APPROVED" as const,
-  user: { status: "ACTIVE" as const, deletedAt: null },
+  user: { status: "ACTIVE" as const, deletedAt: null, ...notDeveloper },
 };
 
 export type PublicContact = {

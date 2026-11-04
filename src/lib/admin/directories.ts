@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { DEVELOPER_ROLE_CODE } from "@/lib/auth/constants";
+import { notDeveloper } from "@/lib/auth/visibility";
 import { forgetRemembered, rememberFor } from "@/lib/db/remember";
 import { formatFee } from "@/lib/catalog/money";
 import { HOLD_MINUTES_SETTING_KEY } from "@/lib/appointments/payment-holds";
@@ -56,7 +57,7 @@ const userListSelect = {
 export async function loadUsers(db: PrismaClient, filters: { q?: string; status?: string; role?: string; page?: number }) {
   const page = pageOf(filters.page);
   const q = (filters.q ?? "").trim().slice(0, 80);
-  const and: Prisma.UserWhereInput[] = [{ deletedAt: null }, { roles: { none: { role: { code: DEVELOPER_ROLE_CODE } } } }];
+  const and: Prisma.UserWhereInput[] = [{ deletedAt: null }, notDeveloper];
   if (q) {
     and.push({
       OR: [
@@ -687,7 +688,7 @@ export async function loadAdministrators(db: PrismaClient, page = 1) {
     deletedAt: null,
     AND: [
       { roles: { some: { role: { code: { in: ["ADMIN", "SUPER_ADMIN"] } } } } },
-      { roles: { none: { role: { code: DEVELOPER_ROLE_CODE } } } },
+      notDeveloper,
     ],
   };
   try {

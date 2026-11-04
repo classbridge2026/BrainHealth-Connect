@@ -1,4 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
+import { DEVELOPER_ROLE_CODE } from "@/lib/auth/constants";
+import { notDeveloper } from "@/lib/auth/visibility";
 import { countryName } from "@/lib/catalog/countries";
 import { formatFee, visitCharge } from "@/lib/catalog/money";
 import { parseUuid } from "@/lib/catalog/rules";
@@ -28,7 +30,7 @@ export async function listBookableSpecialties(db: PrismaClient) {
           some: {
             isActive: true,
             consultationService: { isActive: true },
-            doctor: { verificationStatus: "APPROVED", user: { status: "ACTIVE", deletedAt: null } },
+            doctor: { verificationStatus: "APPROVED", user: { status: "ACTIVE", deletedAt: null, ...notDeveloper } },
           },
         },
         doctors: { some: { claimStatus: "VERIFIED", specialty: { isActive: true } } },
@@ -48,7 +50,7 @@ export async function listBookableDoctors(db: PrismaClient, specialtyId: string)
     const rows = await db.doctorProfile.findMany({
       where: {
         verificationStatus: "APPROVED",
-        user: { status: "ACTIVE", deletedAt: null },
+        user: { status: "ACTIVE", deletedAt: null, ...notDeveloper },
         specialties: { some: { specialtyId, claimStatus: "VERIFIED", specialty: { isActive: true } } },
         offerings: { some: { specialtyId, isActive: true, consultationService: { isActive: true } } },
       },
@@ -85,7 +87,7 @@ export async function loadPublicDoctor(db: PrismaClient, doctorId: string) {
         qualificationYear: true,
         languages: true,
         verificationStatus: true,
-        user: { select: { id: true, status: true, deletedAt: true, profileImageUpdatedAt: true } },
+        user: { select: { id: true, status: true, deletedAt: true, profileImageUpdatedAt: true, roles: { select: { role: { select: { code: true } } } } } },
         specialties: {
           where: { claimStatus: "VERIFIED", specialty: { isActive: true } },
           select: { specialty: { select: { id: true, name: true, isActive: true } }, claimStatus: true },
@@ -108,7 +110,7 @@ export async function loadPublicDoctor(db: PrismaClient, doctorId: string) {
         },
       },
     });
-    if (!doctor) return { ok: false as const, code: "NOT_FOUND" as const };
+    if (!doctor || doctor.user.roles.some((entry) => entry.role.code === DEVELOPER_ROLE_CODE)) return { ok: false as const, code: "NOT_FOUND" as const };
     const bookable = doctor.specialties.some((row) =>
       canReceiveNewAppointment({
         verificationStatus: doctor.verificationStatus,

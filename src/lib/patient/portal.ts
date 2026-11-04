@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { formatPlatformDay, formatPlatformWhen, formatMinorMoney } from "@/lib/admin/labels";
+import { notDeveloper } from "@/lib/auth/visibility";
 import { decimalToMinorUnits } from "@/lib/catalog/money";
 import { addDays, formatBookingWhen } from "@/lib/appointments/time";
 import { classifyFollowUp, platformDay, type FollowUpView } from "@/lib/doctor/present";
@@ -155,7 +156,7 @@ export async function searchVerifiedDoctors(
   const where: Prisma.DoctorProfileWhereInput = {
     AND: [
           { verificationStatus: "APPROVED" },
-          { user: { status: "ACTIVE", deletedAt: null } },
+          { user: { status: "ACTIVE", deletedAt: null, ...notDeveloper } },
           {
             specialties: {
               some: {
@@ -236,13 +237,13 @@ export async function listBookingFilters(db: PrismaClient) {
       db.specialty.findMany({
         where: {
           isActive: true,
-          doctors: { some: { claimStatus: "VERIFIED", doctor: { verificationStatus: "APPROVED", user: { status: "ACTIVE", deletedAt: null } } } },
+          doctors: { some: { claimStatus: "VERIFIED", doctor: { verificationStatus: "APPROVED", user: { status: "ACTIVE", deletedAt: null, ...notDeveloper } } } },
         },
         select: { name: true },
         orderBy: { name: "asc" },
       }),
       db.doctorProfile.findMany({
-        where: { verificationStatus: "APPROVED", user: { status: "ACTIVE", deletedAt: null } },
+        where: { verificationStatus: "APPROVED", user: { status: "ACTIVE", deletedAt: null, ...notDeveloper } },
         select: { languages: true },
       }),
     ]);
