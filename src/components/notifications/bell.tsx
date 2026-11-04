@@ -76,7 +76,6 @@ export function NotificationBell({
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set());
   const [cleared, setCleared] = useState(false);
   const [live, setLive] = useState<NoticeSnapshot | null>(null);
-  const unreadRef = useRef(unread);
   const openedPayment = useRef(unread);
   const routerRef = useRef(router);
   routerRef.current = router;
@@ -86,16 +85,12 @@ export function NotificationBell({
   const shown = live && live.stamp !== serverStamp ? live : null;
   const shownUnread = shown?.unread ?? unread;
   const shownItems = shown?.items ?? items;
-
-  useEffect(() => {
-    if (unreadRef.current === shownUnread) return;
-    const increased = shownUnread > unreadRef.current;
-    unreadRef.current = shownUnread;
-    if (!increased) return;
-    playNoticeSound();
-    setCleared(false);
-    setHidden(new Set());
-  }, [shownUnread]);
+  const [revealedUnread, setRevealedUnread] = useState(unread);
+  if (shownUnread > revealedUnread) {
+    setRevealedUnread(shownUnread);
+    if (cleared) setCleared(false);
+    if (hidden.size > 0) setHidden(new Set());
+  }
 
   useEffect(() => {
     if (watch !== "admin") return;
@@ -136,7 +131,6 @@ export function NotificationBell({
           return;
         }
         setLive(pulse);
-        routerRef.current.refresh();
       } catch {
         // The next check tries again.
       }
@@ -166,6 +160,18 @@ export function NotificationBell({
   const visible = cleared ? [] : shownItems.filter((item) => !item.read && !hidden.has(item.id));
   const pending = shownItems.filter((item) => !item.read && hidden.has(item.id)).length;
   const badge = cleared ? 0 : Math.max(0, shownUnread - pending);
+  const heard = useRef(badge);
+
+  useEffect(() => {
+    if (badge <= heard.current) {
+      heard.current = badge;
+      return;
+    }
+    if (visible.length === 0) return;
+    heard.current = badge;
+    void playNoticeSound();
+    routerRef.current.refresh();
+  }, [badge, visible.length]);
 
   useEffect(() => setMounted(true), []);
 
