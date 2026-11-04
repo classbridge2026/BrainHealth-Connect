@@ -5,6 +5,7 @@ import { addDays, formatBookingWhen } from "@/lib/appointments/time";
 import { classifyFollowUp, platformDay, type FollowUpView } from "@/lib/doctor/present";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
 import { parseUuid } from "@/lib/catalog/rules";
+import { forgetNoticeSummary } from "@/lib/notifications/delivery";
 import { authorizedGuardianPatientIds } from "@/lib/clinical/guardian-access";
 import { recordDenial } from "@/lib/clinical/records";
 import { summaryReadDecision } from "@/lib/clinical/rules";
@@ -580,6 +581,7 @@ export async function markOwnNotificationRead(db: PrismaClient, input: { userId:
       where: { id: note.id },
       data: { readAt: new Date(), status: note.status === "FAILED" ? "FAILED" : "READ" },
     });
+    forgetNoticeSummary(input.userId);
     return { ok: true as const, message: "The notification is marked as read." };
   } catch {
     return { ok: false as const, message: "The notification could not be updated." };
@@ -596,6 +598,7 @@ export async function markAllOwnNotificationsRead(db: PrismaClient, userId: stri
       where: { recipientId: userId, channel: "IN_APP", readAt: null, status: "FAILED" },
       data: { readAt: new Date() },
     });
+    forgetNoticeSummary(userId);
     return { ok: true as const, message: "Unread notifications are marked as read." };
   } catch {
     return { ok: false as const, message: "Notifications could not be updated." };
@@ -608,6 +611,7 @@ export async function clearOwnInAppNotifications(db: PrismaClient, userId: strin
       where: { recipientId: userId, channel: "IN_APP", status: { not: "CANCELLED" } },
       data: { readAt: new Date(), status: "CANCELLED" },
     });
+    forgetNoticeSummary(userId);
     return {
       ok: true as const,
       message: cleared.count === 0 ? "There are no notifications to clear." : "Notifications are cleared.",

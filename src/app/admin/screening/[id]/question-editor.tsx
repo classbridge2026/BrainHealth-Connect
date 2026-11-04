@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { dangerButtonClass, primaryButtonClass, secondaryButtonClass, textAreaClass, textInputClass } from "@/components/form-classes";
+import { confirmAction, showOutcome } from "@/lib/ui/sweet-alert";
 import { importQuestionFile, type EditorBand, type EditorQuestion, type EditorState } from "@/lib/screening/questions";
 import { saveScreeningQuestionsAction } from "../actions";
 
@@ -37,6 +38,7 @@ export function QuestionEditor({ toolId, initial }: { toolId: string; initial: E
       const result = await saveScreeningQuestionsAction({ toolId, clear, questions, bands });
       if (!result.ok) {
         setError(result.message);
+        void showOutcome({ text: result.message, tone: "error" });
         return;
       }
       if (clear) {
@@ -48,7 +50,9 @@ export function QuestionEditor({ toolId, initial }: { toolId: string; initial: E
         : result.mode === "uploaded"
           ? "The uploaded scoring bands were stored."
           : "The questions were removed.";
-      setMessage(`Saved version ${result.version}. ${scoring} Patients still cannot start until clinical approval and the safety requirements are recorded.`);
+      const saved = `Saved version ${result.version}. ${scoring} Patients still cannot start until clinical approval and the safety requirements are recorded.`;
+      setMessage(saved);
+      void showOutcome({ title: "Questions saved", text: saved, tone: "ok" });
       router.refresh();
     });
   }
@@ -58,7 +62,9 @@ export function QuestionEditor({ toolId, initial }: { toolId: string; initial: E
     setMessage("");
     if (!file) return;
     if (file.size > 200_000) {
-      setError("The question file must be 200 KB or smaller.");
+      const text = "The question file must be 200 KB or smaller.";
+      setError(text);
+      void showOutcome({ text, tone: "error" });
       return;
     }
     const reader = new FileReader();
@@ -68,6 +74,7 @@ export function QuestionEditor({ toolId, initial }: { toolId: string; initial: E
         const imported = importQuestionFile(parsed);
         if (!imported.ok) {
           setError(imported.message);
+          void showOutcome({ text: imported.message, tone: "error" });
           return;
         }
         setQuestions(imported.state.questions);
@@ -76,7 +83,9 @@ export function QuestionEditor({ toolId, initial }: { toolId: string; initial: E
           ? "The file is ready. No scoring bands were found, so saving will total the answer values. Review the questions, then save."
           : "The file is ready. Review the questions and scoring bands, then save.");
       } catch {
-        setError("The file is not valid JSON.");
+        const text = "The file is not valid JSON.";
+        setError(text);
+        void showOutcome({ text, tone: "error" });
       }
     };
     reader.readAsText(file);
@@ -256,7 +265,14 @@ export function QuestionEditor({ toolId, initial }: { toolId: string; initial: E
           type="button"
           disabled={pending}
           onClick={() => {
-            if (window.confirm("Remove every stored question from this instrument?")) save(true);
+            void confirmAction({
+              title: "Remove every question?",
+              text: "This clears the stored questions for this instrument.",
+              confirmText: "Remove questions",
+              danger: true,
+            }).then((ok) => {
+              if (ok) save(true);
+            });
           }}
         >
           Remove all questions

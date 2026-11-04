@@ -6,6 +6,7 @@ import { ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { getSystemName } from "@/lib/brand/system-name";
+import { rememberFor } from "@/lib/db/remember";
 import { isRecordsOffline } from "@/lib/db/offline";
 import { prisma } from "@/lib/db/prisma";
 import { loadInAppNoticeSummary } from "@/lib/notifications/delivery";
@@ -31,16 +32,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const user = await requireStoredRoles([ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE]);
   let account: Awaited<ReturnType<typeof loadAdminAccount>>;
   let notices: Awaited<ReturnType<typeof loadInAppNoticeSummary>>;
+  let systemName: string;
   try {
-    [account, notices] = await Promise.all([
-      readAdminAccount(user.id),
+    [account, notices, systemName] = await Promise.all([
+      rememberFor(`admin-account:${user.id}`, 60_000, () => readAdminAccount(user.id)),
       loadInAppNoticeSummary(prisma, user.id, "admin"),
+      getSystemName(),
     ]);
   } catch (error) {
     if (isRecordsOffline(error)) await redirectOffline();
     throw error;
   }
-  const systemName = await getSystemName();
   const { email, imageVersion } = account;
   const unreadNotifications = notices.unread;
   return (

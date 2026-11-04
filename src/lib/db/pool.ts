@@ -13,8 +13,9 @@ export function withPoolSettings(raw: string, nodeEnv: string | undefined = proc
   }
   if (!params.has("pool_timeout")) params.set("pool_timeout", nodeEnv === "production" ? "10" : "20");
   if (!params.has("connect_timeout")) params.set("connect_timeout", nodeEnv === "production" ? "10" : "30");
-  // Neon closes idle connections. Drop them before the next read waits on a dead one.
-  if (!params.has("max_idle_connection_lifetime")) params.set("max_idle_connection_lifetime", "20");
+  // Keep a live connection for a minute. A short idle limit was reconnecting on every pause,
+  // and each new connection to Neon costs a few seconds.
+  if (!params.has("max_idle_connection_lifetime")) params.set("max_idle_connection_lifetime", "90");
   const query = params.toString();
   return query ? `${base}?${query}` : base;
 }

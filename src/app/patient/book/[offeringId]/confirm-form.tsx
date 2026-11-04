@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
+import { useOutcomeAlert } from "@/lib/ui/sweet-alert";
 import { bookSlotAction, type BookState } from "../actions";
 import "../book.css";
 
@@ -20,6 +21,7 @@ export function ConfirmBookingForm({
   payable: boolean;
 }) {
   const [state, action, pending] = useActionState(bookSlotAction, initial);
+  useOutcomeAlert(state.message, pending, "error");
   const concernRef = useRef<HTMLLabelElement>(null);
 
   useEffect(() => {

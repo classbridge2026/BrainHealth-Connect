@@ -35,5 +35,17 @@ export async function loadSystemName(db: Pick<PrismaClient, "platformSetting">):
 
 const readCachedSystemName = unstable_cache(() => loadSystemName(prisma), ["system-name"], { revalidate: 300, tags: ["system-name"] });
 
+let heldName: { until: number; name: string } | null = null;
+
+/** Drops the in-memory name so the next page reads the saved one. */
+export function forgetHeldSystemName() {
+  heldName = null;
+}
+
 /** Current name for pages and titles. Cached for a few minutes; saving the name clears it. */
-export const getSystemName = cache(() => readCachedSystemName());
+export const getSystemName = cache(async () => {
+  if (process.env.NODE_ENV !== "test" && heldName && heldName.until > Date.now()) return heldName.name;
+  const name = await readCachedSystemName();
+  if (process.env.NODE_ENV !== "test") heldName = { until: Date.now() + 300_000, name };
+  return name;
+});

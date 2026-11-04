@@ -291,10 +291,9 @@ export function RegisterForm({ systemName }: { systemName: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-teal text-base font-semibold text-white transition-colors hover:bg-brand-teal-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-teal disabled:cursor-wait disabled:opacity-70"
+        className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-brand-teal text-base font-semibold text-white transition-colors hover:bg-brand-teal-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-teal disabled:cursor-wait disabled:opacity-70"
       >
-        {pending ? <Spinner /> : null}
-        {pending ? "Creating account…" : "Create Account"}
+        Create Account
       </button>
 
       <p className="flex items-start gap-2.5 text-sm leading-5 text-brand-muted">
@@ -569,15 +568,6 @@ function Chevron() {
   return (
     <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
       <path d="M5 7.5 10 12.5 15 7.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function Spinner() {
-  return (
-    <svg className="h-4 w-4 animate-spin motion-reduce:animate-none" viewBox="0 0 24 24" aria-hidden="true">
-      <circle className="opacity-30" cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="3" />
-      <path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
     </svg>
   );
 }

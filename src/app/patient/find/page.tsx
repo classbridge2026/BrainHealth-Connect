@@ -5,7 +5,7 @@ import { BadgeCheck, Building2, Video } from "lucide-react";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { RecordsUnavailable } from "@/components/records-unavailable";
 import { prisma } from "@/lib/db/prisma";
-import { listBookingFilters, searchVerifiedDoctors } from "@/lib/patient/portal";
+import { searchVerifiedDoctors } from "@/lib/patient/portal";
 import { DoctorSearch } from "./search-box";
 import "./find.css";
 
@@ -14,9 +14,9 @@ export const dynamic = "force-dynamic";
 
 const readOpenDirectory = unstable_cache(
   async () => {
-    const [result, filters] = await Promise.all([searchVerifiedDoctors(prisma, {}), listBookingFilters(prisma)]);
+    const result = await searchVerifiedDoctors(prisma, {});
     if (!result.ok) throw new Error(result.code);
-    return { result, filters };
+    return result;
   },
   ["patient-find-open"],
   { revalidate: 60 },
@@ -39,58 +39,18 @@ type DoctorCard = {
 export default async function FindDoctorPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q : "";
-  const specialty = typeof params.specialty === "string" ? params.specialty : "";
-  const language = typeof params.language === "string" ? params.language : "";
-  const visit = typeof params.visit === "string" ? params.visit : "";
-  const openSearch = !q && !specialty && !language && !visit;
-  const loaded = openSearch
-    ? await readOpenDirectory().catch(async () => {
-        const [found, choices] = await Promise.all([searchVerifiedDoctors(prisma, {}), listBookingFilters(prisma)]);
-        return { result: found, filters: choices };
-      })
-    : await Promise.all([
-        searchVerifiedDoctors(prisma, { q, specialty, language, visit }),
-        listBookingFilters(prisma),
-      ]).then(([found, choices]) => ({ result: found, filters: choices }));
-  const { result, filters } = loaded;
+  const result = q
+    ? await searchVerifiedDoctors(prisma, { q })
+    : await readOpenDirectory().catch(() => searchVerifiedDoctors(prisma, {}));
   if (!result.ok) return <RecordsUnavailable code={result.code === "NOT_FOUND" ? "NOT_FOUND" : result.code} />;
-  const options = filters.ok ? filters : { specialties: [], languages: [] };
   const count = result.doctors.length;
 
   return (
     <div className="find-page">
       <header className="find-head">
         <h1>Find a Doctor</h1>
-        <p>Search by concern, specialty, or doctor. Profiles show qualifications, fees, and languages. Visits are self-pay.</p>
       </header>
       <DoctorSearch initialQuery={q} />
-      <form className="find-filters" action="/patient/find">
-        {q ? <input type="hidden" name="q" value={q} /> : null}
-        <label>
-          Specialty
-          <select name="specialty" defaultValue={specialty}>
-            <option value="">Any specialty</option>
-            {options.specialties.map((name) => <option key={name} value={name}>{name}</option>)}
-          </select>
-        </label>
-        <label>
-          Language
-          <select name="language" defaultValue={language}>
-            <option value="">Any language</option>
-            {options.languages.map((name) => <option key={name} value={name}>{name}</option>)}
-          </select>
-        </label>
-        <label>
-          Visit
-          <select name="visit" defaultValue={visit}>
-            <option value="">Any visit</option>
-            <option value="video">Video</option>
-            <option value="audio">Audio</option>
-            <option value="in-person">In person</option>
-          </select>
-        </label>
-        <button type="submit">Apply</button>
-      </form>
       <p className="find-count">
         {count} verified doctor{count === 1 ? "" : "s"}
         {q.trim() ? ` matching “${q.trim()}”` : ""}

@@ -3,12 +3,14 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { primaryButtonClass, textAreaClass, textInputClass } from "@/components/form-classes";
 import { submitSupportRequestAction, type SupportFormState } from "@/app/support/actions";
+import { useOutcomeAlert } from "@/lib/ui/sweet-alert";
 import { SUPPORT_CATEGORIES } from "@/lib/support/request";
 
 const initial: SupportFormState = {};
 
 export function SupportRequestForm({ onSubmitted }: { onSubmitted?: (message: string) => void }) {
   const [state, action, pending] = useActionState(submitSupportRequestAction, initial);
+  useOutcomeAlert(state.message, pending, state.tone === "ok" ? "ok" : "error");
   const [email, setEmail] = useState("");
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");

@@ -10,9 +10,9 @@ describe("database pool settings", () => {
     expect(params.get("connection_limit")).toBe("15");
     expect(params.get("pool_timeout")).toBe("20");
     expect(params.get("connect_timeout")).toBe("30");
-    expect(params.get("max_idle_connection_lifetime")).toBe("20");
+    expect(params.get("max_idle_connection_lifetime")).toBe("90");
     expect(params.get("pgbouncer")).toBe("true");
-    expect(poolTag(url)).toBe("15/20/30/20");
+    expect(poolTag(url)).toBe("15/20/30/90");
   });
 
   it("keeps an explicit connection limit from the environment", () => {

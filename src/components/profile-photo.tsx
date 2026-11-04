@@ -167,7 +167,6 @@ export function ProfilePhotoEditor({ userId, name, version }: { userId: string; 
         <form
           action={save}
           className="grid gap-2"
-          encType="multipart/form-data"
           onSubmit={(event) => {
             const chosen = inputRef.current?.files?.[0];
             if (!chosen || !fitsUpload(chosen)) event.preventDefault();

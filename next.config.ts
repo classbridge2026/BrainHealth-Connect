@@ -3,6 +3,7 @@ import { portalNoStoreHeaders, securityHeaders } from "./src/lib/security/header
 
 const nextConfig: NextConfig = {
   images: {
+    qualities: [55, 60, 75],
     minimumCacheTTL: 60 * 60 * 24,
     localPatterns: [
       { pathname: "/hero-consultation.jpg" },

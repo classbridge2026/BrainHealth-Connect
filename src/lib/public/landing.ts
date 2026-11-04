@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { listBookableSpecialties } from "@/lib/appointments/queries";
+import { rememberFor } from "@/lib/db/remember";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
 
 /** Platform-setting keys an administrator can publish for the public contact section. */
@@ -476,5 +477,6 @@ async function readPublicLanding(db: PrismaClient, now: Date): Promise<PublicLan
 }
 
 export async function loadPublicLanding(db: PrismaClient, now = new Date()): Promise<PublicLanding> {
-  return readPublicLanding(db, now);
+  if (process.env.NODE_ENV === "test") return readPublicLanding(db, now);
+  return rememberFor(`public-landing:${Math.floor(now.getTime() / 60_000)}`, 60_000, () => readPublicLanding(db, now), (page) => page.ok);
 }

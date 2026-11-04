@@ -183,6 +183,33 @@ describe("button busy spinner", () => {
     expect(button.hasAttribute("data-loading")).toBe(false);
   });
 
+  it("places the spinner beside the label without moving the label", async () => {
+    window.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+    uninstall = installButtonBusy(document, fast);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "Save offering";
+    button.getBoundingClientRect = () =>
+      ({ x: 0, y: 0, top: 0, left: 0, right: 280, bottom: 48, width: 280, height: 48, toJSON() { return {}; } }) as DOMRect;
+    const originalRange = document.createRange.bind(document);
+    document.createRange = () => ({
+      selectNodeContents() {},
+      getBoundingClientRect: () =>
+        ({ x: 90, y: 14, top: 14, left: 90, right: 190, bottom: 34, width: 100, height: 20, toJSON() { return {}; } }) as DOMRect,
+    }) as Range;
+    button.addEventListener("click", () => {
+      void window.fetch("/save", { method: "POST" });
+    });
+    document.body.append(button);
+
+    button.click();
+    await delay(40);
+
+    document.createRange = originalRange;
+    expect(button.textContent).toBe("Save offering");
+    expect(button.style.getPropertyValue("--btn-spinner-x")).toBe("196px");
+  });
+
   it("ignores a second click while the spinner is showing", async () => {
     window.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
     uninstall = installButtonBusy(document, fast);

@@ -1,7 +1,11 @@
 import { PrismaClient } from "@prisma/client";
 import { poolTag, withPoolSettings } from "./pool";
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient; prismaPool?: string };
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+  prismaPool?: string;
+  prismaPulse?: ReturnType<typeof setInterval>;
+};
 
 const databaseUrl = process.env.DATABASE_URL ? withPoolSettings(process.env.DATABASE_URL) : undefined;
 const POOL_TAG = databaseUrl ? `${poolTag(databaseUrl)}/omit-photo-support/tx30` : "unconfigured";
@@ -9,6 +13,21 @@ const POOL_TAG = databaseUrl ? `${poolTag(databaseUrl)}/omit-photo-support/tx30`
 if (process.env.NODE_ENV !== "production" && globalForPrisma.prisma && globalForPrisma.prismaPool !== POOL_TAG) {
   void globalForPrisma.prisma.$disconnect().catch(() => undefined);
   globalForPrisma.prisma = undefined;
+  if (globalForPrisma.prismaPulse) {
+    clearInterval(globalForPrisma.prismaPulse);
+    globalForPrisma.prismaPulse = undefined;
+  }
+}
+
+function keepPoolWarm(client: PrismaClient) {
+  if (process.env.NODE_ENV === "test" || globalForPrisma.prismaPulse) return;
+  const beat = () => {
+    void client.$queryRaw`SELECT 1`.catch(() => undefined);
+  };
+  beat();
+  const timer = setInterval(beat, 25_000);
+  timer.unref?.();
+  globalForPrisma.prismaPulse = timer;
 }
 
 function createPrismaClient(): PrismaClient {
@@ -27,3 +46,5 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
   globalForPrisma.prismaPool = POOL_TAG;
 }
+
+keepPoolWarm(prisma);

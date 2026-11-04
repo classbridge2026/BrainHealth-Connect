@@ -46,7 +46,6 @@ export async function loadDoctorDashboard(db: PrismaClient, doctor: { id: string
     const dayEnd = addDays(dayStart, 1);
     const weekStart = startOfWeek(dayStart);
     const weekEnd = addDays(weekStart, 7);
-    await completeEndedConsultations(db, { now, doctorProfileId: doctor.id });
     const visitSelect = {
       id: true,
       status: true,
@@ -59,7 +58,8 @@ export async function loadDoctorDashboard(db: PrismaClient, doctor: { id: string
     } as const;
     const openList = OPEN.join(",");
     const closedList = CLOSED.join(",");
-    const [today, openVisits, snapshotRows] = await Promise.all([
+    const [, today, openVisits, snapshotRows] = await Promise.all([
+      completeEndedConsultations(db, { now, doctorProfileId: doctor.id }),
       db.appointment.findMany({
         where: { doctorProfileId: doctor.id, startsAt: { gte: dayStart, lt: dayEnd } },
         orderBy: { startsAt: "desc" },
@@ -207,7 +207,6 @@ export async function loadDoctorScheduleView(
       ? null
       : await db.doctorProfile.findUnique({ where: { userId: input.userId }, select: { id: true } });
     if (!input.clinicWide && !doctor) return { ok: true as const, rows: [], services: [] as Array<{ id: string; name: string }> };
-    await completeEndedConsultations(db, { now, doctorProfileId: doctor?.id });
     const where: Prisma.AppointmentWhereInput = {
       ...(doctor ? { doctorProfileId: doctor.id } : {}),
       startsAt: { gte: input.start, lt: input.end },
@@ -215,7 +214,8 @@ export async function loadDoctorScheduleView(
     if (input.status) where.status = input.status as Prisma.EnumAppointmentStatusFilter["equals"];
     if (input.mode) where.mode = input.mode;
     if (input.serviceId && parseUuid(input.serviceId)) where.consultationServiceId = input.serviceId;
-    const [rows, services] = await Promise.all([
+    const [, rows, services] = await Promise.all([
+      completeEndedConsultations(db, { now, doctorProfileId: doctor?.id }),
       db.appointment.findMany({ where, orderBy: { startsAt: "asc" }, take: 200, select: scheduleSelect }),
       db.consultationService.findMany({
         where: doctor ? { appointments: { some: { doctorProfileId: doctor.id } } } : { isActive: true },

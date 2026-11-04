@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { ADMIN_ROLE_CODE, DOCTOR_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
+import { forgetDoctorSchedule } from "@/lib/appointments/queries";
 import { addTimeOff, deactivateAvailabilityRule, removeTimeOff, saveAvailabilityRule, type ScheduleResult } from "@/lib/appointments/schedule";
 import { atMinutes, parseCalendarDate, parseClock } from "@/lib/appointments/time";
 import { prisma } from "@/lib/db/prisma";
@@ -12,6 +13,7 @@ function actorOf(user: { id: string; roleCodes: string[] }) {
 }
 
 function refresh(doctorProfileId: string) {
+  if (doctorProfileId) forgetDoctorSchedule(doctorProfileId);
   revalidatePath("/doctor/availability");
   revalidatePath("/doctor/appointments");
   revalidatePath(`/admin/doctors/${doctorProfileId}/availability`);

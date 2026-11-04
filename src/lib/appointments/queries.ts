@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { countryName } from "@/lib/catalog/countries";
 import { formatFee, visitCharge } from "@/lib/catalog/money";
 import { parseUuid } from "@/lib/catalog/rules";
+import { forgetRemembered, rememberFor } from "@/lib/db/remember";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
 import { canReceiveNewAppointment } from "@/lib/doctors/rules";
 import { completeEndedConsultations, shownAppointmentStatus } from "./finish";
@@ -288,8 +289,9 @@ export async function listPatientAppointments(db: PrismaClient, userId: string, 
   try {
     const patient = await db.patientProfile.findUnique({ where: { userId }, select: { id: true } });
     if (!patient) return { ok: true as const, upcoming: [], pending: [], history: [] };
-    await completeEndedConsultations(db, { now, patientProfileId: patient.id });
-    const rows = await db.appointment.findMany({
+    const [, rows] = await Promise.all([
+      completeEndedConsultations(db, { now, patientProfileId: patient.id }),
+      db.appointment.findMany({
       where: { patientProfileId: patient.id },
       orderBy: { startsAt: "desc" },
       take: 100,
@@ -315,7 +317,8 @@ export async function listPatientAppointments(db: PrismaClient, userId: string, 
         payments: { select: { status: true } },
         location: { select: { name: true } },
       },
-    });
+    }),
+    ]);
     const mapped = rows.map((row) => ({
       id: row.id,
       status: shownAppointmentStatus(row.status, row.endsAt, now),
@@ -503,8 +506,17 @@ export async function loadOwnedAppointment(db: PrismaClient, input: { id: string
   }
 }
 
+export function forgetDoctorSchedule(doctorProfileId: string) {
+  forgetRemembered(`doctor-schedule:${doctorProfileId}`);
+}
+
 export async function loadDoctorSchedule(db: PrismaClient, doctorProfileId: string) {
   if (!parseUuid(doctorProfileId)) return { ok: false as const, code: "NOT_FOUND" as const };
+  if (process.env.NODE_ENV === "test") return readDoctorSchedule(db, doctorProfileId);
+  return rememberFor(`doctor-schedule:${doctorProfileId}`, 20_000, () => readDoctorSchedule(db, doctorProfileId), (result) => result.ok);
+}
+
+async function readDoctorSchedule(db: PrismaClient, doctorProfileId: string) {
   try {
     const [rules, timeOff, offerings, upcoming] = await Promise.all([
       db.doctorAvailabilityRule.findMany({

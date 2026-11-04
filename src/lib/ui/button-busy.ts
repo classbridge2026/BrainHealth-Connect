@@ -84,25 +84,70 @@ function isDisabled(control: HTMLElement) {
   return (control instanceof HTMLButtonElement || control instanceof HTMLInputElement) && control.disabled;
 }
 
+const spinnerSize = 14;
+const spinnerGap = 6;
+const spinnerInset = 4;
+
 function spinnerColor(control: HTMLElement) {
   const color = getComputedStyle(control).color;
   if (!color || color === "transparent" || color === "rgba(0, 0, 0, 0)") return "#12304a";
   return color;
 }
 
+function labelEdges(control: HTMLElement) {
+  const walker = document.createTreeWalker(control, NodeFilter.SHOW_TEXT);
+  let left = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let found = false;
+  while (walker.nextNode()) {
+    if (!walker.currentNode.textContent?.trim()) continue;
+    const range = document.createRange();
+    range.selectNodeContents(walker.currentNode);
+    const rect = range.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) continue;
+    found = true;
+    left = Math.min(left, rect.left);
+    right = Math.max(right, rect.right);
+  }
+  return found ? { left, right } : null;
+}
+
+function placeSpinner(control: HTMLElement) {
+  const box = control.getBoundingClientRect();
+  if (box.width < spinnerSize || box.height < spinnerSize) return;
+  const style = getComputedStyle(control);
+  const borderLeft = Number.parseFloat(style.borderLeftWidth) || 0;
+  const borderRight = Number.parseFloat(style.borderRightWidth) || 0;
+  const edges = labelEdges(control);
+  const contentLeft = edges?.left ?? box.left + borderLeft;
+  const contentRight = edges?.right ?? box.right - borderRight;
+  const roomLeft = contentLeft - box.left - borderLeft;
+  const roomRight = box.right - borderRight - contentRight;
+  const needed = spinnerSize + spinnerGap + spinnerInset;
+  const besideLeft = roomLeft - spinnerGap - spinnerSize;
+  const besideRight = contentRight - box.left - borderLeft + spinnerGap;
+  const x = roomRight >= needed && roomRight >= roomLeft ? besideRight : besideLeft;
+  control.style.setProperty("--btn-spinner-x", `${Math.round(x)}px`);
+}
+
 function show(control: HTMLElement) {
   if (control.getAttribute("data-loading") === "true") return;
   control.style.setProperty("--btn-spinner", spinnerColor(control));
   if (getComputedStyle(control).position === "static") control.setAttribute("data-loading-anchor", "static");
+  placeSpinner(control);
   if (!control.hasAttribute("aria-busy")) control.setAttribute("data-loading-busy", "owned");
   control.setAttribute("aria-busy", "true");
   control.setAttribute("data-loading", "true");
+  requestAnimationFrame(() => {
+    if (control.getAttribute("data-loading") === "true") placeSpinner(control);
+  });
 }
 
 function hide(control: HTMLElement) {
   control.removeAttribute("data-loading");
   control.removeAttribute("data-loading-anchor");
   control.style.removeProperty("--btn-spinner");
+  control.style.removeProperty("--btn-spinner-x");
   if (control.getAttribute("data-loading-busy") === "owned") {
     control.removeAttribute("aria-busy");
     control.removeAttribute("data-loading-busy");

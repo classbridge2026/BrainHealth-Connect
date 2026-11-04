@@ -44,6 +44,7 @@
     "nodemailer": "^10.1.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "sweetalert2": "^11.26.25",
     "zod": "^4.6.7"
   },
   "prisma": {

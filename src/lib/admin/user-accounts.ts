@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Gender, Prisma, PrismaClient } from "@prisma/client";
 import { displayEmail, normalizeEmail } from "@/lib/auth/email-address";
 import { ADMIN_ROLE_CODE, PATIENT_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
+import { forgetRememberedSessions } from "@/lib/auth/current-user";
 import { hashPassword } from "@/lib/auth/password";
 import { normalizePhone } from "@/lib/auth/phone";
 import {
@@ -215,6 +216,7 @@ export async function updateUserAccount(
         where: { userId: target.id, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+      forgetRememberedSessions();
     }
     await deps.db.auditLog.create({
       data: {
@@ -251,6 +253,7 @@ export async function closeUserAccount(input: { userId: string }, deps: { db: Pr
       where: { userId: target.id, revokedAt: null },
       data: { revokedAt: now },
     });
+    forgetRememberedSessions();
     await deps.db.auditLog.create({
       data: {
         actorUserId: deps.actor.userId,

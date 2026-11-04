@@ -1,6 +1,7 @@
 import type { NotificationChannel, PrismaClient } from "@prisma/client";
 import { parseUuid } from "@/lib/catalog/rules";
 import { formatBookingWhen } from "@/lib/appointments/time";
+import { forgetRemembered, rememberFor } from "@/lib/db/remember";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
 import { noticeStamp } from "./stamp";
 
@@ -136,8 +137,19 @@ type NoticeRow = {
   unread: number;
 };
 
+const NOTICE_TTL_MS = 12_000;
+
+export function forgetNoticeSummary(userId: string) {
+  forgetRemembered(`notices:${userId}:`);
+}
+
 /** Unread in-app notices and their total, in one database read. */
 export async function loadInAppNoticeSummary(db: PrismaClient, userId: string, role: "patient" | "doctor" | "admin") {
+  if (process.env.NODE_ENV === "test") return readNoticeSummary(db, userId, role);
+  return rememberFor(`notices:${userId}:${role}`, NOTICE_TTL_MS, () => readNoticeSummary(db, userId, role));
+}
+
+async function readNoticeSummary(db: PrismaClient, userId: string, role: "patient" | "doctor" | "admin") {
   try {
     const rows = await db.$queryRaw<NoticeRow[]>`
       SELECT id::text AS id,
@@ -149,7 +161,7 @@ export async function loadInAppNoticeSummary(db: PrismaClient, userId: string, r
              "entityId"::text AS "entityId",
              count(*) OVER ()::int AS unread
       FROM "Notification"
-      WHERE "recipientId"::text = ${userId}
+      WHERE "recipientId" = CAST(${userId} AS uuid)
         AND channel::text = 'IN_APP'
         AND "readAt" IS NULL
         AND status::text <> 'CANCELLED'
@@ -193,6 +205,7 @@ export async function markAllInAppNotificationsRead(db: PrismaClient, userId: st
       where: { recipientId: userId, channel: "IN_APP", readAt: null, status: "FAILED" },
       data: { readAt: now },
     });
+    forgetNoticeSummary(userId);
     return { ok: true as const, updated: open.count + failed.count };
   } catch {
     return { ok: false as const, updated: 0 };
@@ -216,6 +229,7 @@ export async function markViewedNotificationsRead(db: PrismaClient, userId: stri
       where: { id: { in: unique }, recipientId: userId, readAt: null, status: "FAILED" },
       data: { readAt: now },
     });
+    forgetNoticeSummary(userId);
     return { ok: true as const, updated: open.count + failed.count };
   } catch {
     return { ok: false as const, updated: 0 };

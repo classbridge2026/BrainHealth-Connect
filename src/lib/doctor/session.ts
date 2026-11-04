@@ -3,6 +3,7 @@ import { cache } from "react";
 import { ADMIN_ROLE_CODE, DOCTOR_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { isPortalAdministrator } from "@/lib/admin/rules";
 import { requireStoredRoles } from "@/lib/auth/require-role";
+import { rememberFor } from "@/lib/db/remember";
 import { prisma } from "@/lib/db/prisma";
 import { isRecordsOffline } from "@/lib/db/offline";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
@@ -61,7 +62,7 @@ const loadDoctorAccount = cache(async () => {
   let access: ClinicalAccess = "missing";
   let doctor: { id: string; displayName: string; verificationStatus: string } | null = null;
   try {
-    const account = await readDoctorProfileChrome(user.id);
+    const account = await rememberFor(`doctor-chrome:${user.id}`, 20_000, () => readDoctorProfileChrome(user.id));
     name = account.displayName || name;
     specialty = account.specialtyName || specialty;
     imageVersion = account.imageVersion;

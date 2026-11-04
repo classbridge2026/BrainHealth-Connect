@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { useOutcomeAlert } from "@/lib/ui/sweet-alert";
 import { checkInAction, saveIntakeAction, type PrepareState } from "./prepare-actions";
 
 const initial: PrepareState = {};
@@ -20,6 +21,8 @@ export function VisitPreparation({
 }) {
   const [intakeState, saveIntake, intakePending] = useActionState(saveIntakeAction, initial);
   const [checkState, checkIn, checkPending] = useActionState(checkInAction, initial);
+  useOutcomeAlert(intakeState.message, intakePending, intakeState.tone === "ok" ? "ok" : "error");
+  useOutcomeAlert(checkState.message, checkPending, checkState.tone === "ok" ? "ok" : "error");
 
   return (
     <section className="visit-panel">

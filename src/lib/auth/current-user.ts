@@ -1,6 +1,7 @@
 import type { PrismaClient, UserStatus } from "@prisma/client";
 import { isRecordsOffline, RecordsOfflineError } from "@/lib/db/offline";
 import { redirectOffline } from "@/lib/db/offline-redirect";
+import { forgetRemembered, rememberFor } from "@/lib/db/remember";
 import { patientAccessDecision, ownPatientScope } from "./access";
 import { hashSessionToken } from "./tokens";
 
@@ -11,6 +12,13 @@ export type CurrentUser = {
   decision: ReturnType<typeof patientAccessDecision>;
 };
 
+const SESSION_TTL_MS = 30_000;
+
+/** Drops cached sign-ins so a revoked session is noticed on the next request. */
+export function forgetRememberedSessions() {
+  forgetRemembered("session:");
+}
+
 export async function readSessionUser(
   db: PrismaClient,
   rawToken: string | undefined,
@@ -19,6 +27,20 @@ export async function readSessionUser(
   if (!rawToken) {
     return null;
   }
+  if (process.env.NODE_ENV === "test") return readSessionRecord(db, rawToken, now);
+  return rememberFor(
+    `session:${hashSessionToken(rawToken)}`,
+    SESSION_TTL_MS,
+    () => readSessionRecord(db, rawToken, now),
+    (user) => user !== null,
+  );
+}
+
+async function readSessionRecord(
+  db: PrismaClient,
+  rawToken: string,
+  now: Date,
+): Promise<CurrentUser | null> {
   let session;
   try {
     session = await db.session.findUnique({

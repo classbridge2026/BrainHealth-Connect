@@ -4,6 +4,7 @@ import { privateRobots } from "@/lib/brand/seo";
 import { PatientShell } from "@/components/patient/shell";
 import { PATIENT_ROLE_CODE } from "@/lib/auth/constants";
 import { getSystemName } from "@/lib/brand/system-name";
+import { rememberFor } from "@/lib/db/remember";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { prisma } from "@/lib/db/prisma";
 import { loadInAppNoticeSummary } from "@/lib/notifications/delivery";
@@ -35,7 +36,10 @@ const readPatientChrome = unstable_cache(loadPatientChrome, ["patient-chrome"], 
 
 export default async function PatientLayout({ children }: { children: React.ReactNode }) {
   const user = await requireStoredRoles([PATIENT_ROLE_CODE]);
-  const [chrome, systemName] = await Promise.all([readPatientChrome(user.id), getSystemName()]);
+  const [chrome, systemName] = await Promise.all([
+    rememberFor(`patient-chrome:${user.id}`, 20_000, () => readPatientChrome(user.id)),
+    getSystemName(),
+  ]);
   const { unread, name, imageVersion, notices } = chrome;
   return (
     <PatientShell userId={user.id} name={name} systemName={systemName} imageVersion={imageVersion} unread={unread} notices={notices}>

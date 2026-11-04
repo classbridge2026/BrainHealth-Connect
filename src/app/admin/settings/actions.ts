@@ -5,7 +5,9 @@ import { ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { updateDefaultCurrency } from "@/lib/catalog/configuration";
 import type { AdminActionState } from "@/lib/admin/action-state";
+import { forgetPlatformSettings } from "@/lib/admin/directories";
 import { updatePaymentHoldMinutes, updateSystemName } from "@/lib/admin/mutations";
+import { forgetHeldSystemName } from "@/lib/brand/system-name";
 import { saveAfrimoneyReceiveNumber } from "@/lib/payments/afrimoney-transfer";
 import { saveOrangeReceiveNumber } from "@/lib/payments/orange-transfer";
 import { savePublicContact } from "@/lib/public/landing";
@@ -17,6 +19,7 @@ export async function updateCurrencySettingAction(_previous: AdminActionState, f
     db: prisma,
     actor: { userId: user.id, roleCodes: user.roleCodes },
   });
+  if (result.ok) forgetPlatformSettings();
   revalidatePath("/admin/settings");
   revalidatePath("/admin/configuration");
   return { message: result.message, tone: result.ok ? "ok" : "error" };
@@ -28,6 +31,10 @@ export async function updateSystemNameAction(_previous: AdminActionState, formDa
     db: prisma,
     actor: { userId: user.id, roleCodes: user.roleCodes },
   });
+  if (result.ok) {
+    forgetHeldSystemName();
+    forgetPlatformSettings();
+  }
   updateTag("system-name");
   revalidatePath("/", "layout");
   revalidatePath("/admin", "layout");
@@ -42,6 +49,7 @@ export async function updateOrangeNumberAction(_previous: AdminActionState, form
   const user = await requireStoredRoles([ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE]);
   try {
     const result = await saveOrangeReceiveNumber(String(formData.get("orangeNumber") ?? ""), prisma, user.id);
+    if (result.ok) forgetPlatformSettings();
     revalidatePath("/admin/settings");
     revalidatePath("/patient/appointments", "layout");
     return { message: result.message, tone: result.ok ? "ok" : "error" };
@@ -54,6 +62,7 @@ export async function updateAfrimoneyNumberAction(_previous: AdminActionState, f
   const user = await requireStoredRoles([ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE]);
   try {
     const result = await saveAfrimoneyReceiveNumber(String(formData.get("afrimoneyNumber") ?? ""), prisma, user.id);
+    if (result.ok) forgetPlatformSettings();
     revalidatePath("/admin/settings");
     revalidatePath("/patient/appointments", "layout");
     return { message: result.message, tone: result.ok ? "ok" : "error" };
@@ -74,6 +83,7 @@ export async function updatePublicContactAction(_previous: AdminActionState, for
       prisma,
       user.id,
     );
+    if (result.ok) forgetPlatformSettings();
     revalidatePath("/admin/settings");
     revalidatePath("/");
     return { message: result.message, tone: result.ok ? "ok" : "error" };
@@ -88,6 +98,7 @@ export async function updateHoldSettingAction(_previous: AdminActionState, formD
     db: prisma,
     actor: { userId: user.id, roleCodes: user.roleCodes },
   });
+  if (result.ok) forgetPlatformSettings();
   revalidatePath("/admin/settings");
   return { message: result.message, tone: result.ok ? "ok" : "error" };
 }

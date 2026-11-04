@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { forgetRemembered, rememberFor } from "@/lib/db/remember";
 import { formatFee } from "@/lib/catalog/money";
 import { HOLD_MINUTES_SETTING_KEY } from "@/lib/appointments/payment-holds";
 import { SCREENING_SAFETY_SETTING } from "@/lib/screening/rules";
@@ -713,7 +714,16 @@ export async function loadAdministrators(db: PrismaClient, page = 1) {
 
 const LOCKED_SETTINGS = ["MINOR_REGISTRATION_ENABLED", "MINOR_TREATMENT_ENABLED", IDENTITY_DOCUMENT_SETTING] as const;
 
+export function forgetPlatformSettings() {
+  forgetRemembered("platform-settings");
+}
+
 export async function loadPlatformSettings(db: PrismaClient) {
+  if (process.env.NODE_ENV === "test") return readPlatformSettings(db);
+  return rememberFor("platform-settings", 30_000, () => readPlatformSettings(db), (result) => result.ok);
+}
+
+async function readPlatformSettings(db: PrismaClient) {
   try {
     const rows = await db.platformSetting.findMany({ orderBy: { key: "asc" }, select: { key: true, valueJson: true, updatedAt: true } });
     const byKey = new Map(rows.map((row) => [row.key, row]));

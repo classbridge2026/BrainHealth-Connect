@@ -4,7 +4,9 @@ import { normalizeEmail } from "@/lib/auth/email-address";
 import { syncEncounterStatus } from "@/lib/clinical/records";
 import { notifyAppointmentParties } from "@/lib/appointments/email-notice";
 import { expireOverdueHolds, HOLD_MINUTES_SETTING_KEY } from "@/lib/appointments/payment-holds";
+import { forgetRememberedSessions } from "@/lib/auth/current-user";
 import { parseSystemName, SYSTEM_NAME_SETTING_KEY } from "@/lib/brand/system-name";
+import { forgetNoticeSummary } from "@/lib/notifications/delivery";
 import { isUniqueConflict, isSchemaMismatch } from "@/lib/doctors/errors";
 import {
   accountStatusDecision,
@@ -131,6 +133,7 @@ export async function changeUserAccountStatus(
       return { ok: true as const, message: "" };
     });
     if (!saved.ok) return saved;
+    if (next === "SUSPENDED") forgetRememberedSessions();
     return {
       ok: true,
       message: next === "SUSPENDED" ? "The account is suspended and its open sessions were revoked." : "The account is active again.",
@@ -352,6 +355,7 @@ export async function markNotificationRead(notificationId: string, deps: { db: P
       where: { id: note.id },
       data: { readAt: new Date(), status: note.status === "FAILED" ? "FAILED" : "READ" },
     });
+    forgetNoticeSummary(deps.actor.userId);
     return { ok: true, message: "The notification is marked as read." };
   } catch (error) {
     return failure(error, "The notification could not be updated.");
@@ -370,6 +374,7 @@ export async function markAllNotificationsRead(deps: { db: PrismaClient; actor: 
       where: { recipientId: deps.actor.userId, readAt: null, status: "FAILED" },
       data: { readAt: now },
     });
+    forgetNoticeSummary(deps.actor.userId);
     return { ok: true, message: "Unread notifications are marked as read. Failed deliveries stay failed." };
   } catch (error) {
     return failure(error, "Notifications could not be updated.");

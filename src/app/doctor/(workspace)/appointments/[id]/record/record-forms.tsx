@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { dangerButtonClass, primaryButtonClass, secondaryButtonClass, textAreaClass } from "@/components/form-classes";
+import { useConfirmedSubmit, useOutcomeAlert } from "@/lib/ui/sweet-alert";
 import {
   archiveNoteAction,
   finalizeNoteAction,
@@ -200,8 +201,15 @@ export function PatientSummaryForm({ appointmentId }: { appointmentId: string })
 
 export function RetireFileForm({ appointmentId, fileId }: { appointmentId: string; fileId: string }) {
   const [state, action, pending] = useActionState(retireFileAction, initial);
+  const onSubmit = useConfirmedSubmit({
+    title: "Remove this document?",
+    text: "It leaves the active record. The stored file stays available to administrators.",
+    confirmText: "Remove from record",
+    danger: true,
+  });
+  useOutcomeAlert(state.message, pending, state.tone === "ok" ? "ok" : "error");
   return (
-    <form action={action} className="mt-2">
+    <form action={action} className="mt-2" onSubmit={onSubmit}>
       <input name="appointmentId" type="hidden" value={appointmentId} />
       <input name="fileId" type="hidden" value={fileId} />
       <button className={dangerButtonClass} disabled={pending} type="submit">{pending ? "Removing…" : "Remove from record"}</button>

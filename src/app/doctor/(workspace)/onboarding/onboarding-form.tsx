@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { primaryButtonClass, secondaryButtonClass, textAreaClass, textInputClass } from "@/components/form-classes";
 import { CREDENTIAL_TYPES, QUALIFICATION_KINDS, QUALIFICATION_LABELS } from "@/lib/validation/doctor";
 import { credentialLabel } from "@/lib/doctors/rules";
+import { useConfirmedSubmit, useOutcomeAlert } from "@/lib/ui/sweet-alert";
 import { deleteCredentialAction, saveProfileAction, uploadCredentialAction, type ProfileActionState } from "./actions";
 
 const initial: ProfileActionState = {};
@@ -50,6 +51,14 @@ export function OnboardingForm({
   const [state, action, pending] = useActionState(saveProfileAction, initial);
   const [uploadState, upload, uploadPending] = useActionState(uploadCredentialAction, initial);
   const [deleteState, remove, deletePending] = useActionState(deleteCredentialAction, initial);
+  const confirmRemove = useConfirmedSubmit({
+    title: "Remove this document?",
+    text: "The credential file will be taken off this profile.",
+    confirmText: "Remove document",
+    danger: true,
+  });
+  useOutcomeAlert(deleteState.message, deletePending, deleteState.tone === "ok" ? "ok" : "error");
+  useOutcomeAlert(uploadState.message, uploadPending, uploadState.tone === "ok" ? "ok" : "error");
   const errors = state.fieldErrors ?? {};
 
   return (
@@ -212,7 +221,7 @@ export function OnboardingForm({
                   Download
                 </a>
                 {editable && !credential.reviewed && !credential.archived ? (
-                  <form action={remove}>
+                  <form action={remove} onSubmit={confirmRemove}>
                     <input type="hidden" name="credentialId" value={credential.id} />
                     <button className="font-semibold text-brand-danger" disabled={deletePending} type="submit">
                       Remove

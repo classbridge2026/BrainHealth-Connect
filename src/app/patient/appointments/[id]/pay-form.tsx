@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { BookingGuideVideo } from "@/components/patient/booking-guide";
 import { useRefreshAfterAction } from "@/components/refresh-after-action";
+import { useOutcomeAlert } from "@/lib/ui/sweet-alert";
 import { refreshWalletPaymentAction, reportOrangeTransferAction, startWalletPaymentAction } from "./pay-actions";
 
 const initial = { message: "", tone: undefined as "ok" | "error" | undefined, paymentUrl: undefined as string | undefined };
@@ -53,6 +54,9 @@ export function VisitPayment({
   const [started, start, starting] = useActionState(startWalletPaymentAction, initial);
   const [checked, refresh, checking] = useActionState(refreshWalletPaymentAction, initial);
   const [reported, report, reporting] = useActionState(reportOrangeTransferAction, initial);
+  useOutcomeAlert(started.paymentUrl ? undefined : started.message, starting, started.tone === "ok" ? "ok" : "error");
+  useOutcomeAlert(checked.message, checking, checked.tone === "ok" ? "ok" : "error");
+  useOutcomeAlert(reported.message, reporting, reported.tone === "ok" ? "ok" : "error");
   useRefreshAfterAction(started.message);
   useRefreshAfterAction(checked.message);
   useRefreshAfterAction(reported.message);

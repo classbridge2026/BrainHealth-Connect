@@ -86,32 +86,37 @@ body {
   }
 }
 
-/* Spinner sits beside the label while that click is still working. */
+/* Spinner sits beside the label, out of flow, so the label does not shift. */
 html:has([data-loading="true"]) {
   cursor: progress;
 }
 
+[data-loading-anchor="static"] {
+  position: relative;
+}
+
 button[data-loading="true"],
+input[data-loading="true"],
 a[data-loading="true"] {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.55rem;
   cursor: progress;
   pointer-events: none;
 }
 
 button[data-loading="true"]::before,
+input[data-loading="true"]::before,
 a[data-loading="true"]::before {
   content: "";
-  flex: none;
+  position: absolute;
+  top: 50%;
+  left: var(--btn-spinner-x, 6px);
   box-sizing: border-box;
-  width: 1.05rem;
-  height: 1.05rem;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
   border-radius: 50%;
   border: 2.5px solid var(--btn-spinner, currentColor);
   border-right-color: transparent;
-  transform-origin: center;
+  pointer-events: none;
   animation: carecircle-spin 0.6s linear infinite;
 }
 
@@ -123,6 +128,7 @@ a[data-loading="true"]::before {
 
 @media (prefers-reduced-motion: reduce) {
   button[data-loading="true"]::before,
+  input[data-loading="true"]::before,
   a[data-loading="true"]::before {
     animation-duration: 1.4s;
   }
@@ -181,4 +187,71 @@ a[data-loading="true"]::before {
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
+}
+
+.care-alert.swal2-popup {
+  width: 28rem;
+  max-width: calc(100vw - 2rem);
+  padding: 1.5rem 1.35rem 1.25rem;
+  border-radius: 1rem;
+  font-family: inherit;
+}
+
+.care-alert-title {
+  padding: 0;
+  color: #12304a;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.care-alert-text {
+  color: #3a4a60;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.care-alert-actions {
+  gap: 0.6rem;
+  width: 100%;
+  margin-top: 0.4rem;
+}
+
+.care-alert-confirm,
+.care-alert-cancel {
+  margin: 0;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border-radius: 0.75rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.care-alert-confirm {
+  border: 2px solid #0b5f59;
+  background: #0f766e;
+  color: #fff;
+}
+
+.care-alert-confirm:hover {
+  background: #0b5f59;
+}
+
+.care-alert-confirm.is-danger {
+  border-color: #7d1c27;
+  background: #9b2330;
+}
+
+.care-alert-confirm.is-danger:hover {
+  background: #7d1c27;
+}
+
+.care-alert-cancel {
+  border: 1px solid #d5deea;
+  background: #fff;
+  color: #12304a;
+}
+
+.care-alert-cancel:hover {
+  background: #eef3f8;
 }

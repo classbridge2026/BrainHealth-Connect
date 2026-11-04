@@ -192,10 +192,9 @@ export function LoginForm() {
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-teal text-base font-semibold text-white transition-colors hover:bg-brand-teal-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-teal disabled:cursor-wait disabled:opacity-70"
+          className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-brand-teal text-base font-semibold text-white transition-colors hover:bg-brand-teal-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-teal disabled:cursor-wait disabled:opacity-70"
         >
-          {pending ? <Spinner /> : null}
-          {pending ? "Signing in…" : "Login →"}
+          Login →
         </button>
       </form>
 
@@ -230,13 +229,4 @@ function controlClass(error: string | undefined, extra: string) {
     error ? "border-brand-danger" : "border-brand-line",
     extra,
   ].join(" ");
-}
-
-function Spinner() {
-  return (
-    <svg className="h-4 w-4 animate-spin motion-reduce:animate-none" viewBox="0 0 24 24" aria-hidden="true">
-      <circle className="opacity-30" cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="3" />
-      <path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
 }
