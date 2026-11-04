@@ -65,7 +65,7 @@ export default async function OfferingsPage({
         selfRole={user.roleCodes.includes(SUPER_ADMIN_ROLE_CODE) ? "Super administrator" : "Administrator"}
         currency={result.currency}
       />
-      <CatalogPager page={result.page} pageSize={result.pageSize} total={result.total} query={query} label="offering" />
+      <CatalogPager page={result.page} pageSize={result.pageSize} total={result.total} query={query} label="doctor" />
     </main>
   );
 }

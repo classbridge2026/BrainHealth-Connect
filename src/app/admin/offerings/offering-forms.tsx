@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useState, type ReactNode } from "react";
+import { Fragment, useActionState, useCallback, useEffect, useState, type ReactNode } from "react";
 import { AdminIcon } from "@/components/admin/admin-icons";
 import { StatusBadge, verificationBadge } from "@/components/status-badge";
 import { createOfferingAction, deleteOfferingAction, updateOfferingAction, type OfferingActionState } from "./actions";
@@ -25,6 +25,7 @@ type DoctorOption = {
 
 export type OfferingRecord = {
   id: string;
+  doctorId: string;
   doctorName: string;
   specialtyName: string;
   serviceName: string;
@@ -59,6 +60,16 @@ function modeLabel(mode: "ONLINE" | "IN_PERSON" | null) {
   return "Either";
 }
 
+function offeringsByDoctor(offerings: OfferingRecord[]) {
+  const groups: Array<{ doctorId: string; doctorName: string; verificationStatus: string; offerings: OfferingRecord[] }> = [];
+  for (const offering of offerings) {
+    const current = groups[groups.length - 1];
+    if (current?.doctorId === offering.doctorId) current.offerings.push(offering);
+    else groups.push({ doctorId: offering.doctorId, doctorName: offering.doctorName, verificationStatus: offering.verificationStatus, offerings: [offering] });
+  }
+  return groups;
+}
+
 function usageLabel(offering: OfferingRecord) {
   if (!offering.referenced) return "Not used yet";
   const appointments = `${offering.appointmentCount} appointment${offering.appointmentCount === 1 ? "" : "s"}`;
@@ -86,6 +97,8 @@ export function OfferingsBoard({
   const [panel, setPanel] = useState<Panel>(null);
   const close = useCallback(() => setPanel(null), []);
   const ready = services.length > 0 && (doctors.length > 0 || !self.blocked);
+  const groups = offeringsByDoctor(offerings);
+  const viewed = panel && panel.kind !== "create" ? offerings.filter((item) => item.doctorId === panel.offering.doctorId) : [];
 
   return (
     <section className="users-card">
@@ -96,6 +109,7 @@ export function OfferingsBoard({
           Assign service
         </button>
       </header>
+      <p className="fee-schedule-note">Each doctor’s offerings are listed together. Edit an offering to change the visit, fee, or duration.</p>
       {offerings.length === 0 ? (
         <p className="users-empty">No offerings match these filters. Assign a service to an approved doctor to open it for booking.</p>
       ) : (
@@ -113,7 +127,7 @@ export function OfferingsBoard({
             <thead>
               <tr>
                 <th>Doctor</th>
-                <th>Service</th>
+                <th>Offering</th>
                 <th>Visit</th>
                 <th>Doctor fee</th>
                 <th>Status</th>
@@ -121,60 +135,69 @@ export function OfferingsBoard({
               </tr>
             </thead>
             <tbody>
-              {offerings.map((offering) => {
-                const verification = verificationBadge(offering.verificationStatus);
+              {groups.map((group) => {
+                const verification = verificationBadge(group.verificationStatus);
                 return (
-                  <tr key={offering.id}>
-                    <td data-label="Doctor">
-                      <span className="users-cell">
-                        <button type="button" className="users-email" onClick={() => setPanel({ kind: "view", offering })}>
-                          {offering.doctorName}
-                        </button>
-                        <span className="users-sub">{offering.specialtyName}</span>
-                        <span className="users-sub">{verification.label}</span>
-                      </span>
-                    </td>
-                    <td data-label="Service">
-                      <span className="users-cell">
-                        {offering.serviceName}
-                        <span className="users-sub">{usageLabel(offering)}</span>
-                      </span>
-                    </td>
-                    <td data-label="Visit">
-                      <span className="users-cell">
-                        {modeLabel(offering.mode)}
-                        <span className="users-sub">{offering.durationMinutes} min</span>
-                      </span>
-                    </td>
-                    <td data-label="Doctor fee">
-                      <span className="users-cell">
-                        {offering.fee} {offering.currency}
-                        <span className="users-sub">
-                          {offering.sameAsDefault ? "Same as the default fee" : `Default ${offering.defaultFee} ${offering.serviceCurrency}`}
+                  <Fragment key={group.doctorId}>
+                    <tr className="offering-doctor-row">
+                      <td colSpan={6} data-label="Doctor">
+                        <span className="users-cell">
+                          <button type="button" className="users-email" onClick={() => setPanel({ kind: "view", offering: group.offerings[0] })}>
+                            {group.doctorName}
+                          </button>
+                          <span className="users-sub">
+                            {verification.label} · {group.offerings.length} offering{group.offerings.length === 1 ? "" : "s"}
+                          </span>
                         </span>
-                      </span>
-                    </td>
-                    <td data-label="Status">
-                      <span className="users-cell">
-                        <StatusBadge tone={offering.isActive ? "teal" : "slate"}>{offering.isActive ? "Active" : "Inactive"}</StatusBadge>
-                      </span>
-                    </td>
-                    <td data-label="Actions">
-                      <span className="users-cell">
-                        <div className="user-actions">
-                          <button type="button" className="user-icon-btn" aria-label={`View ${offering.doctorName} ${offering.serviceName}`} onClick={() => setPanel({ kind: "view", offering })}>
-                            <AdminIcon name="view" />
-                          </button>
-                          <button type="button" className="user-icon-btn" aria-label={`Edit ${offering.doctorName} ${offering.serviceName}`} onClick={() => setPanel({ kind: "edit", offering })}>
-                            <AdminIcon name="edit" />
-                          </button>
-                          <button type="button" className="user-icon-btn user-icon-btn-danger" aria-label={`Delete ${offering.doctorName} ${offering.serviceName}`} onClick={() => setPanel({ kind: "delete", offering })}>
-                            <AdminIcon name="trash" />
-                          </button>
-                        </div>
-                      </span>
-                    </td>
-                  </tr>
+                      </td>
+                    </tr>
+                    {group.offerings.map((offering) => (
+                      <tr key={offering.id}>
+                        <td data-label="Specialty">
+                          <span className="users-cell users-sub">{offering.specialtyName}</span>
+                        </td>
+                        <td data-label="Offering">
+                          <span className="users-cell">
+                            <button type="button" className="users-email" onClick={() => setPanel({ kind: "edit", offering })}>
+                              {offering.serviceName}
+                            </button>
+                            <span className="users-sub">{usageLabel(offering)}</span>
+                          </span>
+                        </td>
+                        <td data-label="Visit">
+                          <span className="users-cell">
+                            {modeLabel(offering.mode)}
+                            <span className="users-sub">{offering.durationMinutes} min</span>
+                          </span>
+                        </td>
+                        <td data-label="Doctor fee">
+                          <span className="users-cell">
+                            {offering.fee} {offering.currency}
+                            <span className="users-sub">
+                              {offering.sameAsDefault ? "Same as the default fee" : `Default ${offering.defaultFee} ${offering.serviceCurrency}`}
+                            </span>
+                          </span>
+                        </td>
+                        <td data-label="Status">
+                          <span className="users-cell">
+                            <StatusBadge tone={offering.isActive ? "teal" : "slate"}>{offering.isActive ? "Active" : "Inactive"}</StatusBadge>
+                          </span>
+                        </td>
+                        <td data-label="Actions">
+                          <span className="users-cell">
+                            <div className="user-actions">
+                              <button type="button" className="offering-edit" onClick={() => setPanel({ kind: "edit", offering })}>
+                                Edit
+                              </button>
+                              <button type="button" className="user-icon-btn user-icon-btn-danger" aria-label={`Delete ${offering.doctorName} ${offering.serviceName}`} onClick={() => setPanel({ kind: "delete", offering })}>
+                                <AdminIcon name="trash" />
+                              </button>
+                            </div>
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -185,7 +208,13 @@ export function OfferingsBoard({
         <CreateDialog doctors={doctors} services={services} specialties={specialties} self={self} selfRole={selfRole} currency={currency} ready={ready} onClose={close} />
       ) : null}
       {panel?.kind === "view" ? (
-        <ViewDialog offering={panel.offering} onClose={close} onEdit={(offering) => setPanel({ kind: "edit", offering })} onDelete={(offering) => setPanel({ kind: "delete", offering })} />
+        <ViewDialog
+          doctorName={panel.offering.doctorName}
+          offerings={viewed}
+          onClose={close}
+          onEdit={(offering) => setPanel({ kind: "edit", offering })}
+          onDelete={(offering) => setPanel({ kind: "delete", offering })}
+        />
       ) : null}
       {panel?.kind === "edit" ? <EditDialog offering={panel.offering} onClose={close} /> : null}
       {panel?.kind === "delete" ? <DeleteDialog offering={panel.offering} onClose={close} onEdit={(offering) => setPanel({ kind: "edit", offering })} /> : null}
@@ -382,78 +411,53 @@ function CreateDialog({
 }
 
 function ViewDialog({
-  offering,
+  doctorName,
+  offerings,
   onClose,
   onEdit,
   onDelete,
 }: {
-  offering: OfferingRecord;
+  doctorName: string;
+  offerings: OfferingRecord[];
   onClose: () => void;
   onEdit: (offering: OfferingRecord) => void;
   onDelete: (offering: OfferingRecord) => void;
 }) {
-  const verification = verificationBadge(offering.verificationStatus);
+  const verification = verificationBadge(offerings[0]?.verificationStatus ?? "");
   return (
-    <Modal title="Offering details" onClose={onClose}>
+    <Modal title={`${doctorName} offerings`} onClose={onClose}>
       <div className="user-view">
         <div>
-          <p className="user-view-email">{offering.doctorName}</p>
+          <p className="user-view-email">{doctorName}</p>
           <p className="user-view-role">
-            {offering.serviceName} · {offering.specialtyName}
+            <StatusBadge tone={verification.tone}>{verification.label}</StatusBadge>
           </p>
         </div>
-        <dl className="user-view-grid">
-          <div>
-            <dt>Doctor status</dt>
-            <dd>
-              <StatusBadge tone={verification.tone}>{verification.label}</StatusBadge>
-            </dd>
-          </div>
-          <div>
-            <dt>Offering</dt>
-            <dd>
-              <StatusBadge tone={offering.isActive ? "teal" : "slate"}>{offering.isActive ? "Active" : "Inactive"}</StatusBadge>
-            </dd>
-          </div>
-          <div>
-            <dt>Visit</dt>
-            <dd>
-              {modeLabel(offering.mode)} · {offering.durationMinutes} minutes
-            </dd>
-          </div>
-          <div>
-            <dt>Doctor fee</dt>
-            <dd>
-              {offering.fee} {offering.currency}
-            </dd>
-          </div>
-          <div>
-            <dt>Default service fee</dt>
-            <dd>
-              {offering.defaultFee} {offering.serviceCurrency}
-            </dd>
-          </div>
-          <div>
-            <dt>Usage</dt>
-            <dd>{usageLabel(offering)}</dd>
-          </div>
-        </dl>
-        <section className="user-view-section">
-          <h3>Notes</h3>
-          <p className="user-form-note">{offering.notes || "No description or preparation notes are saved."}</p>
-        </section>
-        <p className="user-form-note">
-          Created {offering.createdLabel}. Updated {offering.updatedLabel}.
-        </p>
+        <ul className="offering-view-list">
+          {offerings.map((offering) => (
+            <li key={offering.id}>
+              <div>
+                <p className="fee-name">{offering.serviceName}</p>
+                <p className="users-sub">
+                  {offering.specialtyName} · {modeLabel(offering.mode)} · {offering.durationMinutes} min · {offering.fee} {offering.currency}
+                </p>
+                <p className="users-sub">{usageLabel(offering)}{offering.notes ? ` · ${offering.notes}` : ""}</p>
+              </div>
+              <div className="user-actions">
+                <StatusBadge tone={offering.isActive ? "teal" : "slate"}>{offering.isActive ? "Active" : "Inactive"}</StatusBadge>
+                <button type="button" className="offering-edit" onClick={() => onEdit(offering)}>
+                  Edit
+                </button>
+                <button type="button" className="user-icon-btn user-icon-btn-danger" aria-label={`Delete ${offering.serviceName}`} onClick={() => onDelete(offering)}>
+                  <AdminIcon name="trash" />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
         <div className="user-form-actions">
           <button type="button" className="users-cancel" onClick={onClose}>
             Close
-          </button>
-          <button type="button" className="users-cancel" onClick={() => onDelete(offering)}>
-            Delete
-          </button>
-          <button type="button" className="users-add" onClick={() => onEdit(offering)}>
-            Edit offering
           </button>
         </div>
       </div>

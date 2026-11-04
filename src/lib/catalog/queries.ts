@@ -222,19 +222,14 @@ export async function loadOfferingWorkspace(
     ];
   }
   try {
-    const [total, rows, doctors, eligibleDoctors, specialties, services, currency] = await Promise.all([
-      db.doctorOffering.count({ where }),
-      db.doctorOffering.findMany({
-        where,
-        orderBy: { updatedAt: "desc" },
+    const [total, doctorPage, doctors, eligibleDoctors, specialties, services, currency] = await Promise.all([
+      db.doctorProfile.count({ where: { offerings: { some: where } } }),
+      db.doctorProfile.findMany({
+        where: { offerings: { some: where } },
+        orderBy: { fullName: "asc" },
         skip: (page - 1) * CATALOG_PAGE_SIZE,
         take: CATALOG_PAGE_SIZE,
-        include: {
-          doctor: { select: { id: true, fullName: true, verificationStatus: true } },
-          specialty: { select: { id: true, name: true } },
-          consultationService: { select: { id: true, name: true, defaultFee: true, currency: true, mode: true } },
-          _count: { select: { appointments: true, availabilityRules: true } },
-        },
+        select: { id: true },
       }),
       db.doctorProfile.findMany({
         orderBy: { fullName: "asc" },
@@ -262,6 +257,18 @@ export async function loadOfferingWorkspace(
       }),
       readDefaultCurrency(db),
     ]);
+    const rows = doctorPage.length
+      ? await db.doctorOffering.findMany({
+          where: { AND: [where, { doctorProfileId: { in: doctorPage.map((doctor) => doctor.id) } }] },
+          orderBy: [{ doctor: { fullName: "asc" } }, { consultationService: { name: "asc" } }, { mode: "asc" }],
+          include: {
+            doctor: { select: { id: true, fullName: true, verificationStatus: true } },
+            specialty: { select: { id: true, name: true } },
+            consultationService: { select: { id: true, name: true, defaultFee: true, currency: true, mode: true } },
+            _count: { select: { appointments: true, availabilityRules: true } },
+          },
+        })
+      : [];
     return {
       ok: true as const,
       total,
