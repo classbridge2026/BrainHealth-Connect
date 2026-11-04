@@ -269,7 +269,7 @@ export function PatientShell({
           </div>
           <div ref={scrollThumbRef} className="patient-scroll-thumb" aria-hidden="true" />
         </div>
-        <nav className="patient-tabbar" aria-label="Patient">
+        <nav className="patient-tabbar" aria-label="Patient" data-no-busy="">
           {tabs.map((link) => {
             const current = link.href === active;
             return (
@@ -287,7 +287,7 @@ export function PatientShell({
         {moreOpen ? (
           <>
             <button type="button" className="patient-more-backdrop" aria-label="Close more menu" onClick={() => setMorePath(null)} />
-            <div id="patient-more" className="patient-more" role="dialog" aria-modal="true" aria-label="More">
+            <div id="patient-more" className="patient-more" role="dialog" aria-modal="true" aria-label="More" data-no-busy="">
               {moreLinks.map((link) => (
                 <Link key={link.href} href={link.href} prefetch={false} aria-current={link.href === active ? "page" : undefined} onClick={() => setMorePath(null)}>
                   <FontAwesomeIcon icon={link.icon} aria-hidden="true" />

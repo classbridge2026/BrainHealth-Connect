@@ -234,7 +234,7 @@ export function DoctorShell({
           <main className={room ? "flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden" : "w-full min-w-0 px-4 py-6 lg:px-8 lg:py-7"}>{children}</main>
         </div>
         {room || open ? null : (
-          <nav className="patient-tabbar" aria-label="Doctor">
+          <nav className="patient-tabbar" aria-label="Doctor" data-no-busy="">
             {tabOrder.map((href) => {
               const link = links.find((item) => item.href === href);
               if (!link) return null;

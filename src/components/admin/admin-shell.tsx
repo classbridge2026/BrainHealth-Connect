@@ -417,7 +417,7 @@ export function AdminShell({
         </aside>
         <div className="admin-content">{children}</div>
       </div>
-      <nav className="admin-tabbar" aria-label="Administration">
+      <nav className="admin-tabbar" aria-label="Administration" data-no-busy="">
         {mobileTabs.map((tab) => {
           const current = matches(pathname, tab.href, tab.exact);
           return (

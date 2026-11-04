@@ -332,6 +332,7 @@ export function NotificationBell({
         ref={buttonRef}
         type="button"
         className="bell-button"
+        data-no-busy=""
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label={label}
