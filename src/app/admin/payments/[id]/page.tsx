@@ -12,6 +12,7 @@ import { appointmentStatusLabel, formatPlatformWhen, paymentStatusLabel, payment
 import { prisma } from "@/lib/db/prisma";
 import { actorMayVerifyPayment, loadVerifierIds } from "@/lib/payments/verifiers";
 import { describeReleasedVisit } from "@/lib/payments/restore-visit";
+import { ReceiptViewer } from "./receipt-viewer";
 import { OrangeReviewForm } from "./review-form";
 import { RestoreVisitForm } from "./restore-form";
 
@@ -36,13 +37,7 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
   return (
     <main className="grid gap-6">
       <PageHeader eyebrow="Operations" title={payment.amount} description={`${payment.payer.email} · ${payment.providerCode}`} />
-      {payment.receiptMime ? (
-        <img
-          className="h-auto w-full max-w-sm rounded-2xl border border-brand-line bg-white object-contain md:max-h-64 md:max-w-[16rem]"
-          src={`/admin/payments/${payment.id}/receipt`}
-          alt="Screenshot of the transaction details"
-        />
-      ) : null}
+      {payment.receiptMime ? <ReceiptViewer src={`/admin/payments/${payment.id}/receipt`} /> : null}
       {releasedVisit ? (
         <RestoreVisitForm
           paymentId={payment.id}
