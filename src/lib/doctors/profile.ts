@@ -138,8 +138,10 @@ export async function saveDoctorProfile(
     }
   }
 
+  let keptSpecialtyInUse = false;
   try {
     await deps.db.$transaction(async (tx) => {
+      keptSpecialtyInUse = false;
       if (data.phoneE164 && data.phoneE164 !== profile.user.phoneE164) {
         await tx.user.update({ where: { id: profile.userId }, data: { phoneE164: data.phoneE164 } });
       }
@@ -186,7 +188,7 @@ export async function saveDoctorProfile(
 
       const verified = profile.specialties.filter((item) => item.claimStatus === "VERIFIED");
       const removedVerified = verified.filter((item) => !specialtyIds.includes(item.specialtyId));
-      if (specialtyIds.length > 0 && removedVerified.length > 0) {
+      if (!verifyNow && specialtyIds.length > 0 && removedVerified.length > 0) {
         throw new Error("VERIFIED_SPECIALTY");
       }
 
@@ -195,42 +197,46 @@ export async function saveDoctorProfile(
       }
 
       if (specialtyIds.length > 0) {
-      for (const existing of profile.specialties) {
-        if (specialtyIds.includes(existing.specialtyId) || existing.claimStatus === "VERIFIED") {
-          continue;
+        for (const existing of profile.specialties) {
+          if (specialtyIds.includes(existing.specialtyId)) continue;
+          if (!verifyNow && existing.claimStatus === "VERIFIED") continue;
+          const [appointments, offerings] = await Promise.all([
+            tx.appointment.count({ where: { doctorProfileId: profile.id, specialtyId: existing.specialtyId } }),
+            tx.doctorOffering.count({ where: { doctorProfileId: profile.id, specialtyId: existing.specialtyId } }),
+          ]);
+          if (appointments + offerings > 0) {
+            if (!verifyNow) throw new Error("SPECIALTY_IN_USE");
+            keptSpecialtyInUse = true;
+            if (existing.isPrimary && existing.specialtyId !== data.primarySpecialtyId) {
+              await tx.doctorSpecialty.update({ where: { id: existing.id }, data: { isPrimary: false } });
+            }
+            continue;
+          }
+          await tx.doctorSpecialty.delete({ where: { id: existing.id } });
         }
-        const [appointments, offerings] = await Promise.all([
-          tx.appointment.count({ where: { doctorProfileId: profile.id, specialtyId: existing.specialtyId } }),
-          tx.doctorOffering.count({ where: { doctorProfileId: profile.id, specialtyId: existing.specialtyId } }),
-        ]);
-        if (appointments + offerings > 0) {
-          throw new Error("SPECIALTY_IN_USE");
-        }
-        await tx.doctorSpecialty.delete({ where: { id: existing.id } });
-      }
 
-      for (const specialtyId of specialtyIds) {
-        const existing = profile.specialties.find((item) => item.specialtyId === specialtyId);
-        const isPrimary = specialtyId === data.primarySpecialtyId;
-        if (existing) {
-          await tx.doctorSpecialty.update({
-            where: { id: existing.id },
-            data: verifyNow
-              ? { isPrimary, claimStatus: "VERIFIED", verifiedAt: deps.now, verifiedByUserId: actorUserId }
-              : { isPrimary },
-          });
-        } else {
-          await tx.doctorSpecialty.create({
-            data: {
-              doctorProfileId: profile.id,
-              specialtyId,
-              isPrimary,
-              claimStatus: verifyNow ? "VERIFIED" : "DECLARED",
-              ...(verifyNow ? { verifiedAt: deps.now, verifiedByUserId: actorUserId } : {}),
-            },
-          });
+        for (const specialtyId of specialtyIds) {
+          const existing = profile.specialties.find((item) => item.specialtyId === specialtyId);
+          const isPrimary = specialtyId === data.primarySpecialtyId;
+          if (existing) {
+            await tx.doctorSpecialty.update({
+              where: { id: existing.id },
+              data: verifyNow
+                ? { isPrimary, claimStatus: "VERIFIED", verifiedAt: deps.now, verifiedByUserId: actorUserId }
+                : { isPrimary },
+            });
+          } else {
+            await tx.doctorSpecialty.create({
+              data: {
+                doctorProfileId: profile.id,
+                specialtyId,
+                isPrimary,
+                claimStatus: verifyNow ? "VERIFIED" : "DECLARED",
+                ...(verifyNow ? { verifiedAt: deps.now, verifiedByUserId: actorUserId } : {}),
+              },
+            });
+          }
         }
-      }
       }
 
       if (verifyNow && !wasApproved) {
@@ -292,7 +298,12 @@ export async function saveDoctorProfile(
   }
 
   if (verifyNow) {
-    return { ok: true, message: "Profile saved and verified." };
+    return {
+      ok: true,
+      message: keptSpecialtyInUse
+        ? "Profile saved and verified. A specialty that already has appointments or services was kept."
+        : "Profile saved and verified.",
+    };
   }
   if (deps.mode === "submit") {
     await notifyAdministratorsOfDoctorReview(deps.db, {
@@ -312,6 +323,18 @@ export async function saveDoctorProfile(
 
 export function profileInputFromForm(formData: FormData) {
   return formDataToDoctorProfile(formData);
+}
+
+/** The specialty shown as primary, plus every other specialty already on the profile. */
+export function specialtyFormSelection(
+  specialties: Array<{ specialtyId: string; isPrimary: boolean }>,
+): { primarySpecialtyId: string; additionalSpecialtyIds: string[] } {
+  const primary = specialties.find((item) => item.isPrimary) ?? specialties[0];
+  const primarySpecialtyId = primary?.specialtyId ?? "";
+  return {
+    primarySpecialtyId,
+    additionalSpecialtyIds: [...new Set(specialties.map((item) => item.specialtyId).filter((id) => id && id !== primarySpecialtyId))],
+  };
 }
 
 export { toFields };

@@ -10,6 +10,7 @@ import { DOCTOR_PORTAL_ROLES } from "@/lib/doctor/session";
 import { prisma } from "@/lib/db/prisma";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
 import { loadOwnDoctor } from "@/lib/doctors/queries";
+import { specialtyFormSelection } from "@/lib/doctors/profile";
 import { profileIsEditable } from "@/lib/doctors/rules";
 import { groupAssignedOfferings } from "@/lib/doctors/consultation-preference";
 import { OnboardingForm } from "../onboarding/onboarding-form";
@@ -65,7 +66,7 @@ export default async function DoctorProfilePage() {
   const administrator = isPortalAdministrator(user.roleCodes);
   const inPlace = administrator && profile.verificationStatus !== "SUSPENDED";
   const editable = inPlace || profileIsEditable(profile.verificationStatus);
-  const primary = profile.specialties.find((item) => item.isPrimary);
+  const specialtySelection = specialtyFormSelection(profile.specialties);
   const specialties = await prisma.specialty.findMany({
     where: { OR: [{ isActive: true }, { doctors: { some: { doctorProfileId: profile.id } } }] },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -102,7 +103,7 @@ export default async function DoctorProfilePage() {
               showConsultationPreferences={false}
               resubmit={profile.verificationStatus === "APPROVED" && !inPlace}
               specialties={specialties.map((specialty) => ({ id: specialty.id, name: specialty.name, active: specialty.isActive }))}
-              selectedAdditional={profile.specialties.filter((item) => !item.isPrimary).map((item) => item.specialtyId)}
+              selectedAdditional={specialtySelection.additionalSpecialtyIds}
               credentials={profile.credentials.map((credential) => ({
                 id: credential.id,
                 type: credential.type,
@@ -117,7 +118,7 @@ export default async function DoctorProfilePage() {
                 email: profile.user.email,
                 phone: profile.user.phoneE164 ?? "",
                 biography: profile.biography ?? "",
-                primarySpecialtyId: primary?.specialtyId ?? "",
+                primarySpecialtyId: specialtySelection.primarySpecialtyId,
                 qualificationKind: profile.qualificationKind ?? "",
                 qualificationTitle: profile.qualificationTitle ?? "",
                 qualificationInstitution: profile.qualificationInstitution ?? "",

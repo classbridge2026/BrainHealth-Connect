@@ -10,7 +10,7 @@ import { createDoctorAccount } from "./create-doctor";
 import { acceptDoctorInvitation, resendDoctorInvitation, revokeDoctorInvitation } from "./invitations";
 import { uploadDoctorCredential, openCredentialFile } from "./credentials";
 import { approveDoctor } from "./verification";
-import { saveDoctorProfile } from "./profile";
+import { saveDoctorProfile, specialtyFormSelection } from "./profile";
 import {
   approvalBlockers,
   canManageSpecialties,
@@ -25,6 +25,7 @@ import {
 import { createPrivateStorage, storageRootProblem } from "@/lib/storage/private-storage";
 
 const specialtyId = "11111111-1111-4111-8111-111111111111";
+const otherSpecialtyId = "55555555-5555-4555-8555-555555555555";
 const adminId = "22222222-2222-4222-8222-222222222222";
 const doctorUserId = "33333333-3333-4333-8333-333333333333";
 const profileId = "44444444-4444-4444-8444-444444444444";
@@ -749,6 +750,194 @@ describe("doctor onboarding rules", () => {
     expect(updates[0]?.biography).toBe("Mental health consultations in Freetown.");
     expect(updates[0]?.displayName).toBe("Dr Osman Tholley");
     expect(updates.some((item) => item.specialtyClaim === "VERIFIED")).toBe(true);
+  });
+
+  it("keeps every specialty on the form when more than one is marked primary", () => {
+    expect(specialtyFormSelection([
+      { specialtyId, isPrimary: true },
+      { specialtyId: otherSpecialtyId, isPrimary: true },
+    ])).toEqual({
+      primarySpecialtyId: specialtyId,
+      additionalSpecialtyIds: [otherSpecialtyId],
+    });
+  });
+
+  it("lets an administrator replace a verified specialty that is not in use", async () => {
+    const removed: string[] = [];
+    const db = {
+      doctorProfile: {
+        findUnique: async () => ({
+          id: profileId,
+          userId: doctorUserId,
+          verificationStatus: "APPROVED",
+          fullName: "Osman Tholley",
+          displayName: "Dr Osman Tholley",
+          user: { id: doctorUserId, email: "osman@example.com", phoneE164: "+23276111222", status: "ACTIVE" },
+          specialties: [
+            { id: "link-a", specialtyId, isPrimary: true, claimStatus: "VERIFIED" },
+            { id: "link-b", specialtyId: otherSpecialtyId, isPrimary: true, claimStatus: "VERIFIED" },
+          ],
+          credentials: [],
+        }),
+        update: async () => ({}),
+      },
+      specialty: {
+        findMany: async ({ where }: { where: { id: { in: string[] } } }) => where.id.in.map((id) => ({ id, isActive: true })),
+      },
+      platformSetting: { findUnique: async () => null },
+      user: { update: async () => ({}) },
+      appointment: { count: async () => 0 },
+      doctorOffering: { count: async () => 0 },
+      doctorSpecialty: {
+        delete: async ({ where }: { where: { id: string } }) => {
+          removed.push(where.id);
+        },
+        update: async () => ({}),
+        create: async () => ({}),
+      },
+      $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
+    };
+    const saved = await saveDoctorProfile(
+      doctorUserId,
+      {
+        fullName: "Osman Tholley",
+        displayName: "Dr Osman Tholley",
+        phone: "+23276111222",
+        biography: "Mental health consultations in Freetown.",
+        primarySpecialtyId: specialtyId,
+        additionalSpecialtyIds: [],
+        qualificationKind: "",
+        qualificationTitle: "",
+        qualificationInstitution: "",
+        qualificationYear: "",
+        licenseNumber: "",
+        licenseAuthority: "",
+        licenseExpiresOn: "",
+        yearsExperience: "5",
+        languages: "English",
+        consultationOnline: true,
+        consultationInPerson: false,
+      },
+      { db: db as never, mode: "draft", preserveApproval: true, now: new Date("2026-10-18T00:00:00Z") },
+    );
+    expect(saved).toEqual({ ok: true, message: "Profile saved and verified." });
+    expect(removed).toEqual(["link-b"]);
+  });
+
+  it("saves an administrator profile when a verified specialty in use stays on the profile", async () => {
+    const specialtyUpdates: Array<Record<string, unknown>> = [];
+    const db = {
+      doctorProfile: {
+        findUnique: async () => ({
+          id: profileId,
+          userId: doctorUserId,
+          verificationStatus: "APPROVED",
+          fullName: "Osman Tholley",
+          displayName: "Osman Tholley",
+          biography: "Old biography",
+          user: { id: doctorUserId, email: "osman@example.com", phoneE164: "+23276111222", status: "ACTIVE" },
+          specialties: [{ id: "link-a", specialtyId, isPrimary: true, claimStatus: "VERIFIED" }],
+          credentials: [],
+        }),
+        update: async ({ data }: { data: Record<string, unknown> }) => specialtyUpdates.push({ profile: data.displayName }),
+      },
+      specialty: {
+        findMany: async ({ where }: { where: { id: { in: string[] } } }) => where.id.in.map((id) => ({ id, isActive: true })),
+      },
+      platformSetting: { findUnique: async () => null },
+      user: { update: async () => ({}) },
+      appointment: { count: async () => 1 },
+      doctorOffering: { count: async () => 0 },
+      doctorSpecialty: {
+        delete: async () => {
+          throw new Error("in-use specialty should stay");
+        },
+        update: async ({ data }: { data: Record<string, unknown> }) => specialtyUpdates.push(data),
+        create: async ({ data }: { data: Record<string, unknown> }) => specialtyUpdates.push(data),
+      },
+      $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
+    };
+    const saved = await saveDoctorProfile(
+      doctorUserId,
+      {
+        fullName: "Osman Tholley",
+        displayName: "Dr Osman Tholley",
+        phone: "+23276111222",
+        biography: "Mental health consultations in Freetown.",
+        primarySpecialtyId: otherSpecialtyId,
+        additionalSpecialtyIds: [],
+        qualificationKind: "",
+        qualificationTitle: "",
+        qualificationInstitution: "",
+        qualificationYear: "",
+        licenseNumber: "",
+        licenseAuthority: "",
+        licenseExpiresOn: "",
+        yearsExperience: "5",
+        languages: "English",
+        consultationOnline: true,
+        consultationInPerson: false,
+      },
+      { db: db as never, mode: "draft", preserveApproval: true, now: new Date("2026-10-18T00:00:00Z") },
+    );
+    expect(saved).toEqual({
+      ok: true,
+      message: "Profile saved and verified. A specialty that already has appointments or services was kept.",
+    });
+    expect(specialtyUpdates.some((item) => item.profile === "Dr Osman Tholley")).toBe(true);
+    expect(specialtyUpdates).toContainEqual({ isPrimary: false });
+    expect(specialtyUpdates).toContainEqual(expect.objectContaining({ specialtyId: otherSpecialtyId, isPrimary: true, claimStatus: "VERIFIED" }));
+  });
+
+  it("still blocks a doctor from dropping a verified specialty", async () => {
+    const db = {
+      doctorProfile: {
+        findUnique: async () => ({
+          id: profileId,
+          userId: doctorUserId,
+          verificationStatus: "APPROVED",
+          fullName: "Fatmata Sesay",
+          displayName: "Dr Sesay",
+          user: { id: doctorUserId, email: "fatmata@example.com", phoneE164: "+23276111222", status: "ACTIVE" },
+          specialties: [{ id: "link", specialtyId, isPrimary: true, claimStatus: "VERIFIED" }],
+          credentials: [
+            { type: "LICENSE", status: "VERIFIED", archivedAt: null },
+            { type: "DEGREE", status: "VERIFIED", archivedAt: null },
+          ],
+        }),
+        update: async () => ({}),
+      },
+      specialty: {
+        findMany: async ({ where }: { where: { id: { in: string[] } } }) => where.id.in.map((id) => ({ id, isActive: true })),
+      },
+      platformSetting: { findUnique: async () => null },
+      user: { update: async () => ({}) },
+      $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
+    };
+    const saved = await saveDoctorProfile(
+      doctorUserId,
+      {
+        fullName: "Fatmata Sesay",
+        displayName: "Dr Sesay",
+        phone: "+23276111222",
+        biography: "Consultant psychiatrist providing careful follow-up for adults.",
+        primarySpecialtyId: otherSpecialtyId,
+        additionalSpecialtyIds: [],
+        qualificationKind: "MEDICAL_DEGREE",
+        qualificationTitle: "MBChB",
+        qualificationInstitution: "COMAHS",
+        qualificationYear: "2014",
+        licenseNumber: "SL-100",
+        licenseAuthority: "Medical and Dental Council",
+        licenseExpiresOn: "",
+        yearsExperience: "8",
+        languages: "English",
+        consultationOnline: true,
+        consultationInPerson: false,
+      },
+      { db: db as never, mode: "submit", now: new Date("2026-10-18T00:00:00Z") },
+    );
+    expect(saved).toEqual({ ok: false, formMessage: "A verified specialty cannot be removed from this profile." });
   });
 
   it("does not describe a failed delivery as sent", () => {

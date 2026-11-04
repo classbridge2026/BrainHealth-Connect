@@ -7,7 +7,7 @@ import { DOCTOR_PORTAL_ROLES } from "@/lib/doctor/session";
 import { prisma } from "@/lib/db/prisma";
 import { missingUploadedCredentials, onboardingSteps, profileFieldGaps, profileIsEditable } from "@/lib/doctors/rules";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
-import { identityDocumentRequired } from "@/lib/doctors/profile";
+import { identityDocumentRequired, specialtyFormSelection } from "@/lib/doctors/profile";
 import { loadOwnDoctor } from "@/lib/doctors/queries";
 import { STORAGE_CONFIGURATION_HINT, createPrivateStorage } from "@/lib/storage/private-storage";
 import { OnboardingForm } from "./onboarding-form";
@@ -38,14 +38,15 @@ export default async function DoctorOnboardingPage() {
     select: { id: true, name: true, isActive: true },
   });
   const identityRequired = await identityDocumentRequired(prisma);
-  const primary = profile.specialties.find((item) => item.isPrimary);
+  const specialtySelection = specialtyFormSelection(profile.specialties);
+  const primarySpecialtyId = specialtySelection.primarySpecialtyId || null;
   const fields = {
     fullName: profile.fullName,
     displayName: profile.displayName,
     phoneE164: profile.user.phoneE164,
     email: profile.user.email,
     biography: profile.biography,
-    primarySpecialtyId: primary?.specialtyId ?? null,
+    primarySpecialtyId,
     qualificationKind: profile.qualificationKind,
     qualificationTitle: profile.qualificationTitle,
     qualificationInstitution: profile.qualificationInstitution,
@@ -107,7 +108,7 @@ export default async function DoctorOnboardingPage() {
         inPlace={isPortalAdministrator(user.roleCodes) && profile.verificationStatus !== "SUSPENDED"}
         resubmit={profile.verificationStatus === "APPROVED" && !isPortalAdministrator(user.roleCodes)}
         specialties={activeSpecialties.map((specialty) => ({ id: specialty.id, name: specialty.name, active: specialty.isActive }))}
-        selectedAdditional={profile.specialties.filter((item) => !item.isPrimary).map((item) => item.specialtyId)}
+        selectedAdditional={specialtySelection.additionalSpecialtyIds}
         credentials={profile.credentials.map((credential) => ({
           id: credential.id,
           type: credential.type,
@@ -122,7 +123,7 @@ export default async function DoctorOnboardingPage() {
           email: profile.user.email,
           phone: profile.user.phoneE164 ?? "",
           biography: profile.biography ?? "",
-          primarySpecialtyId: primary?.specialtyId ?? "",
+          primarySpecialtyId: specialtySelection.primarySpecialtyId,
           qualificationKind: profile.qualificationKind ?? "",
           qualificationTitle: profile.qualificationTitle ?? "",
           qualificationInstitution: profile.qualificationInstitution ?? "",
