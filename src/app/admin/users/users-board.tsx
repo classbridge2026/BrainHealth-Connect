@@ -26,6 +26,8 @@ export type UserRow = {
   createdLabel: string;
   timezone: string;
   canManage: boolean;
+  canEdit: boolean;
+  self: boolean;
   lockLabel: string;
   imageVersion: string | null;
 };
@@ -293,18 +295,17 @@ export function UsersBoard({
                         <button type="button" role="menuitem" onClick={() => { setMenuId(null); openView(user.id); }}>
                           View
                         </button>
+                        {user.canEdit ? (
+                          <button type="button" role="menuitem" onClick={() => { setMenuId(null); setMode({ kind: "edit", user }); }}>
+                            Edit
+                          </button>
+                        ) : null}
                         {user.canManage ? (
-                          <>
-                            <button type="button" role="menuitem" onClick={() => { setMenuId(null); setMode({ kind: "edit", user }); }}>
-                              Edit
-                            </button>
-                            <button type="button" role="menuitem" className="is-danger" onClick={() => { setMenuId(null); setMode({ kind: "delete", user }); }}>
-                              Delete
-                            </button>
-                          </>
-                        ) : (
-                          <p>{user.lockLabel}</p>
-                        )}
+                          <button type="button" role="menuitem" className="is-danger" onClick={() => { setMenuId(null); setMode({ kind: "delete", user }); }}>
+                            Delete
+                          </button>
+                        ) : null}
+                        {!user.canEdit && !user.canManage ? <p>{user.lockLabel}</p> : null}
                       </div>
                     ) : null}
                   </div>
@@ -388,18 +389,17 @@ export function UsersBoard({
                       <button type="button" className="user-icon-btn" aria-label={`View ${user.email}`} onClick={() => openView(user.id)}>
                         <AdminIcon name="view" />
                       </button>
+                      {user.canEdit ? (
+                        <button type="button" className="user-icon-btn" aria-label={`Edit ${user.email}`} onClick={() => setMode({ kind: "edit", user })}>
+                          <AdminIcon name="edit" />
+                        </button>
+                      ) : null}
                       {user.canManage ? (
-                        <>
-                          <button type="button" className="user-icon-btn" aria-label={`Edit ${user.email}`} onClick={() => setMode({ kind: "edit", user })}>
-                            <AdminIcon name="edit" />
-                          </button>
-                          <button type="button" className="user-icon-btn user-icon-btn-danger" aria-label={`Delete ${user.email}`} onClick={() => setMode({ kind: "delete", user })}>
-                            <AdminIcon name="trash" />
-                          </button>
-                        </>
-                      ) : (
-                        <span className="users-sub">{user.lockLabel}</span>
-                      )}
+                        <button type="button" className="user-icon-btn user-icon-btn-danger" aria-label={`Delete ${user.email}`} onClick={() => setMode({ kind: "delete", user })}>
+                          <AdminIcon name="trash" />
+                        </button>
+                      ) : null}
+                      {!user.canEdit && !user.canManage ? <span className="users-sub">{user.lockLabel}</span> : null}
                     </div>
                     </span>
                   </td>
@@ -558,7 +558,7 @@ function ViewDialog({ userId, onClose, onEdit }: { userId: string; onClose: () =
               <button type="button" className="users-cancel" onClick={onClose}>
                 Close
               </button>
-              {view.canManage ? (
+              {view.canEdit ? (
                 <button
                   type="button"
                   className="users-add"
@@ -574,13 +574,14 @@ function ViewDialog({ userId, onClose, onEdit }: { userId: string; onClose: () =
                       statusTone: view.statusTone,
                       createdLabel: view.createdLabel,
                       timezone: view.timezone,
-                      canManage: true,
+                      canManage: view.canManage,
+                      canEdit: true,
+                      self: !view.canManage,
                       lockLabel: "",
                       imageVersion: view.imageVersion,
                     })
                   }
                 >
-                  <AdminIcon name="edit" />
                   Edit
                 </button>
               ) : null}
@@ -687,7 +688,7 @@ function EditDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
         </label>
         <label>
           Status
-          <select name="status" defaultValue={user.status}>
+          <select name="status" defaultValue={user.status} disabled={user.self}>
             {statuses.map((status) => (
               <option key={status.value} value={status.value}>
                 {status.label}
@@ -695,10 +696,12 @@ function EditDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
             ))}
           </select>
         </label>
+        {user.self ? <input type="hidden" name="status" value={user.status} /> : null}
         <label>
           New password
           <input name="password" type="password" autoComplete="new-password" minLength={6} maxLength={128} placeholder="Leave blank to keep the current password" />
         </label>
+        <p className="user-form-note">The saved email and password are what this account uses the next time it signs in. A new password needs a letter and a number.</p>
         <FormMessage state={state} />
         <div className="user-form-actions">
           <button type="button" className="users-cancel" onClick={onClose}>

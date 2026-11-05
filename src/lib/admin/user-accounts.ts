@@ -67,7 +67,7 @@ function elevated(codes: string[]) {
 function guard(actor: Actor, target: Target | null): string | null {
   if (!isPortalAdministrator(actor.roleCodes)) return "You cannot change this account.";
   if (!target || target.deletedAt) return "That account was not found.";
-  if (actor.userId === target.id) return "You cannot change your own account.";
+  if (actor.userId === target.id) return null;
   if (elevated(target.roles.map((entry) => entry.role.code)) && !isSuperAdmin(actor.roleCodes)) {
     return "Only a super administrator can change an administrator account.";
   }
@@ -166,8 +166,8 @@ export async function updateUserAccount(
   if (phoneRaw && !phone) return { ok: false, message: "Enter a phone number with a country code, such as +232 76 000 001." };
   const timezone = input.timezone.trim() || "Africa/Freetown";
   if (!TIMEZONE.test(timezone)) return { ok: false, message: "Enter a timezone such as Africa/Freetown." };
-  const status = parseUserStatus(input.status);
-  if (!status) return { ok: false, message: "Choose a valid account status." };
+  const requestedStatus = parseUserStatus(input.status);
+  if (!requestedStatus) return { ok: false, message: "Choose a valid account status." };
   const nextPassword = input.password.trim();
   if (nextPassword) {
     const passwordError = passwordProblem(nextPassword);
@@ -178,6 +178,8 @@ export async function updateUserAccount(
     const target = await deps.db.user.findUnique({ where: { id: input.userId }, select: targetSelect });
     const blocked = guard(deps.actor, target);
     if (blocked || !target) return { ok: false, message: blocked ?? "That account was not found." };
+    const self = deps.actor.userId === target.id;
+    const status = self ? target.status : requestedStatus;
     const codes = target.roles.map((entry) => entry.role.code);
     const hasProfile = Boolean(target.patientProfile || target.doctorProfile);
     if (hasProfile) {
@@ -195,12 +197,16 @@ export async function updateUserAccount(
       if (phoneOwner && phoneOwner.id !== target.id) return { ok: false, message: "That phone number is already in use." };
     }
     const passwordHash = nextPassword ? await hashPassword(nextPassword) : null;
+    const emailChanged = emailNormalized !== target.emailNormalized;
+    const signInChanged = emailChanged || Boolean(passwordHash);
+    const nextStatus = signInChanged && status === "PENDING_VERIFICATION" ? "ACTIVE" : status;
     const data: Prisma.UserUpdateInput = {
       email,
       emailNormalized,
       phoneE164: phone,
       timezone,
-      status: status as UserStatusCode,
+      status: nextStatus as UserStatusCode,
+      ...(signInChanged ? { emailVerifiedAt: new Date() } : {}),
     };
     if (passwordHash) data.passwordHash = passwordHash;
     await deps.db.user.update({ where: { id: target.id }, data });
@@ -211,7 +217,7 @@ export async function updateUserAccount(
     if (target.doctorProfile && fullName) {
       await deps.db.doctorProfile.update({ where: { id: target.doctorProfile.id }, data: { fullName } });
     }
-    if (status === "SUSPENDED" || status === "DISABLED" || passwordHash) {
+    if (nextStatus === "SUSPENDED" || nextStatus === "DISABLED" || passwordHash) {
       await deps.db.session.updateMany({
         where: { userId: target.id, revokedAt: null },
         data: { revokedAt: new Date() },
@@ -224,7 +230,7 @@ export async function updateUserAccount(
         action: "user.updated",
         entityType: "User",
         entityId: target.id,
-        metadata: sanitizeMetadata({ status, emailChanged: emailNormalized !== target.emailNormalized }) ?? undefined,
+        metadata: sanitizeMetadata({ status: nextStatus, emailChanged }) ?? undefined,
       },
     });
     return { ok: true, message: `Updated ${email}.` };
@@ -239,6 +245,7 @@ export async function closeUserAccount(input: { userId: string }, deps: { db: Pr
     const target = await deps.db.user.findUnique({ where: { id: input.userId }, select: targetSelect });
     const blocked = guard(deps.actor, target);
     if (blocked || !target) return { ok: false, message: blocked ?? "That account was not found." };
+    if (deps.actor.userId === target.id) return { ok: false, message: "You cannot change your own account." };
     const codes = target.roles.map((entry) => entry.role.code);
     if (codes.includes(SUPER_ADMIN_ROLE_CODE) && target.status === "ACTIVE") {
       const count = await activeSuperAdminCount(deps.db);

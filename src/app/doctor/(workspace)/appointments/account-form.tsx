@@ -16,7 +16,7 @@ export function OwnAccountForm({ email }: { email: string }) {
   return (
     <section id="account" className="rounded-2xl border border-[#d7e3ee] bg-white p-5">
       <h2 className="text-lg font-semibold text-[#0C2B45]">Email and password</h2>
-      <p className="mt-1 text-sm text-[#5b6b7c]">Change the email or password for this administrator sign-in. A new password needs a letter and a number.</p>
+      <p className="mt-1 text-sm text-[#5b6b7c]">Save the email and password you want to use at sign-in. A new password needs a letter and a number. The next login uses these details.</p>
       <form action={action} className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1 text-sm font-medium text-[#0C2B45] sm:col-span-2">
           Email

@@ -29,6 +29,7 @@ export type UserAccountView = {
   doctor: { id: string; fullName: string; verificationLabel: string; verificationTone: BadgeTone } | null;
   notices: string[];
   canManage: boolean;
+  canEdit: boolean;
   imageVersion: string | null;
   forms: {
     canSuspend: boolean;
@@ -99,6 +100,7 @@ export async function readUserAccount(userId: string): Promise<{ ok: true; user:
         : null,
       notices,
       canManage: !isSelf && (!elevated || superAdmin),
+      canEdit: isSelf || (!isSelf && (!elevated || superAdmin)),
       imageVersion: user.imageVersion,
       forms: {
         canSuspend: !isSelf && user.status === "ACTIVE" && (!elevated || canManagePrivileges),

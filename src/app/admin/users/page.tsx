@@ -42,6 +42,8 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
       createdLabel: formatPlatformDay(new Date(user.createdAt)),
       timezone: user.timezone,
       canManage: actor.id !== user.id && (!elevated || superAdmin),
+      canEdit: actor.id === user.id || (actor.id !== user.id && (!elevated || superAdmin)),
+      self: actor.id === user.id,
       lockLabel: actor.id === user.id ? "You" : "Locked",
       imageVersion: user.imageVersion,
     };

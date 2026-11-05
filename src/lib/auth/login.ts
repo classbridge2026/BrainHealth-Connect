@@ -39,6 +39,7 @@ export async function authenticatePatient(
     deletedAt: true,
     passwordHash: true,
     status: true,
+    emailVerifiedAt: true,
     roles: { select: { role: { select: { code: true } } } },
   } as const;
   const user = emailNormalized
@@ -65,7 +66,7 @@ export async function authenticatePatient(
     code === DOCTOR_ROLE_CODE || code === ADMIN_ROLE_CODE || code === SUPER_ADMIN_ROLE_CODE,
   );
   if (user.status === "PENDING_VERIFICATION") {
-    if (staffAccount) {
+    if (staffAccount && !user.emailVerifiedAt) {
       return {
         ok: false,
         formMessage: "Verify your email before signing in.",

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
+import { authenticatePatient } from "./login";
 import { updateOwnSignIn } from "./own-account";
+import { hashPassword, verifyPassword } from "./password";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 
@@ -91,5 +93,64 @@ describe("updateOwnSignIn", () => {
     expect(read().storedHash).toBe("hashed:Nextpass2");
     expect(sessions.find((session) => session.tokenHash === "current")?.revokedAt).toBeNull();
     expect(sessions.find((session) => session.tokenHash === "other")?.revokedAt).toBeInstanceOf(Date);
+  });
+
+  it("signs in to administration with the new email and password", async () => {
+    const passwordHash = await hashPassword("Current1");
+    const user = {
+      id: userId,
+      email: "admin@example.com",
+      emailNormalized: "admin@example.com",
+      passwordHash,
+      deletedAt: null,
+      status: "ACTIVE" as const,
+      roles: [{ role: { code: "SUPER_ADMIN" } }],
+    };
+    const db = {
+      user: {
+        findUnique: async ({ where }: { where: { id?: string; emailNormalized?: string } }) => {
+          if (where.id && where.id !== user.id) return null;
+          if (where.emailNormalized && where.emailNormalized !== user.emailNormalized) return null;
+          return user;
+        },
+        update: async ({ data }: { data: { email?: string; emailNormalized?: string; passwordHash?: string; emailVerifiedAt?: Date } }) => {
+          Object.assign(user, data);
+          return user;
+        },
+      },
+      session: {
+        updateMany: async () => ({ count: 0 }),
+        create: async () => ({ id: "session-1" }),
+      },
+      auditLog: { create: async () => ({}) },
+    } as unknown as PrismaClient;
+
+    const saved = await updateOwnSignIn(
+      db,
+      {
+        userId,
+        email: "kpallu.admin@example.com",
+        currentPassword: "Current1",
+        nextPassword: "Clinic24",
+        confirmPassword: "Clinic24",
+        currentTokenHash: "current",
+      },
+      { verifyPassword, hashPassword },
+    );
+    expect(saved).toEqual({ ok: true, message: "Email and password updated." });
+
+    const signedIn = await authenticatePatient(db, {
+      identifier: "kpallu.admin@example.com",
+      password: "Clinic24",
+      now: new Date(),
+    });
+    expect(signedIn).toMatchObject({ ok: true, destination: "/admin" });
+
+    const oldSignIn = await authenticatePatient(db, {
+      identifier: "admin@example.com",
+      password: "Current1",
+      now: new Date(),
+    });
+    expect(oldSignIn).toMatchObject({ ok: false });
   });
 });
