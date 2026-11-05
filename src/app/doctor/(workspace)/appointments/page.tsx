@@ -6,7 +6,9 @@ import { RecordsUnavailable } from "@/components/records-unavailable";
 import { RestrictedPractice } from "@/components/doctor/restricted";
 import { StatusBadge } from "@/components/status-badge";
 import { appointmentStatusLabel, appointmentStatusTone } from "@/lib/admin/labels";
+import { isPortalAdministrator } from "@/lib/admin/rules";
 import { requireClinicalPortal } from "@/lib/doctor/session";
+import { OwnAccountForm } from "./account-form";
 import {
   monthCells,
   parseAnchor,
@@ -57,6 +59,10 @@ export default async function DoctorAppointmentsPage({
     clinicWide: portal.staff,
   });
   if (!result.ok) return <RecordsUnavailable code={result.code} />;
+  const administrator = isPortalAdministrator(portal.user.roleCodes);
+  const signIn = administrator
+    ? await prisma.user.findUnique({ where: { id: portal.user.id }, select: { email: true } })
+    : null;
   const filters = { status, mode, service };
   const selectedKey = date;
   const selected = view === "day" ? result.rows : result.rows.filter((row) => row.day === selectedKey);
@@ -85,6 +91,7 @@ export default async function DoctorAppointmentsPage({
           </p>
         </div>
       </header>
+      {signIn ? <OwnAccountForm email={signIn.email} /> : null}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_280px]">
         <section className="rounded-2xl border border-[#d7e3ee] bg-white p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">

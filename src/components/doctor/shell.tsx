@@ -215,9 +215,9 @@ export function DoctorShell({
                     <FontAwesomeIcon icon={faBell} aria-hidden="true" />
                     Notifications
                   </Link>
-                  <Link href="/forgot-password" role="menuitem" onClick={() => setAccountPath(null)}>
+                  <Link href={administration ? "/doctor/appointments#account" : "/forgot-password"} role="menuitem" onClick={() => setAccountPath(null)}>
                     <FontAwesomeIcon icon={faKey} aria-hidden="true" />
-                    Reset password
+                    {administration ? "Email and password" : "Reset password"}
                   </Link>
                   <form action={signOutAction}>
                     <button type="submit" role="menuitem">
