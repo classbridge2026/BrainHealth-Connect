@@ -34,6 +34,7 @@ export async function updateOwnSignInAction(_previous: OwnAccountState, formData
   );
   if (!result.ok) return { message: result.message, tone: "error" };
   revalidatePath("/doctor", "layout");
+  revalidatePath("/doctor/profile");
   revalidatePath("/admin", "layout");
   return { message: result.message, tone: "ok" };
 }

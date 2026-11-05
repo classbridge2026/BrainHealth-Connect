@@ -14,6 +14,7 @@ import { specialtyFormSelection } from "@/lib/doctors/profile";
 import { profileIsEditable } from "@/lib/doctors/rules";
 import { groupAssignedOfferings } from "@/lib/doctors/consultation-preference";
 import { OnboardingForm } from "../onboarding/onboarding-form";
+import { OwnAccountForm } from "./account-form";
 import { OfferingPreferenceForm } from "./preference-form";
 
 export const metadata: Metadata = { title: "Doctor profile" };
@@ -28,7 +29,19 @@ export default async function DoctorProfilePage() {
     if (!isSchemaMismatch(error)) throw error;
     return <RecordsUnavailable code="SCHEMA" />;
   }
-  if (!profile) return isPortalAdministrator(user.roleCodes) ? <ClinicPracticeNote /> : <RecordsUnavailable code="NOT_FOUND" />;
+  const administrator = isPortalAdministrator(user.roleCodes);
+  const signIn = administrator
+    ? await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } })
+    : null;
+  if (!profile) {
+    if (!administrator) return <RecordsUnavailable code="NOT_FOUND" />;
+    return (
+      <div className="grid gap-4">
+        <ClinicPracticeNote />
+        {signIn ? <OwnAccountForm email={signIn.email} /> : null}
+      </div>
+    );
+  }
   const photo = await prisma.user.findUnique({ where: { id: user.id }, select: { profileImageUpdatedAt: true } });
   const offerings = await prisma.doctorOffering.findMany({
     where: { doctorProfileId: profile.id },
@@ -63,7 +76,6 @@ export default async function DoctorProfilePage() {
     distinct: ["locationId"],
   });
   const verification = verificationBadge(profile.verificationStatus);
-  const administrator = isPortalAdministrator(user.roleCodes);
   const inPlace = administrator && profile.verificationStatus !== "SUSPENDED";
   const editable = inPlace || profileIsEditable(profile.verificationStatus);
   const specialtySelection = specialtyFormSelection(profile.specialties);
@@ -178,11 +190,13 @@ export default async function DoctorProfilePage() {
             </ul>
           )}
         </section>
-        <section className="rounded-2xl border border-[#d7e3ee] bg-white p-5 text-sm leading-6 text-[#5b6b7c]">
-          <h2 className="text-lg font-semibold text-[#0C2B45]">Account</h2>
-          <p className="mt-2">Password changes use the existing reset flow. There is no separate notification-preference record, so delivery follows the appointment notice service already configured for the platform.</p>
-          <Link className="mt-3 inline-flex font-semibold text-[#0F766E]" href="/forgot-password">Reset password</Link>
-        </section>
+        {signIn ? <OwnAccountForm email={signIn.email} /> : (
+          <section className="rounded-2xl border border-[#d7e3ee] bg-white p-5 text-sm leading-6 text-[#5b6b7c]">
+            <h2 className="text-lg font-semibold text-[#0C2B45]">Account</h2>
+            <p className="mt-2">Password changes use the existing reset flow. There is no separate notification-preference record, so delivery follows the appointment notice service already configured for the platform.</p>
+            <Link className="mt-3 inline-flex font-semibold text-[#0F766E]" href="/forgot-password">Reset password</Link>
+          </section>
+        )}
       </aside>
     </div>
   );
