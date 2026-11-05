@@ -22,6 +22,7 @@ export function OnboardingForm({
   showLicenseFields = true,
   showConsultationPreferences = true,
   inPlace = false,
+  emailEditable = false,
 }: {
   values: {
     fullName: string;
@@ -50,6 +51,7 @@ export function OnboardingForm({
   showLicenseFields?: boolean;
   showConsultationPreferences?: boolean;
   inPlace?: boolean;
+  emailEditable?: boolean;
 }) {
   const router = useRouter();
   const [state, action, pending] = useActionState(saveProfileAction, initial);
@@ -81,7 +83,20 @@ export function OnboardingForm({
           <Field label="Professional display name" name="displayName" defaultValue={values.displayName} error={errors.displayName} disabled={!editable} placeholder="Osman Tholley" hint="This is the name patients see. A title such as Dr. is optional." />
           <label className="text-sm font-medium">
             Professional email
-            <input value={values.email} readOnly className={`${textInputClass} mt-1 bg-brand-paper`} />
+            <input
+              name={emailEditable ? "email" : undefined}
+              type="email"
+              autoComplete="email"
+              maxLength={254}
+              defaultValue={values.email}
+              readOnly={!emailEditable}
+              disabled={!editable || !emailEditable}
+              className={`${textInputClass} mt-1 ${emailEditable ? "" : "bg-brand-paper"}`}
+            />
+            {emailEditable ? (
+              <span className="mt-1 block font-normal text-brand-muted">This is the email used to sign in. Saving a new address sends a sign-in link to that inbox. Use the new email and your password to sign in.</span>
+            ) : null}
+            {errors.email ? <span className="mt-1 block text-sm text-brand-danger">{errors.email}</span> : null}
           </label>
           <Field label="Phone number" name="phone" defaultValue={values.phone} error={errors.phone} disabled={!editable} placeholder="076 123 456" hint="Example: 076 123 456, or +232 76 123 456." />
         </div>

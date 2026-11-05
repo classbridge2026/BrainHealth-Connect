@@ -4,7 +4,7 @@ import { passwordRuleError } from "./password-reset";
 import { displayEmail, normalizeEmail } from "./email-address";
 import { forgetRememberedSessions } from "./current-user";
 
-type Result = { ok: true; message: string } | { ok: false; message: string };
+type Result = { ok: true; message: string; email?: string; previousEmail?: string } | { ok: false; message: string };
 
 export async function updateOwnSignIn(
   db: PrismaClient,
@@ -38,7 +38,7 @@ export async function updateOwnSignIn(
   try {
     const user = await db.user.findUnique({
       where: { id: input.userId },
-      select: { id: true, emailNormalized: true, passwordHash: true, deletedAt: true, status: true },
+      select: { id: true, email: true, emailNormalized: true, passwordHash: true, deletedAt: true, status: true },
     });
     if (!user || user.deletedAt || user.status !== "ACTIVE") return { ok: false, message: "This account cannot be updated." };
     const currentMatches = await deps.verifyPassword(currentPassword, user.passwordHash);
@@ -53,6 +53,7 @@ export async function updateOwnSignIn(
     }
 
     const now = deps.now ?? new Date();
+    const previousEmail = user.email;
     await db.user.update({
       where: { id: user.id },
       data: {
@@ -80,9 +81,50 @@ export async function updateOwnSignIn(
         metadata: { emailChanged, passwordChanged },
       },
     });
-    if (emailChanged && passwordChanged) return { ok: true, message: "Email and password updated." };
-    if (emailChanged) return { ok: true, message: "Email updated." };
+    if (emailChanged && passwordChanged) return { ok: true, message: "Email and password updated.", email, previousEmail };
+    if (emailChanged) return { ok: true, message: "Email updated.", email, previousEmail };
     return { ok: true, message: "Password updated." };
+  } catch (error) {
+    if (isUniqueConflict(error)) return { ok: false, message: "That email address is already in use." };
+    if (isSchemaMismatch(error)) return { ok: false, message: "This action is not available until the latest database migration has been applied." };
+    return { ok: false, message: "The account could not be updated." };
+  }
+}
+
+/** Changes the signed-in account's login email without changing the password. */
+export async function replaceOwnLoginEmail(
+  db: PrismaClient,
+  input: { userId: string; email: string },
+  deps: { now?: Date } = {},
+): Promise<Result> {
+  const email = displayEmail(input.email);
+  const emailNormalized = normalizeEmail(input.email);
+  if (!email || !emailNormalized) return { ok: false, message: "Enter a valid email address." };
+  try {
+    const user = await db.user.findUnique({
+      where: { id: input.userId },
+      select: { id: true, email: true, emailNormalized: true, deletedAt: true, status: true },
+    });
+    if (!user || user.deletedAt || user.status !== "ACTIVE") return { ok: false, message: "This account cannot be updated." };
+    if (emailNormalized === user.emailNormalized) return { ok: true, message: "Email updated." };
+    const owner = await db.user.findUnique({ where: { emailNormalized }, select: { id: true } });
+    if (owner && owner.id !== user.id) return { ok: false, message: "That email address is already in use." };
+    const now = deps.now ?? new Date();
+    const previousEmail = user.email;
+    await db.user.update({
+      where: { id: user.id },
+      data: { email, emailNormalized, emailVerifiedAt: now },
+    });
+    await db.auditLog.create({
+      data: {
+        actorUserId: user.id,
+        action: "user.own_sign_in_updated",
+        entityType: "User",
+        entityId: user.id,
+        metadata: { emailChanged: true, passwordChanged: false },
+      },
+    });
+    return { ok: true, message: "Email updated.", email, previousEmail };
   } catch (error) {
     if (isUniqueConflict(error)) return { ok: false, message: "That email address is already in use." };
     if (isSchemaMismatch(error)) return { ok: false, message: "This action is not available until the latest database migration has been applied." };

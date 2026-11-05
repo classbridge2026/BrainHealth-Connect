@@ -7,6 +7,9 @@ import { forgetRemembered } from "@/lib/db/remember";
 import { prisma } from "@/lib/db/prisma";
 import { DOCTOR_PORTAL_ROLES } from "@/lib/doctor/session";
 import { deleteDoctorCredential, uploadDoctorCredential } from "@/lib/doctors/credentials";
+import { displayEmail, normalizeEmail } from "@/lib/auth/email-address";
+import { replaceOwnLoginEmail } from "@/lib/auth/own-account";
+import { notifyLoginEmailChanged } from "@/lib/auth/sign-in-notice";
 import { profileInputFromForm, saveDoctorProfile } from "@/lib/doctors/profile";
 import { createPrivateStorage } from "@/lib/storage/private-storage";
 
@@ -22,6 +25,21 @@ async function doctorUser() {
 
 export async function saveProfileAction(_previous: ProfileActionState, formData: FormData): Promise<ProfileActionState> {
   const user = await doctorUser();
+  const submittedEmail = String(formData.get("email") ?? "").trim();
+  if (isPortalAdministrator(user.roleCodes) && submittedEmail) {
+    const email = displayEmail(submittedEmail);
+    const emailNormalized = normalizeEmail(submittedEmail);
+    if (!email || !emailNormalized) {
+      return { message: "Enter a valid email address.", tone: "error", fieldErrors: { email: "Enter a valid email address." } };
+    }
+    const current = await prisma.user.findUnique({ where: { id: user.id }, select: { emailNormalized: true } });
+    if (current && emailNormalized !== current.emailNormalized) {
+      const owner = await prisma.user.findUnique({ where: { emailNormalized }, select: { id: true } });
+      if (owner && owner.id !== user.id) {
+        return { message: "That email address is already in use.", tone: "error", fieldErrors: { email: "That email address is already in use." } };
+      }
+    }
+  }
   const mode = String(formData.get("intent") ?? "") === "submit" ? "submit" : "draft";
   const result = await saveDoctorProfile(user.id, profileInputFromForm(formData), {
     db: prisma,
@@ -46,7 +64,18 @@ export async function saveProfileAction(_previous: ProfileActionState, formData:
   }
   forgetRemembered(`doctor-chrome:${user.id}`);
   updateTag("doctor-chrome");
-  return { message: result.message, tone: "ok" };
+  if (!isPortalAdministrator(user.roleCodes)) return { message: result.message, tone: "ok" };
+  if (!submittedEmail) return { message: result.message, tone: "ok" };
+  const changed = await replaceOwnLoginEmail(prisma, { userId: user.id, email: submittedEmail });
+  if (!changed.ok) return { message: changed.message, tone: "error", fieldErrors: { email: changed.message } };
+  if (!changed.email || !changed.previousEmail || changed.email.toLowerCase() === changed.previousEmail.toLowerCase()) {
+    return { message: result.message, tone: "ok" };
+  }
+  const notice = await notifyLoginEmailChanged({ to: [changed.email, changed.previousEmail], newEmail: changed.email });
+  const sent = notice.delivered
+    ? " Your email has been changed. A message with a sign-in link was sent. Use the new email and your password to sign in."
+    : " Your email has been changed. Use the new email and your password the next time you sign in.";
+  return { message: `${result.message}${sent}`, tone: "ok" };
 }
 
 export async function uploadCredentialAction(_previous: ProfileActionState, formData: FormData): Promise<ProfileActionState> {

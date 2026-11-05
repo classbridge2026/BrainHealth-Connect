@@ -106,6 +106,7 @@ export default async function DoctorOnboardingPage() {
       <OnboardingForm
         editable={(isPortalAdministrator(user.roleCodes) && profile.verificationStatus !== "SUSPENDED") || profileIsEditable(profile.verificationStatus)}
         inPlace={isPortalAdministrator(user.roleCodes) && profile.verificationStatus !== "SUSPENDED"}
+        emailEditable={isPortalAdministrator(user.roleCodes)}
         resubmit={profile.verificationStatus === "APPROVED" && !isPortalAdministrator(user.roleCodes)}
         specialties={activeSpecialties.map((specialty) => ({ id: specialty.id, name: specialty.name, active: specialty.isActive }))}
         selectedAdditional={specialtySelection.additionalSpecialtyIds}

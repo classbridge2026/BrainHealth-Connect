@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { isPortalAdministrator } from "@/lib/admin/rules";
 import { updateOwnSignIn } from "@/lib/auth/own-account";
+import { notifyLoginEmailChanged } from "@/lib/auth/sign-in-notice";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { DOCTOR_PORTAL_ROLES } from "@/lib/doctor/session";
@@ -36,5 +37,12 @@ export async function updateOwnSignInAction(_previous: OwnAccountState, formData
   revalidatePath("/doctor", "layout");
   revalidatePath("/doctor/profile");
   revalidatePath("/admin", "layout");
+  if (result.email && result.previousEmail && result.email.toLowerCase() !== result.previousEmail.toLowerCase()) {
+    const notice = await notifyLoginEmailChanged({ to: [result.email, result.previousEmail], newEmail: result.email });
+    const sent = notice.delivered
+      ? " A message with a sign-in link was sent. Use the new email and your password to sign in."
+      : " Use the new email and your password the next time you sign in.";
+    return { message: `${result.message}${sent}`, tone: "ok" };
+  }
   return { message: result.message, tone: "ok" };
 }

@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { metadataBase } from "@/lib/brand/metadata-base";
 import { DEFAULT_SYSTEM_NAME, getSystemName } from "@/lib/brand/system-name";
 
 export type DeliveryResult = {
@@ -50,6 +51,7 @@ function linkLabel(url: string): string {
     const path = new URL(url.replace(/&amp;/g, "&")).pathname;
     if (path.includes("/doctor/invitation")) return "Open your invitation";
     if (path.includes("password")) return "Choose a new password";
+    if (path.endsWith("/login")) return "Sign in";
     if (path.includes("verify")) return "Confirm your email";
     if (path.includes("appointment")) return "Open the appointment";
     return "Open the portal";
@@ -141,6 +143,29 @@ export function createEmailDelivery(): EmailDelivery {
       });
     },
   };
+}
+
+export function signInPageUrl(): string {
+  const base = metadataBase();
+  return base ? new URL("/login", base).toString() : "/login";
+}
+
+/** Tells the account to sign in with the new email and the existing password. */
+export async function sendSignInEmailChanged(input: { to: string; newEmail: string }): Promise<DeliveryResult> {
+  const systemName = await getSystemName();
+  return sendCareCircleEmail({
+    to: input.to,
+    systemName,
+    subject: `${systemName}: your email has changed`,
+    text: [
+      "Your email has been changed.",
+      "",
+      "Use this email and your password to sign in:",
+      input.newEmail,
+      "",
+      signInPageUrl(),
+    ].join("\n"),
+  });
 }
 
 export function verificationDeliveryMessage(input: { email: DeliveryResult; systemName?: string }): string {

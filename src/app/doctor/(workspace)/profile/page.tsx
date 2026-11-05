@@ -111,6 +111,7 @@ export default async function DoctorProfilePage() {
             <OnboardingForm
               editable={editable}
               inPlace={inPlace}
+              emailEditable={administrator}
               showLicenseFields
               showConsultationPreferences={false}
               resubmit={profile.verificationStatus === "APPROVED" && !inPlace}

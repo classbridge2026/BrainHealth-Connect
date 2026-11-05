@@ -22,6 +22,7 @@ function database(emailNormalized = "admin@example.com") {
         }
         return {
           id: userId,
+          email: storedEmail,
           emailNormalized: storedEmail,
           passwordHash: storedHash,
           deletedAt: null,
@@ -77,7 +78,7 @@ describe("updateOwnSignIn", () => {
       { userId, email: "New.Admin@example.com", currentPassword: "Current1", nextPassword: "", confirmPassword: "", currentTokenHash: "current" },
       deps,
     );
-    expect(result).toEqual({ ok: true, message: "Email updated." });
+    expect(result).toEqual({ ok: true, message: "Email updated.", email: "New.Admin@example.com", previousEmail: "admin@example.com" });
     expect(read().storedEmail).toBe("new.admin@example.com");
     expect(sessions.every((session) => session.revokedAt === null)).toBe(true);
   });
@@ -137,7 +138,12 @@ describe("updateOwnSignIn", () => {
       },
       { verifyPassword, hashPassword },
     );
-    expect(saved).toEqual({ ok: true, message: "Email and password updated." });
+    expect(saved).toEqual({
+      ok: true,
+      message: "Email and password updated.",
+      email: "kpallu.admin@example.com",
+      previousEmail: "admin@example.com",
+    });
 
     const signedIn = await authenticatePatient(db, {
       identifier: "kpallu.admin@example.com",
