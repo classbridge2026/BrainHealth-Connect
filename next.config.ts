@@ -21,6 +21,9 @@ const nextConfig: NextConfig = {
     return [
       { source: "/:path*", headers: securityHeaders.map((header) => ({ ...header })) },
       { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }] },
+      { source: "/carecircle-logo.png", headers: [{ key: "Cache-Control", value: "public, max-age=86400" }] },
+      { source: "/hero-consultation.jpg", headers: [{ key: "Cache-Control", value: "public, max-age=86400" }] },
+      { source: "/icons/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=86400" }] },
       { source: "/patient/:path*", headers: portalNoStoreHeaders.map((header) => ({ ...header })) },
       { source: "/doctor/:path*", headers: portalNoStoreHeaders.map((header) => ({ ...header })) },
       { source: "/admin/:path*", headers: portalNoStoreHeaders.map((header) => ({ ...header })) },
