@@ -1,23 +1,42 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, type FormEvent } from "react";
 import { primaryButtonClass, textInputClass } from "@/components/form-classes";
+import { signInFormError } from "@/lib/auth/sign-in-form";
 import { updateOwnSignInAction, type OwnAccountState } from "./account-actions";
 
 const initial: OwnAccountState = {};
 
 export function OwnAccountForm({ email }: { email: string }) {
   const [state, action, pending] = useActionState(updateOwnSignInAction, initial);
+  const [local, setLocal] = useState<OwnAccountState>({});
   const [address, setAddress] = useState(email);
   useEffect(() => {
     setAddress(email);
   }, [email]);
+  const shown = local.message ? local : state;
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    const data = new FormData(event.currentTarget);
+    const message = signInFormError({
+      email: String(data.get("email") ?? ""),
+      currentPassword: String(data.get("currentPassword") ?? ""),
+      nextPassword: String(data.get("nextPassword") ?? ""),
+      confirmPassword: String(data.get("confirmPassword") ?? ""),
+    });
+    if (!message) {
+      setLocal({});
+      return;
+    }
+    event.preventDefault();
+    setLocal({ message, tone: "error" });
+  }
 
   return (
     <section id="account" className="rounded-2xl border border-[#d7e3ee] bg-white p-5">
       <h2 className="text-lg font-semibold text-[#0C2B45]">Email and password</h2>
       <p className="mt-1 text-sm text-[#5b6b7c]">Save the email and password you want to use at sign-in. A new password needs a letter and a number. The next login uses these details.</p>
-      <form action={action} className="mt-4 grid gap-3 sm:grid-cols-2">
+      <form action={action} onSubmit={submit} className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1 text-sm font-medium text-[#0C2B45] sm:col-span-2">
           Email
           <input name="email" type="email" required autoComplete="email" maxLength={254} value={address} onChange={(event) => setAddress(event.target.value)} className={textInputClass} />
@@ -34,9 +53,9 @@ export function OwnAccountForm({ email }: { email: string }) {
           Confirm new password
           <input name="confirmPassword" type="password" autoComplete="new-password" maxLength={128} className={textInputClass} />
         </label>
-        {state.message ? (
-          <p role={state.tone === "error" ? "alert" : "status"} className={`text-sm sm:col-span-2 ${state.tone === "error" ? "text-[#9f1239]" : "text-[#0F766E]"}`}>
-            {state.message}
+        {shown.message ? (
+          <p role={shown.tone === "error" ? "alert" : "status"} className={`text-sm sm:col-span-2 ${shown.tone === "error" ? "text-[#9f1239]" : "text-[#0F766E]"}`}>
+            {shown.message}
           </p>
         ) : null}
         <div>

@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { authenticatePatient } from "./login";
 import { updateOwnSignIn } from "./own-account";
 import { hashPassword, verifyPassword } from "./password";
+import { signInFormError } from "./sign-in-form";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 
@@ -51,6 +52,7 @@ function database(emailNormalized = "admin@example.com") {
         return data;
       },
     },
+    $transaction: async (work: (tx: unknown) => Promise<void>) => work(db),
   };
   return { db: db as unknown as PrismaClient, sessions, audits, read: () => ({ storedEmail, storedHash }) };
 }
@@ -59,6 +61,19 @@ const deps = {
   verifyPassword: async (password: string) => password === "Current1",
   hashPassword: async (password: string) => `hashed:${password}`,
 };
+
+describe("sign-in form", () => {
+  it("rejects a password with no number before the database is involved", () => {
+    expect(
+      signInFormError({
+        email: "admin@example.com",
+        currentPassword: "Current1",
+        nextPassword: "onlyletters",
+        confirmPassword: "onlyletters",
+      }),
+    ).toBe("Use at least one letter and one number.");
+  });
+});
 
 describe("updateOwnSignIn", () => {
   it("rejects a wrong current password", async () => {
@@ -124,6 +139,7 @@ describe("updateOwnSignIn", () => {
         create: async () => ({ id: "session-1" }),
       },
       auditLog: { create: async () => ({}) },
+      $transaction: async (work: (tx: unknown) => Promise<void>) => work(db),
     } as unknown as PrismaClient;
 
     const saved = await updateOwnSignIn(

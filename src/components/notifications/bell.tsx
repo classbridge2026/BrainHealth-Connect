@@ -117,10 +117,12 @@ export function NotificationBell({
   useEffect(() => {
     if (!watch) return;
     let stop = false;
+    let busy = false;
     let timer = 0;
 
     async function look() {
-      if (stop || document.visibilityState === "hidden") return;
+      if (stop || busy || document.visibilityState === "hidden") return;
+      busy = true;
       try {
         const response = await fetch(`/api/notices/pulse?audience=${watch}`, { cache: "no-store" });
         if (!response.ok) return;
@@ -133,6 +135,8 @@ export function NotificationBell({
         setLive(pulse);
       } catch {
         // The next check tries again.
+      } finally {
+        busy = false;
       }
     }
 

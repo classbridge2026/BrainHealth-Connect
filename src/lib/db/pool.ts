@@ -4,12 +4,16 @@ export function withPoolSettings(raw: string, nodeEnv: string | undefined = proc
   const base = queryIndex === -1 ? raw : raw.slice(0, queryIndex);
   const params = new URLSearchParams(queryIndex === -1 ? "" : raw.slice(queryIndex + 1));
   const pooled = base.includes("-pooler.");
-  if (pooled) params.set("pgbouncer", "true");
+  if (pooled) {
+    params.set("pgbouncer", "true");
+    // The Neon pooler is PgBouncer. It cannot finish SCRAM channel binding.
+    // channel_binding=require makes Prisma wait for connect_timeout, then fail with P1001.
+    params.set("channel_binding", "disable");
+  }
   if (!params.has("connection_limit")) {
-    // One connection made every admin page wait in line for its own counts.
-    // Ten connections exhausted the Neon pooler. Five lets one page overlap
-    // its reads without holding a large idle pool.
-    params.set("connection_limit", nodeEnv === "production" ? "5" : "15");
+    // A wide pool made Neon open many new connections at once. Each of those
+    // waited about 15 seconds, so saving sign-in details sat behind them.
+    params.set("connection_limit", "5");
   }
   if (!params.has("pool_timeout")) params.set("pool_timeout", nodeEnv === "production" ? "10" : "20");
   if (!params.has("connect_timeout")) params.set("connect_timeout", nodeEnv === "production" ? "10" : "30");
@@ -23,5 +27,5 @@ export function withPoolSettings(raw: string, nodeEnv: string | undefined = proc
 export function poolTag(url: string) {
   const query = url.includes("?") ? url.slice(url.indexOf("?") + 1) : "";
   const params = new URLSearchParams(query);
-  return `${params.get("connection_limit") ?? ""}/${params.get("pool_timeout") ?? ""}/${params.get("connect_timeout") ?? ""}/${params.get("max_idle_connection_lifetime") ?? ""}`;
+  return `${params.get("connection_limit") ?? ""}/${params.get("pool_timeout") ?? ""}/${params.get("connect_timeout") ?? ""}/${params.get("max_idle_connection_lifetime") ?? ""}/${params.get("channel_binding") ?? ""}`;
 }

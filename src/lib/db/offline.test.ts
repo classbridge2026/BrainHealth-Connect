@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RECORDS_OFFLINE_MESSAGE, RecordsOfflineError, isRecordsOffline } from "./offline";
+import { RECORDS_OFFLINE_MESSAGE, RecordsOfflineError, isRecordsOffline, retryRecordsRead } from "./offline";
 import { safeReturnPath } from "./return-path";
 
 describe("records offline", () => {
@@ -17,6 +17,17 @@ describe("records offline", () => {
   it("leaves other database errors alone", () => {
     expect(isRecordsOffline(Object.assign(new Error("Unique constraint"), { code: "P2002" }))).toBe(false);
     expect(isRecordsOffline(null)).toBe(false);
+  });
+
+  it("reads again after a dropped connection and keeps the second result", async () => {
+    let calls = 0;
+    const value = await retryRecordsRead(async () => {
+      calls += 1;
+      if (calls === 1) throw Object.assign(new Error("Response from the Engine was empty"), { code: "P1001" });
+      return "ready";
+    }, 0);
+    expect(value).toBe("ready");
+    expect(calls).toBe(2);
   });
 });
 

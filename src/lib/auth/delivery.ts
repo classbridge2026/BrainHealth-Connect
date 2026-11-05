@@ -30,7 +30,8 @@ export function readSmtpSettings(env: NodeJS.ProcessEnv = process.env): SmtpSett
   const host = env.SMTP_HOST?.trim();
   const port = Number(env.SMTP_PORT?.trim());
   const user = env.SMTP_USER?.trim();
-  const pass = env.SMTP_PASS?.trim();
+  // Google shows an App Password in groups of four. The spaces are not part of the password.
+  const pass = env.SMTP_PASS?.replace(/\s/g, "");
   const from = env.EMAIL_FROM?.trim();
   if (host !== GMAIL_HOST || port !== GMAIL_PORT || !user || !pass || !from) {
     return null;
@@ -96,6 +97,9 @@ export async function sendCareCircleEmail(input: {
       port: settings.port,
       secure: true,
       auth: { user: settings.user, pass: settings.pass },
+      connectionTimeout: 15_000,
+      greetingTimeout: 15_000,
+      socketTimeout: 20_000,
     });
     await transport.sendMail({
       from: { name: systemName, address: settings.user },

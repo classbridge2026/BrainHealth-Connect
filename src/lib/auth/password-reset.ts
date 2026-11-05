@@ -1,9 +1,11 @@
 import type { PrismaClient } from "@prisma/client";
-import { PASSWORD_HAS_LETTER, PASSWORD_HAS_NUMBER, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/validation/registration";
 import type { DeliveryResult } from "./delivery";
 import { normalizeEmail } from "./email-address";
 import { normalizePhone } from "./phone";
+import { passwordRuleError } from "./password-rule";
 import { createEmailToken, hashEmailToken } from "./tokens";
+
+export { passwordRuleError };
 
 export const PASSWORD_RESET_TTL_MS = 1000 * 60 * 60;
 
@@ -16,19 +18,6 @@ export const RESET_SENT =
 export const RESET_LINK_INVALID = "This reset link is not valid. Request a new one.";
 
 export type ResetDelivery = (input: { to: string; resetUrl: string }) => Promise<DeliveryResult>;
-
-export function passwordRuleError(password: string): string | null {
-  if (password.length < PASSWORD_MIN_LENGTH) {
-    return `Use at least ${PASSWORD_MIN_LENGTH} characters.`;
-  }
-  if (password.length > PASSWORD_MAX_LENGTH) {
-    return "Use a password of 128 characters or fewer.";
-  }
-  if (!PASSWORD_HAS_LETTER.test(password) || !PASSWORD_HAS_NUMBER.test(password)) {
-    return "Use at least one letter and one number.";
-  }
-  return null;
-}
 
 /**
  * Looks up an account and hands a reset URL to delivery.

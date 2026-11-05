@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { isSchemaMismatch, isUniqueConflict } from "@/lib/doctors/errors";
-import { passwordRuleError } from "./password-reset";
+import { passwordRuleError } from "./password-rule";
 import { displayEmail, normalizeEmail } from "./email-address";
 import { forgetRememberedSessions } from "./current-user";
 
@@ -47,40 +47,47 @@ export async function updateOwnSignIn(
     const emailChanged = emailNormalized !== user.emailNormalized;
     const passwordChanged = nextPassword.length > 0;
     if (!emailChanged && !passwordChanged) return { ok: false, message: "Enter a new email or a new password." };
-    if (emailChanged) {
-      const owner = await db.user.findUnique({ where: { emailNormalized }, select: { id: true } });
-      if (owner && owner.id !== user.id) return { ok: false, message: "That email address is already in use." };
-    }
-
     const now = deps.now ?? new Date();
     const previousEmail = user.email;
-    await db.user.update({
-      where: { id: user.id },
-      data: {
-        ...(emailChanged ? { email, emailNormalized, emailVerifiedAt: now } : {}),
-        ...(passwordChanged ? { passwordHash: await deps.hashPassword(nextPassword) } : {}),
-      },
-    });
-    if (passwordChanged) {
-      await db.session.updateMany({
-        where: {
-          userId: user.id,
-          revokedAt: null,
-          ...(input.currentTokenHash ? { tokenHash: { not: input.currentTokenHash } } : {}),
+    const passwordHash = passwordChanged ? await deps.hashPassword(nextPassword) : null;
+    let emailTaken = false;
+    await db.$transaction(async (tx) => {
+      if (emailChanged) {
+        const owner = await tx.user.findUnique({ where: { emailNormalized }, select: { id: true } });
+        if (owner && owner.id !== user.id) {
+          emailTaken = true;
+          return;
+        }
+      }
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          ...(emailChanged ? { email, emailNormalized, emailVerifiedAt: now } : {}),
+          ...(passwordHash ? { passwordHash } : {}),
         },
-        data: { revokedAt: now },
       });
-      forgetRememberedSessions();
-    }
-    await db.auditLog.create({
-      data: {
-        actorUserId: user.id,
-        action: "user.own_sign_in_updated",
-        entityType: "User",
-        entityId: user.id,
-        metadata: { emailChanged, passwordChanged },
-      },
+      if (passwordChanged) {
+        await tx.session.updateMany({
+          where: {
+            userId: user.id,
+            revokedAt: null,
+            ...(input.currentTokenHash ? { tokenHash: { not: input.currentTokenHash } } : {}),
+          },
+          data: { revokedAt: now },
+        });
+      }
+      await tx.auditLog.create({
+        data: {
+          actorUserId: user.id,
+          action: "user.own_sign_in_updated",
+          entityType: "User",
+          entityId: user.id,
+          metadata: { emailChanged, passwordChanged },
+        },
+      });
     });
+    if (emailTaken) return { ok: false, message: "That email address is already in use." };
+    if (passwordChanged) forgetRememberedSessions();
     if (emailChanged && passwordChanged) return { ok: true, message: "Email and password updated.", email, previousEmail };
     if (emailChanged) return { ok: true, message: "Email updated.", email, previousEmail };
     return { ok: true, message: "Password updated." };

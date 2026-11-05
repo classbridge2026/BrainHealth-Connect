@@ -5,7 +5,7 @@ import { isPortalAdministrator } from "@/lib/admin/rules";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { rememberFor } from "@/lib/db/remember";
 import { prisma } from "@/lib/db/prisma";
-import { isRecordsOffline } from "@/lib/db/offline";
+import { isRecordsOffline, retryRecordsRead } from "@/lib/db/offline";
 import { isSchemaMismatch } from "@/lib/doctors/errors";
 import { redirectOffline } from "@/lib/db/offline-redirect";
 import { loadInAppNoticeSummary } from "@/lib/notifications/delivery";
@@ -62,7 +62,7 @@ const loadDoctorAccount = cache(async () => {
   let access: ClinicalAccess = "missing";
   let doctor: { id: string; displayName: string; verificationStatus: string } | null = null;
   try {
-    const account = await rememberFor(`doctor-chrome:${user.id}`, 20_000, () => readDoctorProfileChrome(user.id));
+    const account = await retryRecordsRead(() => rememberFor(`doctor-chrome:${user.id}`, 20_000, () => readDoctorProfileChrome(user.id)));
     name = account.displayName || name;
     specialty = account.specialtyName || specialty;
     imageVersion = account.imageVersion;

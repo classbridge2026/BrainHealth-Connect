@@ -10,7 +10,7 @@ vi.mock("nodemailer", () => ({
   default: { createTransport },
 }));
 
-import { emailProviderConfigured, sendCareCircleEmail } from "./delivery";
+import { emailProviderConfigured, readSmtpSettings, sendCareCircleEmail } from "./delivery";
 
 const SMTP_KEYS = ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "EMAIL_FROM"] as const;
 
@@ -66,6 +66,9 @@ describe("gmail smtp delivery", () => {
       port: 465,
       secure: true,
       auth: { user: "account@example.com", pass: "app-password-value" },
+      connectionTimeout: 15_000,
+      greetingTimeout: 15_000,
+      socketTimeout: 20_000,
     });
     expect(sendMail).toHaveBeenCalledWith({
       from: { name: "CareCircle MindTogether", address: "account@example.com" },
@@ -91,6 +94,12 @@ describe("gmail smtp delivery", () => {
     expect(JSON.stringify(errorLog.mock.calls)).not.toContain("app-password-value");
     expect(JSON.stringify(errorLog.mock.calls)).not.toContain("secret-body");
     errorLog.mockRestore();
+  });
+
+  it("removes the spaces Google shows in an app password", () => {
+    configureSmtp();
+    process.env.SMTP_PASS = "abcd efgh ijkl mnop";
+    expect(readSmtpSettings()?.pass).toBe("abcdefghijklmnop");
   });
 
   it("labels a portal link instead of showing the full address as the link text", async () => {

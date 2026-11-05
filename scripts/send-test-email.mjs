@@ -19,7 +19,7 @@ if (process.env.NODE_ENV === "production") {
   const host = process.env.SMTP_HOST?.trim();
   const port = Number(process.env.SMTP_PORT?.trim());
   const user = process.env.SMTP_USER?.trim();
-  const pass = process.env.SMTP_PASS?.trim();
+  const pass = process.env.SMTP_PASS?.replace(/\s/g, "");
   const from = process.env.EMAIL_FROM?.trim();
   if (host !== "smtp.gmail.com" || port !== 465 || !user || !pass || !from) {
     console.error("email_test_not_configured");
