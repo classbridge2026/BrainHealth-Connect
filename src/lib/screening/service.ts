@@ -472,12 +472,15 @@ async function careRelationship(db: PrismaClient, doctorProfileId: string, patie
   return doctorMayAccess(Boolean(row));
 }
 
-export async function listDoctorAssessments(db: PrismaClient, doctorProfileId: string) {
+export async function listDoctorAssessments(db: PrismaClient, doctorProfileId: string | null, clinicWide = false) {
   if (!registryInstalled(db)) return { ok: false as const, code: "SCHEMA" as const };
-  if (!parseUuid(doctorProfileId)) return { ok: false as const, code: "NOT_FOUND" as const };
+  if (!clinicWide && !parseUuid(doctorProfileId ?? "")) return { ok: false as const, code: "NOT_FOUND" as const };
   try {
     const rows = await db.screeningAssessment.findMany({
-      where: { state: "SUBMITTED", patient: { appointments: { some: { doctorProfileId } } } },
+      where: {
+        state: "SUBMITTED",
+        patient: { appointments: { some: clinicWide ? {} : { doctorProfileId: doctorProfileId ?? undefined } } },
+      },
       orderBy: { submittedAt: "desc" },
       take: 50,
       select: {
@@ -495,8 +498,11 @@ export async function listDoctorAssessments(db: PrismaClient, doctorProfileId: s
   }
 }
 
-export async function readDoctorAssessment(db: PrismaClient, input: { actorUserId: string; doctorProfileId: string; assessmentId: string }) {
-  if (!parseUuid(input.actorUserId) || !parseUuid(input.doctorProfileId) || !parseUuid(input.assessmentId)) {
+export async function readDoctorAssessment(
+  db: PrismaClient,
+  input: { actorUserId: string; doctorProfileId: string | null; assessmentId: string; clinicWide?: boolean },
+) {
+  if (!parseUuid(input.actorUserId) || !parseUuid(input.assessmentId) || (!input.clinicWide && !parseUuid(input.doctorProfileId ?? ""))) {
     return { ok: false as const, code: "NOT_FOUND" as const };
   }
   try {
@@ -517,7 +523,9 @@ export async function readDoctorAssessment(db: PrismaClient, input: { actorUserI
       },
     });
     if (!row || row.state !== "SUBMITTED" || !row.result) return { ok: false as const, code: "NOT_FOUND" as const };
-    const allowed = await careRelationship(db, input.doctorProfileId, row.patientProfileId);
+    const allowed = input.clinicWide
+      ? doctorMayAccess(Boolean(await db.appointment.findFirst({ where: { patientProfileId: row.patientProfileId }, select: { id: true } })))
+      : await careRelationship(db, input.doctorProfileId ?? "", row.patientProfileId);
     if (!allowed) {
       await recordDenial(db, {
         actorUserId: input.actorUserId,
@@ -575,14 +583,23 @@ export async function readDoctorAssessment(db: PrismaClient, input: { actorUserI
   }
 }
 
+async function coveringDoctor(db: PrismaClient, patientProfileId: string) {
+  const visit = await db.appointment.findFirst({
+    where: { patientProfileId },
+    orderBy: { startsAt: "desc" },
+    select: { doctorProfileId: true },
+  });
+  return visit?.doctorProfileId ?? null;
+}
+
 export async function reviewAssessment(
   db: PrismaClient,
-  input: { actorUserId: string; doctorProfileId: string; assessmentId: string; interpretation: string; followUpNote: string; now?: Date },
+  input: { actorUserId: string; doctorProfileId: string | null; assessmentId: string; interpretation: string; followUpNote: string; now?: Date; clinicWide?: boolean },
 ) {
   const interpretation = boundedText(input.interpretation, INTERPRETATION_MAX);
   const followUp = input.followUpNote.trim() ? boundedText(input.followUpNote, FOLLOW_UP_MAX) : { ok: true as const, text: "" };
   if (!interpretation.ok || !followUp.ok) return { ok: false as const, code: "INVALID" as const };
-  if (!parseUuid(input.assessmentId) || !parseUuid(input.doctorProfileId)) return { ok: false as const, code: "NOT_FOUND" as const };
+  if (!parseUuid(input.assessmentId) || (!input.clinicWide && !parseUuid(input.doctorProfileId ?? ""))) return { ok: false as const, code: "NOT_FOUND" as const };
   const now = input.now ?? new Date();
   try {
     const row = await db.screeningAssessment.findUnique({
@@ -590,12 +607,13 @@ export async function reviewAssessment(
       select: { id: true, state: true, patientProfileId: true, version: { select: { tool: { select: { code: true } } } } },
     });
     if (!row || row.state !== "SUBMITTED") return { ok: false as const, code: "NOT_FOUND" as const };
-    if (!(await careRelationship(db, input.doctorProfileId, row.patientProfileId))) return { ok: false as const, code: "NOT_FOUND" as const };
+    const doctorProfileId = input.clinicWide ? await coveringDoctor(db, row.patientProfileId) : input.doctorProfileId;
+    if (!doctorProfileId || !(await careRelationship(db, doctorProfileId, row.patientProfileId))) return { ok: false as const, code: "NOT_FOUND" as const };
     await db.$transaction(async (tx) => {
       const review = await tx.screeningClinicalReview.create({
         data: {
           assessmentId: row.id,
-          doctorProfileId: input.doctorProfileId,
+          doctorProfileId,
           interpretation: interpretation.text,
           followUpNote: followUp.text || null,
           reviewedAt: now,
@@ -620,7 +638,7 @@ export async function reviewAssessment(
 
 export async function amendAssessment(
   db: PrismaClient,
-  input: { actorUserId: string; doctorProfileId: string; assessmentId: string; reason: string },
+  input: { actorUserId: string; doctorProfileId: string | null; assessmentId: string; reason: string; clinicWide?: boolean },
 ) {
   const reason = boundedText(input.reason, AMENDMENT_MAX);
   if (!reason.ok || !parseUuid(input.assessmentId)) return { ok: false as const, code: "INVALID" as const };
@@ -630,7 +648,10 @@ export async function amendAssessment(
       select: { id: true, state: true, patientProfileId: true },
     });
     if (!row || row.state !== "SUBMITTED") return { ok: false as const, code: "NOT_FOUND" as const };
-    if (!(await careRelationship(db, input.doctorProfileId, row.patientProfileId))) return { ok: false as const, code: "NOT_FOUND" as const };
+    const allowed = input.clinicWide
+      ? doctorMayAccess(Boolean(await db.appointment.findFirst({ where: { patientProfileId: row.patientProfileId }, select: { id: true } })))
+      : await careRelationship(db, input.doctorProfileId ?? "", row.patientProfileId);
+    if (!allowed) return { ok: false as const, code: "NOT_FOUND" as const };
     await db.$transaction(async (tx) => {
       const amendment = await tx.screeningAmendment.create({
         data: { assessmentId: row.id, editorUserId: input.actorUserId, reason: reason.text },

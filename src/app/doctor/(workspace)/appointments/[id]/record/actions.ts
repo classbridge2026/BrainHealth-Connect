@@ -1,8 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { DOCTOR_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
+import { DOCTOR_PORTAL_ROLES } from "@/lib/doctor/session";
 import {
   archiveClinicalNote,
   finalizeClinicalNote,
@@ -34,14 +34,14 @@ function finish(appointmentId: string, result: { ok: boolean; message: string })
 }
 
 export async function openEncounterAction(_previous: ClinicalActionState, formData: FormData): Promise<ClinicalActionState> {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   const appointmentId = String(formData.get("appointmentId") ?? "");
   const result = await openConsultationEncounter(prisma, { appointmentId, actorUserId: user.id });
   return finish(appointmentId, result);
 }
 
 export async function saveNoteAction(_previous: ClinicalActionState, formData: FormData): Promise<ClinicalActionState> {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   const appointmentId = String(formData.get("appointmentId") ?? "");
   const noteId = String(formData.get("noteId") ?? "");
   const result = await saveClinicalNote(prisma, {
@@ -57,7 +57,7 @@ export async function saveNoteAction(_previous: ClinicalActionState, formData: F
 }
 
 export async function saveFollowUpRecommendationAction(_previous: ClinicalActionState, formData: FormData): Promise<ClinicalActionState> {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   const appointmentId = String(formData.get("appointmentId") ?? "");
   const recommendation = String(formData.get("followUpText") ?? "").replace(/\r\n/g, "\n").trim();
   const date = String(formData.get("followUpDate") ?? "").trim();
@@ -77,7 +77,7 @@ export async function saveFollowUpRecommendationAction(_previous: ClinicalAction
 }
 
 export async function saveStructuredNoteAction(_previous: ClinicalActionState, formData: FormData): Promise<ClinicalActionState> {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   const appointmentId = String(formData.get("appointmentId") ?? "");
   const composed = composeConsultationNote({
     complaint: String(formData.get("complaint") ?? ""),
@@ -101,7 +101,7 @@ export async function saveStructuredNoteAction(_previous: ClinicalActionState, f
 }
 
 export async function savePatientSummaryAction(_previous: ClinicalActionState, formData: FormData): Promise<ClinicalActionState> {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   const appointmentId = String(formData.get("appointmentId") ?? "");
   const composed = composePatientSummary({
     reason: String(formData.get("reason") ?? ""),
@@ -136,7 +136,7 @@ export async function savePatientSummaryAction(_previous: ClinicalActionState, f
 }
 
 export async function finalizeNoteAction(_previous: ClinicalActionState, formData: FormData): Promise<ClinicalActionState> {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   const appointmentId = String(formData.get("appointmentId") ?? "");
   const result = await finalizeClinicalNote(prisma, {
     appointmentId,
@@ -148,7 +148,7 @@ export async function finalizeNoteAction(_previous: ClinicalActionState, formDat
 }
 
 export async function releaseSummaryAction(_previous: ClinicalActionState, formData: FormData): Promise<ClinicalActionState> {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   const appointmentId = String(formData.get("appointmentId") ?? "");
   if (String(formData.get("confirm")) !== "yes") {
     return { message: "Preview the summary and confirm the release before it is shared with the patient.", tone: "error" };
@@ -162,7 +162,7 @@ export async function releaseSummaryAction(_previous: ClinicalActionState, formD
 }
 
 export async function retireFileAction(_previous: ClinicalActionState, formData: FormData): Promise<ClinicalActionState> {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   const appointmentId = String(formData.get("appointmentId") ?? "");
   const result = await retireClinicalFile(prisma, {
     appointmentId,
@@ -173,7 +173,7 @@ export async function retireFileAction(_previous: ClinicalActionState, formData:
 }
 
 export async function withdrawSummaryAction(_previous: ClinicalActionState, formData: FormData): Promise<ClinicalActionState> {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   const appointmentId = String(formData.get("appointmentId") ?? "");
   const result = await withdrawPatientSummary(prisma, {
     appointmentId,
@@ -184,7 +184,7 @@ export async function withdrawSummaryAction(_previous: ClinicalActionState, form
 }
 
 export async function archiveNoteAction(_previous: ClinicalActionState, formData: FormData): Promise<ClinicalActionState> {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   const appointmentId = String(formData.get("appointmentId") ?? "");
   const result = await archiveClinicalNote(prisma, {
     appointmentId,
@@ -195,7 +195,7 @@ export async function archiveNoteAction(_previous: ClinicalActionState, formData
 }
 
 export async function uploadClinicalFileAction(_previous: ClinicalActionState, formData: FormData): Promise<ClinicalActionState> {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   const appointmentId = String(formData.get("appointmentId") ?? "");
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { message: "Choose a document to store.", tone: "error" };

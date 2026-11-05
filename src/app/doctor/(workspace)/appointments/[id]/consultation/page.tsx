@@ -50,7 +50,7 @@ export default async function DoctorConsultationPage({ params }: { params: Promi
   const now = new Date();
   const [record, form, profile, linked] = await Promise.all([
     loadClinicianRecord(prisma, { appointmentId: visit.id, actorUserId: portal.user.id }),
-    loadFollowUpFormData(prisma, portal.user.id),
+    loadFollowUpFormData(prisma, portal.user.id, portal.staff ? { doctorProfileId: visit.doctor.id } : undefined),
     prisma.patientProfile.findUnique({
       where: { id: visit.patient.id },
       select: { gender: true, dateOfBirth: true },

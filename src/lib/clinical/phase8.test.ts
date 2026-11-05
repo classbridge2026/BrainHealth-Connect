@@ -50,6 +50,8 @@ describe("phase 8 clinical privacy decisions", () => {
     expect(clinicianRecordDecision({ actorUserId: doctorB, doctorUserId: doctorA, doctorMayDocument: true })).toBe("deny");
     expect(clinicianRecordDecision({ actorUserId: doctorA, doctorUserId: doctorA, doctorMayDocument: true })).toBe("allow");
     expect(clinicianRecordDecision({ actorUserId: doctorA, doctorUserId: doctorA, doctorMayDocument: false })).toBe("deny");
+    expect(clinicianRecordDecision({ actorUserId: doctorB, doctorUserId: doctorA, doctorMayDocument: true, coversVisit: true })).toBe("allow");
+    expect(clinicianRecordDecision({ actorUserId: doctorB, doctorUserId: doctorA, doctorMayDocument: false, coversVisit: true })).toBe("deny");
   });
 
   it("blocks a guardian from an unrelated, adult, or revoked patient", () => {
@@ -195,6 +197,7 @@ describe("phase 8 clinical record services", () => {
     let noteUpdates = 0;
     const db = {
       appointment: { findUnique: async () => visit(doctorUserId) },
+      user: { findUnique: async () => ({ roles: [{ role: { code: "DOCTOR" } }] }) },
       consentRecord: { findMany: async () => [{ consentType: "PRIVACY_NOTICE", withdrawnAt: null, expiresAt: null }] },
       guardianRelationship: { findMany: async () => [] },
       platformSetting: { findUnique: async () => null },

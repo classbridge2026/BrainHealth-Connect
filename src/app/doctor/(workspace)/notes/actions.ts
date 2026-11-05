@@ -1,17 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { DOCTOR_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { saveClinicalNote } from "@/lib/clinical/records";
-import { blockIfUnapproved } from "@/lib/doctor/session";
+import { blockIfUnapproved, DOCTOR_PORTAL_ROLES } from "@/lib/doctor/session";
 import { prisma } from "@/lib/db/prisma";
 
 export type PortalNoteState = { message?: string; tone?: "ok" | "error" };
 
 export async function savePortalNoteAction(_previous: PortalNoteState, formData: FormData): Promise<PortalNoteState> {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
-  const blocked = await blockIfUnapproved(user.id);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
+  const blocked = await blockIfUnapproved(user.id, user.roleCodes);
   if (blocked) return { message: blocked, tone: "error" };
   const appointmentId = String(formData.get("appointmentId") ?? "");
   const result = await saveClinicalNote(prisma, {

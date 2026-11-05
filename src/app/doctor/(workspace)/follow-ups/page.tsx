@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { RecordsUnavailable } from "@/components/records-unavailable";
-import { ClinicPracticeNote, RestrictedPractice } from "@/components/doctor/restricted";
+import { RestrictedPractice } from "@/components/doctor/restricted";
 import { StatusBadge } from "@/components/status-badge";
 import { appointmentStatusLabel, appointmentStatusTone } from "@/lib/admin/labels";
 import { requireClinicalPortal } from "@/lib/doctor/session";
@@ -24,14 +24,13 @@ const views: Array<{ id: FollowUpView; label: string }> = [
 
 export default async function FollowUpsPage({ searchParams }: { searchParams: Promise<{ view?: string; source?: string }> }) {
   const portal = await requireClinicalPortal();
-  if (portal.staff) return <ClinicPracticeNote />;
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
-  if (portal.access !== "ready" || !portal.doctor) return <RestrictedPractice access={portal.access} />;
+  if (!portal.staff && (portal.access !== "ready" || !portal.doctor)) return <RestrictedPractice access={portal.access} />;
   const query = await searchParams;
   const view = parseFollowUpView(query.view);
   const [result, form] = await Promise.all([
-    listDoctorFollowUps(prisma, { userId: portal.user.id, view }),
-    loadFollowUpFormData(prisma, portal.user.id),
+    listDoctorFollowUps(prisma, { userId: portal.user.id, view, clinicWide: portal.staff }),
+    loadFollowUpFormData(prisma, portal.user.id, portal.staff ? { clinicWide: true } : undefined),
   ]);
   if (!result.ok) return <RecordsUnavailable code={result.code} />;
   if (!form.ok) return <RecordsUnavailable code={form.code} />;

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { formatPlatformWhen } from "@/lib/admin/labels";
+import { isPortalAdministrator } from "@/lib/admin/rules";
 import { parseUuid } from "@/lib/catalog/rules";
 import { inspectCredentialFile, safeDownloadName } from "@/lib/doctors/credential-file";
 import { isSchemaMismatch, isUniqueConflict } from "@/lib/doctors/errors";
@@ -90,6 +91,14 @@ const visitSelect = {
 
 type VisitRow = Prisma.AppointmentGetPayload<{ select: typeof visitSelect }>;
 
+async function actorCoversVisit(db: PrismaClient, actorUserId: string) {
+  const actor = await db.user.findUnique({
+    where: { id: actorUserId },
+    select: { roles: { select: { role: { select: { code: true } } } } },
+  });
+  return isPortalAdministrator(actor?.roles.map((row) => row.role.code) ?? []);
+}
+
 async function loadOwnedVisit(db: PrismaClient, appointmentId: string, actorUserId: string, now: Date) {
   if (!parseUuid(appointmentId)) return { ok: false as const, code: "NOT_FOUND" as const };
   const visit = await db.appointment.findUnique({ where: { id: appointmentId }, select: visitSelect });
@@ -102,6 +111,7 @@ async function loadOwnedVisit(db: PrismaClient, appointmentId: string, actorUser
       userStatus: visit.doctor.user.status,
       deletedAt: visit.doctor.user.deletedAt,
     }),
+    coversVisit: await actorCoversVisit(db, actorUserId),
   });
   if (decision !== "allow") {
     await recordDenial(db, {

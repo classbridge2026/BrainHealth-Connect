@@ -1,18 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { DOCTOR_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { bookingMessage, scheduleAssignedFollowUp } from "@/lib/appointments/booking";
 import { atMinutes, parseCalendarDate, parseClock } from "@/lib/appointments/time";
-import { blockIfUnapproved } from "@/lib/doctor/session";
+import { blockIfUnapproved, DOCTOR_PORTAL_ROLES } from "@/lib/doctor/session";
 import { prisma } from "@/lib/db/prisma";
 
 export type FollowUpState = { message?: string; tone?: "ok" | "error" };
 
 export async function scheduleFollowUpAction(_previous: FollowUpState, formData: FormData): Promise<FollowUpState> {
-  const user = await requireStoredRoles([DOCTOR_ROLE_CODE]);
-  const blocked = await blockIfUnapproved(user.id);
+  const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
+  const blocked = await blockIfUnapproved(user.id, user.roleCodes);
   if (blocked) return { message: blocked, tone: "error" };
   const day = parseCalendarDate(String(formData.get("date") ?? ""));
   const minute = parseClock(String(formData.get("time") ?? ""));
@@ -21,6 +20,7 @@ export async function scheduleFollowUpAction(_previous: FollowUpState, formData:
   const result = await scheduleAssignedFollowUp(
     {
       actorUserId: user.id,
+      roleCodes: user.roleCodes,
       sourceAppointmentId: String(formData.get("sourceAppointmentId") ?? ""),
       offeringId: String(formData.get("offeringId") ?? ""),
       locationId: locationId || null,

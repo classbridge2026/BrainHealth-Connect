@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { getSystemName } from "@/lib/brand/system-name";
 import { isPortalAdministrator } from "@/lib/admin/rules";
-import { ClinicPracticeNote } from "@/components/doctor/restricted";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { DOCTOR_PORTAL_ROLES } from "@/lib/doctor/session";
 import { prisma } from "@/lib/db/prisma";
@@ -29,7 +29,7 @@ export default async function DoctorOnboardingPage() {
     return <p>Doctor onboarding is not available until the doctor onboarding migration has been applied.</p>;
   }
   if (!profile) {
-    if (isPortalAdministrator(user.roleCodes)) return <ClinicPracticeNote />;
+    if (isPortalAdministrator(user.roleCodes)) redirect("/doctor/profile");
     return <p>Your doctor profile is not available.</p>;
   }
   const activeSpecialties = await prisma.specialty.findMany({

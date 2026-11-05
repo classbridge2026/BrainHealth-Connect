@@ -3,7 +3,7 @@ import Link from "next/link";
 import { LiveQueryForm } from "@/components/live-query";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { RecordsUnavailable } from "@/components/records-unavailable";
-import { ClinicPracticeNote, RestrictedPractice } from "@/components/doctor/restricted";
+import { RestrictedPractice } from "@/components/doctor/restricted";
 import { StatusBadge } from "@/components/status-badge";
 import { requireClinicalPortal } from "@/lib/doctor/session";
 import { clampPage } from "@/lib/doctor/present";
@@ -19,13 +19,12 @@ export default async function DoctorPatientsPage({
   searchParams: Promise<{ q?: string; page?: string; status?: string }>;
 }) {
   const portal = await requireClinicalPortal();
-  if (portal.staff) return <ClinicPracticeNote />;
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
-  if (portal.access !== "ready" || !portal.doctor) return <RestrictedPractice access={portal.access} />;
+  if (!portal.staff && (portal.access !== "ready" || !portal.doctor)) return <RestrictedPractice access={portal.access} />;
   const query = await searchParams;
   const q = (query.q ?? "").trim();
   const activeOnly = query.status === "active";
-  const result = await searchAssignedPatients(prisma, { userId: portal.user.id, q, page: clampPage(query.page, 10_000), activeOnly });
+  const result = await searchAssignedPatients(prisma, { userId: portal.user.id, q, page: clampPage(query.page, 10_000), activeOnly, clinicWide: portal.staff });
   if (!result.ok) return <RecordsUnavailable code={result.code} />;
   const page = Math.min(result.page, result.pages);
 
@@ -34,7 +33,7 @@ export default async function DoctorPatientsPage({
       <section className="rounded-2xl border border-[#d7e3ee] bg-white p-4 sm:p-5">
         <header>
           <h1 className="text-2xl font-semibold text-[#0C2B45]">Patient Records</h1>
-          <p className="mt-1 text-sm text-[#5b6b7c]">Patients with an appointment assigned to you. Opening a chart is recorded.</p>
+          <p className="mt-1 text-sm text-[#5b6b7c]">{portal.staff ? "Patients with an appointment in this clinic. Opening a chart is recorded." : "Patients with an appointment assigned to you. Opening a chart is recorded."}</p>
         </header>
         <LiveQueryForm
           pathname="/doctor/patients"
@@ -45,7 +44,7 @@ export default async function DoctorPatientsPage({
           ]}
         />
         {result.patients.length === 0 ? (
-          <p className="mt-6 text-sm leading-6 text-[#5b6b7c]">{q ? "No assigned patient matches that search." : "Patients appear here after an appointment is assigned to you."}</p>
+          <p className="mt-6 text-sm leading-6 text-[#5b6b7c]">{q ? "No assigned patient matches that search." : portal.staff ? "Patients appear here after an appointment is booked." : "Patients appear here after an appointment is assigned to you."}</p>
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="phone-table w-full min-w-[720px] text-left text-sm">
@@ -87,7 +86,7 @@ export default async function DoctorPatientsPage({
       </section>
       <aside className="rounded-2xl border border-[#d7e3ee] bg-white p-5 text-sm leading-6 text-[#5b6b7c]">
         <h2 className="text-lg font-semibold text-[#0C2B45]">What this list includes</h2>
-        <p className="mt-2">Only patients who already have an appointment with you. A guessed patient ID does not open a chart.</p>
+        <p className="mt-2">{portal.staff ? "Patients who already have an appointment in this clinic. A guessed patient ID does not open a chart." : "Only patients who already have an appointment with you. A guessed patient ID does not open a chart."}</p>
         <p className="mt-2">Clinical note text stays on the consultation record and is not shown in this list.</p>
       </aside>
     </div>

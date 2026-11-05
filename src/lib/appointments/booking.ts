@@ -244,7 +244,7 @@ export async function bookScheduledSlot(
 
 /** Books a follow-up for a patient already assigned to the signed-in doctor. No payment is required. */
 export async function scheduleAssignedFollowUp(
-  input: { actorUserId: string; sourceAppointmentId: string; offeringId: string; locationId?: string | null; startsAt: Date },
+  input: { actorUserId: string; sourceAppointmentId: string; offeringId: string; locationId?: string | null; startsAt: Date; roleCodes?: readonly string[] },
   deps: Deps = {},
 ): Promise<BookingResult> {
   const db = deps.db ?? prisma;
@@ -267,7 +267,9 @@ export async function scheduleAssignedFollowUp(
           patient: { select: { archivedAt: true, user: { select: { status: true, deletedAt: true } } } },
         },
       });
-      if (!source || source.doctor.userId !== input.actorUserId) return { ok: false as const, code: "NOT_FOUND" as const };
+      if (!source || !actsForAssignedDoctor(input.actorUserId, source.doctor.userId, input.roleCodes)) {
+        return { ok: false as const, code: "NOT_FOUND" as const };
+      }
       if (source.patient.archivedAt || source.patient.user.deletedAt || source.patient.user.status !== "ACTIVE") {
         return { ok: false as const, code: "NOT_A_PATIENT" as const };
       }

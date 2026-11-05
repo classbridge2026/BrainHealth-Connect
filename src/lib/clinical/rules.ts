@@ -252,10 +252,13 @@ export function clinicianRecordDecision(input: {
   actorUserId: string | null;
   doctorUserId: string;
   doctorMayDocument: boolean;
+  /** A portal administrator covering this visit in the doctor workspace. */
+  coversVisit?: boolean;
 }): "unauthenticated" | "deny" | "allow" {
   if (!input.actorUserId) return "unauthenticated";
-  if (input.actorUserId !== input.doctorUserId || !input.doctorMayDocument) return "deny";
-  return "allow";
+  if (!input.doctorMayDocument) return "deny";
+  if (input.coversVisit || input.actorUserId === input.doctorUserId) return "allow";
+  return "deny";
 }
 
 export function administratorMayReadClinicalContent(roleCodes: readonly string[]): boolean {

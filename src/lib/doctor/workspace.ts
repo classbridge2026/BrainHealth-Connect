@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { formatPlatformDay, formatPlatformWhen, paymentStatusLabel } from "@/lib/admin/labels";
 import { completeEndedConsultations, shownAppointmentStatus } from "@/lib/appointments/finish";
 import { formatBookingWhen } from "@/lib/appointments/time";
@@ -33,14 +33,14 @@ function failed(error: unknown) {
   return { ok: false as const, code: isSchemaMismatch(error) ? ("SCHEMA" as const) : ("UNAVAILABLE" as const) };
 }
 
-function followUpWhere(doctorProfileId: string): Prisma.AppointmentWhereInput {
+function followUpWhere(doctorProfileId: string | null): Prisma.AppointmentWhereInput {
   return {
-    doctorProfileId,
+    ...(doctorProfileId ? { doctorProfileId } : {}),
     OR: [{ followUpOfId: { not: null } }, { consultationService: followUpService }],
   };
 }
 
-export async function loadDoctorDashboard(db: PrismaClient, doctor: { id: string; displayName: string }, now = new Date()) {
+export async function loadDoctorDashboard(db: PrismaClient, doctor: { id: string | null; displayName: string }, now = new Date()) {
   try {
     const dayStart = platformDay(now);
     const dayEnd = addDays(dayStart, 1);
@@ -58,64 +58,68 @@ export async function loadDoctorDashboard(db: PrismaClient, doctor: { id: string
     } as const;
     const openList = OPEN.join(",");
     const closedList = CLOSED.join(",");
+    const scope = doctor.id ? { doctorProfileId: doctor.id } : {};
+    const onVisit = doctor.id ? Prisma.sql`AND "doctorProfileId"::text = ${doctor.id}` : Prisma.empty;
+    const onVisitA = doctor.id ? Prisma.sql`AND a."doctorProfileId"::text = ${doctor.id}` : Prisma.empty;
+    const onNote = doctor.id ? Prisma.sql`AND "authorDoctorProfileId"::text = ${doctor.id}` : Prisma.empty;
     const [, today, openVisits, snapshotRows] = await Promise.all([
-      completeEndedConsultations(db, { now, doctorProfileId: doctor.id }),
+      completeEndedConsultations(db, { now, ...(doctor.id ? { doctorProfileId: doctor.id } : {}) }),
       db.appointment.findMany({
-        where: { doctorProfileId: doctor.id, startsAt: { gte: dayStart, lt: dayEnd } },
+        where: { ...scope, startsAt: { gte: dayStart, lt: dayEnd } },
         orderBy: { startsAt: "desc" },
         take: 20,
         select: visitSelect,
       }),
       db.appointment.findMany({
-        where: { doctorProfileId: doctor.id, status: "IN_PROGRESS", endsAt: { gt: now } },
+        where: { ...scope, status: "IN_PROGRESS", endsAt: { gt: now } },
         select: { id: true, encounter: { select: { notes: { where: { kind: "PRIVATE_WORKING", archivedAt: null }, select: { id: true }, take: 1 } } } },
         take: 50,
       }),
       db.$queryRaw<Array<{ upcoming: number; followUps: number; followUpsThisWeek: number; inProgress: number; unreleased: number; activePatients: number; newPatients: number }>>`
         SELECT
           (SELECT count(*)::int FROM "Appointment"
-            WHERE "doctorProfileId"::text = ${doctor.id}
-              AND "startsAt" >= ${dayEnd}
+            WHERE "startsAt" >= ${dayEnd}
               AND status::text = ANY(string_to_array(${openList}, ','))
+              ${onVisit}
           ) AS upcoming,
           (SELECT count(*)::int FROM "Appointment" a
             LEFT JOIN "ConsultationService" s ON s.id = a."consultationServiceId"
-            WHERE a."doctorProfileId"::text = ${doctor.id}
-              AND a."startsAt" >= ${now}
+            WHERE a."startsAt" >= ${now}
               AND a.status::text = ANY(string_to_array(${openList}, ','))
               AND (a."followUpOfId" IS NOT NULL OR s.code ILIKE '%FOLLOW%' OR s.name ILIKE '%follow%')
+              ${onVisitA}
           ) AS "followUps",
           (SELECT count(*)::int FROM "Appointment" a
             LEFT JOIN "ConsultationService" s ON s.id = a."consultationServiceId"
-            WHERE a."doctorProfileId"::text = ${doctor.id}
-              AND a."startsAt" >= ${now}
+            WHERE a."startsAt" >= ${now}
               AND a."startsAt" < ${weekEnd}
               AND a.status::text = ANY(string_to_array(${openList}, ','))
               AND (a."followUpOfId" IS NOT NULL OR s.code ILIKE '%FOLLOW%' OR s.name ILIKE '%follow%')
+              ${onVisitA}
           ) AS "followUpsThisWeek",
           (SELECT count(*)::int FROM "Appointment"
-            WHERE "doctorProfileId"::text = ${doctor.id}
-              AND status::text = 'IN_PROGRESS'
+            WHERE status::text = 'IN_PROGRESS'
               AND "endsAt" > ${now}
+              ${onVisit}
           ) AS "inProgress",
           (SELECT count(*)::int FROM "ClinicalNote"
-            WHERE "authorDoctorProfileId"::text = ${doctor.id}
-              AND "archivedAt" IS NULL
+            WHERE "archivedAt" IS NULL
               AND kind::text = 'PATIENT_SUMMARY'
               AND "summaryReleaseStatus"::text = 'NOT_RELEASED'
+              ${onNote}
           ) AS unreleased,
           (SELECT count(*)::int FROM (
             SELECT "patientProfileId"
             FROM "Appointment"
-            WHERE "doctorProfileId"::text = ${doctor.id}
-              AND NOT (status::text = ANY(string_to_array(${closedList}, ',')))
+            WHERE NOT (status::text = ANY(string_to_array(${closedList}, ',')))
+              ${onVisit}
             GROUP BY "patientProfileId"
           ) patients) AS "activePatients",
           (SELECT count(*)::int FROM (
             SELECT "patientProfileId"
             FROM "Appointment"
-            WHERE "doctorProfileId"::text = ${doctor.id}
-              AND NOT (status::text = ANY(string_to_array(${closedList}, ',')))
+            WHERE NOT (status::text = ANY(string_to_array(${closedList}, ',')))
+              ${onVisit}
             GROUP BY "patientProfileId"
             HAVING min("createdAt") >= ${weekStart} AND min("createdAt") < ${weekEnd}
           ) recent_patients) AS "newPatients"
@@ -254,15 +258,16 @@ export async function loadDoctorScheduleView(
 
 export async function searchAssignedPatients(
   db: PrismaClient,
-  input: { userId: string; q: string; page: number; activeOnly: boolean; now?: Date },
+  input: { userId: string; q: string; page: number; activeOnly: boolean; now?: Date; clinicWide?: boolean },
 ) {
   const now = input.now ?? new Date();
   const q = input.q.trim().slice(0, 80);
   try {
-    const doctor = await db.doctorProfile.findUnique({ where: { userId: input.userId }, select: { id: true } });
-    if (!doctor) return { ok: true as const, patients: [], total: 0, page: 1, pages: 1 };
+    const doctor = input.clinicWide ? null : await db.doctorProfile.findUnique({ where: { userId: input.userId }, select: { id: true } });
+    if (!input.clinicWide && !doctor) return { ok: true as const, patients: [], total: 0, page: 1, pages: 1 };
+    const visitScope = doctor ? { doctorProfileId: doctor.id } : {};
     const where: Prisma.PatientProfileWhereInput = {
-      appointments: { some: { doctorProfileId: doctor.id, ...(input.activeOnly ? { status: { notIn: [...CLOSED] } } : {}) } },
+      appointments: { some: { ...visitScope, ...(input.activeOnly ? { status: { notIn: [...CLOSED] } } : {}) } },
     };
     if (q) {
       where.OR = parseUuid(q) ? [{ id: q }, { fullName: { contains: q, mode: "insensitive" } }] : [{ fullName: { contains: q, mode: "insensitive" } }];
@@ -282,7 +287,7 @@ export async function searchAssignedPatients(
         dateOfBirth: true,
         user: { select: { id: true, profileImageUpdatedAt: true } },
         appointments: {
-          where: { doctorProfileId: doctor.id },
+          where: visitScope,
           orderBy: { startsAt: "desc" },
           take: 20,
           select: { startsAt: true, status: true, consultationService: { select: { name: true } } },
@@ -316,14 +321,15 @@ export async function searchAssignedPatients(
   }
 }
 
-export async function loadDoctorChart(db: PrismaClient, input: { patientId: string; actorUserId: string; now?: Date }) {
+export async function loadDoctorChart(db: PrismaClient, input: { patientId: string; actorUserId: string; now?: Date; clinicWide?: boolean }) {
   if (!parseUuid(input.patientId)) return { ok: false as const, code: "NOT_FOUND" as const };
   const now = input.now ?? new Date();
   try {
-    const doctor = await db.doctorProfile.findUnique({ where: { userId: input.actorUserId }, select: { id: true } });
-    if (!doctor) return { ok: false as const, code: "NOT_FOUND" as const };
+    const doctor = input.clinicWide ? null : await db.doctorProfile.findUnique({ where: { userId: input.actorUserId }, select: { id: true } });
+    if (!input.clinicWide && !doctor) return { ok: false as const, code: "NOT_FOUND" as const };
+    const visitScope = doctor ? { doctorProfileId: doctor.id } : {};
     const patient = await db.patientProfile.findFirst({
-      where: { id: input.patientId, appointments: { some: { doctorProfileId: doctor.id } } },
+      where: { id: input.patientId, appointments: { some: visitScope } },
       select: {
         id: true,
         fullName: true,
@@ -337,7 +343,7 @@ export async function loadDoctorChart(db: PrismaClient, input: { patientId: stri
         user: { select: { id: true, email: true, phoneE164: true, profileImageUpdatedAt: true } },
         guardianRelationships: { select: { status: true, revokedAt: true, relationshipType: true } },
         appointments: {
-          where: { doctorProfileId: doctor.id },
+          where: visitScope,
           orderBy: { startsAt: "desc" },
           take: 30,
           select: {
@@ -352,9 +358,11 @@ export async function loadDoctorChart(db: PrismaClient, input: { patientId: stri
       },
     });
     if (!patient) return { ok: false as const, code: "NOT_FOUND" as const };
+    const authorScope = doctor ? { authorDoctorProfileId: doctor.id } : {};
+    const encounterScope = doctor ? { doctorProfileId: doctor.id } : {};
     const [encounters, summaries, files, privateNotes] = await Promise.all([
       db.encounter.findMany({
-        where: { doctorProfileId: doctor.id, patientProfileId: patient.id, archivedAt: null },
+        where: { ...encounterScope, patientProfileId: patient.id, archivedAt: null },
         orderBy: { createdAt: "desc" },
         take: 20,
         select: {
@@ -368,7 +376,7 @@ export async function loadDoctorChart(db: PrismaClient, input: { patientId: stri
       }),
       db.clinicalNote.findMany({
         where: {
-          authorDoctorProfileId: doctor.id,
+          ...authorScope,
           kind: "PATIENT_SUMMARY",
           summaryReleaseStatus: "RELEASED",
           archivedAt: null,
@@ -379,13 +387,13 @@ export async function loadDoctorChart(db: PrismaClient, input: { patientId: stri
         select: { id: true, body: true, releasedAt: true, encounter: { select: { appointmentId: true } } },
       }),
       db.medicalFile.findMany({
-        where: { patientProfileId: patient.id, purpose: "CLINICAL_ATTACHMENT", encounter: { doctorProfileId: doctor.id } },
+        where: { patientProfileId: patient.id, purpose: "CLINICAL_ATTACHMENT", ...(doctor ? { encounter: { doctorProfileId: doctor.id } } : {}) },
         orderBy: { createdAt: "desc" },
         take: 20,
           select: { id: true, originalFilename: true, mimeType: true, sizeBytes: true, createdAt: true, deletedAt: true },
       }),
       db.clinicalNote.count({
-        where: { authorDoctorProfileId: doctor.id, kind: "PRIVATE_WORKING", archivedAt: null, encounter: { patientProfileId: patient.id } },
+        where: { ...authorScope, kind: "PRIVATE_WORKING", archivedAt: null, encounter: { patientProfileId: patient.id } },
       }),
     ]);
     await db.$transaction([
@@ -478,13 +486,13 @@ export async function loadDoctorChart(db: PrismaClient, input: { patientId: stri
   }
 }
 
-export async function listDoctorNotes(db: PrismaClient, input: { userId: string; tab: NoteTab; q: string; page: number }) {
+export async function listDoctorNotes(db: PrismaClient, input: { userId: string; tab: NoteTab; q: string; page: number; clinicWide?: boolean }) {
   const q = input.q.trim().slice(0, 80);
   try {
-    const doctor = await db.doctorProfile.findUnique({ where: { userId: input.userId }, select: { id: true } });
-    if (!doctor) return { ok: true as const, notes: [], total: 0, page: 1, pages: 1, visits: [] as Array<{ id: string; label: string }> };
+    const doctor = input.clinicWide ? null : await db.doctorProfile.findUnique({ where: { userId: input.userId }, select: { id: true } });
+    if (!input.clinicWide && !doctor) return { ok: true as const, notes: [], total: 0, page: 1, pages: 1, visits: [] as Array<{ id: string; label: string }> };
     const where: Prisma.ClinicalNoteWhereInput = {
-      authorDoctorProfileId: doctor.id,
+      ...(doctor ? { authorDoctorProfileId: doctor.id } : {}),
       archivedAt: null,
       ...(input.tab === "private"
         ? { kind: "PRIVATE_WORKING" }
@@ -520,7 +528,7 @@ export async function listDoctorNotes(db: PrismaClient, input: { userId: string;
         },
       }),
       db.appointment.findMany({
-        where: { doctorProfileId: doctor.id, status: { in: ["IN_PROGRESS", "COMPLETED"] }, encounter: { isNot: null } },
+        where: { ...(doctor ? { doctorProfileId: doctor.id } : {}), status: { in: ["IN_PROGRESS", "COMPLETED"] }, encounter: { isNot: null } },
         orderBy: { startsAt: "desc" },
         take: 30,
         select: { id: true, startsAt: true, patient: { select: { fullName: true } }, consultationService: { select: { name: true } } },
@@ -530,8 +538,8 @@ export async function listDoctorNotes(db: PrismaClient, input: { userId: string;
       data: {
         actorUserId: input.userId,
         action: "doctor.notes.listed",
-        entityType: "DoctorProfile",
-        entityId: doctor.id,
+        entityType: doctor ? "DoctorProfile" : "User",
+        entityId: doctor?.id ?? input.userId,
         metadata: { tab: input.tab, count: notes.length },
       },
     });
@@ -558,14 +566,14 @@ export async function listDoctorNotes(db: PrismaClient, input: { userId: string;
   }
 }
 
-export async function listDoctorFollowUps(db: PrismaClient, input: { userId: string; view: FollowUpView; now?: Date }) {
+export async function listDoctorFollowUps(db: PrismaClient, input: { userId: string; view: FollowUpView; now?: Date; clinicWide?: boolean }) {
   const now = input.now ?? new Date();
   const dayStart = platformDay(now);
   const dayEnd = addDays(dayStart, 1);
   try {
-    const doctor = await db.doctorProfile.findUnique({ where: { userId: input.userId }, select: { id: true } });
-    if (!doctor) return { ok: true as const, rows: [] };
-    const where: Prisma.AppointmentWhereInput = followUpWhere(doctor.id);
+    const doctor = input.clinicWide ? null : await db.doctorProfile.findUnique({ where: { userId: input.userId }, select: { id: true } });
+    if (!input.clinicWide && !doctor) return { ok: true as const, rows: [] };
+    const where: Prisma.AppointmentWhereInput = followUpWhere(doctor?.id ?? null);
     if (input.view === "completed") where.status = "COMPLETED";
     else if (input.view === "cancelled") where.status = { in: ["CANCELLED_BY_PATIENT", "CANCELLED_BY_DOCTOR", "CANCELLED_BY_ADMIN", "NO_SHOW"] };
     else if (input.view === "today") {
@@ -614,22 +622,40 @@ export async function listDoctorFollowUps(db: PrismaClient, input: { userId: str
   }
 }
 
-export async function loadFollowUpFormData(db: PrismaClient, userId: string) {
+export async function loadFollowUpFormData(
+  db: PrismaClient,
+  userId: string,
+  options?: { clinicWide?: boolean; doctorProfileId?: string },
+) {
   try {
-    const doctor = await db.doctorProfile.findUnique({ where: { userId }, select: { id: true } });
-    if (!doctor) return { ok: true as const, offerings: [], sources: [], locations: [] };
+    const doctor = options?.doctorProfileId
+      ? { id: options.doctorProfileId }
+      : options?.clinicWide
+        ? null
+        : await db.doctorProfile.findUnique({ where: { userId }, select: { id: true } });
+    if (!options?.clinicWide && !doctor) return { ok: true as const, offerings: [], sources: [], locations: [] };
     const [offerings, sources, locations] = await Promise.all([
       db.doctorOffering.findMany({
-        where: { doctorProfileId: doctor.id, isActive: true },
-        select: { id: true, mode: true, durationMinutes: true, consultationService: { select: { name: true } } },
+        where: doctor ? { doctorProfileId: doctor.id, isActive: true } : { isActive: true },
+        select: {
+          id: true,
+          mode: true,
+          durationMinutes: true,
+          doctorProfileId: true,
+          doctor: { select: { displayName: true } },
+          consultationService: { select: { name: true } },
+        },
         orderBy: { consultationService: { name: "asc" } },
         take: 40,
       }),
       db.appointment.findMany({
-        where: { doctorProfileId: doctor.id, status: { in: ["COMPLETED", "IN_PROGRESS", "CONFIRMED", "CHECKED_IN"] } },
+        where: {
+          ...(doctor ? { doctorProfileId: doctor.id } : {}),
+          status: { in: ["COMPLETED", "IN_PROGRESS", "CONFIRMED", "CHECKED_IN"] },
+        },
         orderBy: { startsAt: "desc" },
         take: 40,
-        select: { id: true, startsAt: true, patient: { select: { fullName: true } }, consultationService: { select: { name: true } } },
+        select: { id: true, doctorProfileId: true, startsAt: true, patient: { select: { fullName: true } }, consultationService: { select: { name: true } } },
       }),
       db.location.findMany({ where: { isActive: true }, select: { id: true, name: true, locality: true }, orderBy: { name: "asc" }, take: 40 }),
     ]);
@@ -637,10 +663,15 @@ export async function loadFollowUpFormData(db: PrismaClient, userId: string) {
       ok: true as const,
       offerings: offerings.map((row) => ({
         id: row.id,
+        doctorProfileId: row.doctorProfileId,
         mode: row.mode,
-        label: `${row.consultationService.name} · ${row.mode === "ONLINE" ? "Online" : "In person"} · ${row.durationMinutes} min`,
+        label: `${options?.clinicWide ? `${row.doctor.displayName} · ` : ""}${row.consultationService.name} · ${row.mode === "ONLINE" ? "Online" : "In person"} · ${row.durationMinutes} min`,
       })),
-      sources: sources.map((row) => ({ id: row.id, label: `${row.patient.fullName} · ${row.consultationService.name} · ${formatBookingWhen(row.startsAt)}` })),
+      sources: sources.map((row) => ({
+        id: row.id,
+        doctorProfileId: row.doctorProfileId,
+        label: `${row.patient.fullName} · ${row.consultationService.name} · ${formatBookingWhen(row.startsAt)}`,
+      })),
       locations: locations.map((row) => ({ id: row.id, label: `${row.name}, ${row.locality}` })),
     };
   } catch (error) {

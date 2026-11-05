@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DashIcon, type DashIconName } from "@/components/doctor/dash-icons";
 import { RecordsUnavailable } from "@/components/records-unavailable";
-import { ClinicPracticeNote } from "@/components/doctor/restricted";
 import { requireClinicalPortal } from "@/lib/doctor/session";
+import { notDeveloper } from "@/lib/auth/visibility";
 import { loadDoctorSchedule } from "@/lib/appointments/queries";
 import { availabilityModeLabel } from "@/lib/appointments/slots";
 import { addDays, atMinutes, isoWeekday, parseCalendarDate, formatNormalClock } from "@/lib/appointments/time";
@@ -99,12 +99,25 @@ function visitMode(mode: string) {
   return mode;
 }
 
-export default async function DoctorAvailabilityPage() {
+export default async function DoctorAvailabilityPage({ searchParams }: { searchParams: Promise<{ doctor?: string }> }) {
   const portal = await requireClinicalPortal();
-  if (portal.staff) return <ClinicPracticeNote />;
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
-  if (!portal.doctor) return <RecordsUnavailable code="NOT_FOUND" />;
-  const schedule = await loadDoctorSchedule(prisma, portal.doctor.id);
+  const query = await searchParams;
+  let coveredDoctorId: string | undefined;
+  let clinicians: Array<{ id: string; displayName: string }> = [];
+  if (portal.staff) {
+    clinicians = await prisma.doctorProfile.findMany({
+      where: { verificationStatus: "APPROVED", user: { status: "ACTIVE", deletedAt: null, ...notDeveloper } },
+      select: { id: true, displayName: true },
+      orderBy: { displayName: "asc" },
+      take: 40,
+    });
+    coveredDoctorId = clinicians.some((row) => row.id === query.doctor) ? query.doctor : clinicians[0]?.id;
+    if (!coveredDoctorId) return <RecordsUnavailable code="NOT_FOUND" />;
+  } else if (!portal.doctor) {
+    return <RecordsUnavailable code="NOT_FOUND" />;
+  }
+  const schedule = await loadDoctorSchedule(prisma, coveredDoctorId ?? portal.doctor!.id);
   if (!schedule.ok) return <RecordsUnavailable code={schedule.code} />;
   const rules: Rule[] = schedule.rules;
   const now = new Date();
@@ -125,6 +138,20 @@ export default async function DoctorAvailabilityPage() {
           <p className="avail-kicker">Practice hours</p>
           <h1>Manage availability</h1>
           <p>Set the hours patients can book. Use the normal clock, such as 7:00 AM and 4:00 PM. Saving hours does not cancel appointments already booked.</p>
+          {clinicians.length > 0 ? (
+            <nav className="mt-3 flex flex-wrap gap-2" aria-label="Clinician schedules">
+              {clinicians.map((clinician) => (
+                <Link
+                  key={clinician.id}
+                  href={`/doctor/availability?doctor=${clinician.id}`}
+                  aria-current={clinician.id === coveredDoctorId ? "page" : undefined}
+                  className={clinician.id === coveredDoctorId ? "font-semibold text-[#0F766E]" : "text-[#5b6b7c]"}
+                >
+                  {clinician.displayName}
+                </Link>
+              ))}
+            </nav>
+          ) : null}
         </div>
         <div className="avail-hero-side">
           <p className="avail-zone">
@@ -149,7 +176,7 @@ export default async function DoctorAvailabilityPage() {
               <h2>Weekly schedule</h2>
               <p>Each bar shows where the hours sit between 7:00 AM and 8:00 PM. A date range does not open every day inside it. Patients can book only that weekday, and only while a time is still ahead.</p>
             </div>
-            <AddHoursButton offerings={schedule.offerings ?? []} />
+            <AddHoursButton doctorProfileId={coveredDoctorId} offerings={schedule.offerings ?? []} />
           </header>
           <ol className="avail-days">
             {weekdays.map((day, index) => {
@@ -181,7 +208,7 @@ export default async function DoctorAvailabilityPage() {
                                 {formatNormalClock(clockMinutes(rule.start))}–{formatNormalClock(clockMinutes(rule.end))}
                               </strong>
                               <span className={`avail-mode avail-mode-${tone}`}>{availabilityModeLabel(rule.mode)}</span>
-                              <DeactivateRuleForm ruleId={rule.id} compact />
+                              <DeactivateRuleForm ruleId={rule.id} doctorProfileId={coveredDoctorId} compact />
                             </div>
                             <p className="avail-block-meta">
                               {rule.service}
@@ -211,7 +238,7 @@ export default async function DoctorAvailabilityPage() {
                 <h2>Time off</h2>
                 <p>Leave and breaks stay off the booking calendar. A block is refused when a visit is already booked.</p>
               </div>
-              <AddTimeOffButton />
+              <AddTimeOffButton doctorProfileId={coveredDoctorId} />
             </header>
             {schedule.timeOff.length === 0 ? (
               <p className="avail-empty">No upcoming time off is recorded.</p>
@@ -223,7 +250,7 @@ export default async function DoctorAvailabilityPage() {
                       <strong>{row.when}</strong>
                       {row.reason ? <span>{row.reason}</span> : <span>No reason recorded</span>}
                     </div>
-                    <RemoveTimeOffForm timeOffId={row.id} compact />
+                    <RemoveTimeOffForm timeOffId={row.id} doctorProfileId={coveredDoctorId} compact />
                   </li>
                 ))}
               </ul>

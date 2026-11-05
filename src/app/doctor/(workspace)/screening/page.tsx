@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { RecordsUnavailable } from "@/components/records-unavailable";
-import { ClinicPracticeNote, RestrictedPractice } from "@/components/doctor/restricted";
+import { RestrictedPractice } from "@/components/doctor/restricted";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { requireClinicalPortal } from "@/lib/doctor/session";
 import { formatPlatformWhen } from "@/lib/admin/labels";
@@ -13,10 +13,9 @@ export const dynamic = "force-dynamic";
 
 export default async function DoctorScreeningPage() {
   const portal = await requireClinicalPortal();
-  if (portal.staff) return <ClinicPracticeNote />;
   if (portal.access === "schema") return <RecordsUnavailable code="SCHEMA" />;
-  if (portal.access !== "ready" || !portal.doctor) return <RestrictedPractice access={portal.access} />;
-  const result = await listDoctorAssessments(prisma, portal.doctor.id);
+  if (!portal.staff && (portal.access !== "ready" || !portal.doctor)) return <RestrictedPractice access={portal.access} />;
+  const result = await listDoctorAssessments(prisma, portal.doctor?.id ?? null, portal.staff);
   if (!result.ok) return <RecordsUnavailable code={result.code === "SCHEMA" ? "SCHEMA" : "UNAVAILABLE"} />;
 
   return (
@@ -24,7 +23,9 @@ export default async function DoctorScreeningPage() {
       <header>
         <h1 className="text-2xl font-semibold text-[#0C2B45]">Screening assessments</h1>
         <p className="mt-1 max-w-2xl text-sm leading-6 text-[#5b6b7c]">
-          Submitted screens for patients you already have an appointment with. A score is not a diagnosis, and it is not released to the patient as a clinical summary.
+          {portal.staff
+            ? "Submitted screens for patients in this clinic. A score is not a diagnosis, and it is not released to the patient as a clinical summary."
+            : "Submitted screens for patients you already have an appointment with. A score is not a diagnosis, and it is not released to the patient as a clinical summary."}
         </p>
       </header>
       {result.rows.length === 0 ? (

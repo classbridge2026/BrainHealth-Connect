@@ -31,9 +31,9 @@ const copy: Record<Exclude<ClinicalAccess, "ready">, { title: string; body: stri
 export function ClinicPracticeNote() {
   return (
     <section className="mx-auto grid max-w-2xl gap-4 rounded-2xl border border-[#d7e3ee] bg-white p-6">
-      <h1 className="text-2xl font-semibold text-[#0C2B45]">Use Appointments for this visit</h1>
+      <h1 className="text-2xl font-semibold text-[#0C2B45]">Clinic workspace</h1>
       <p className="text-sm leading-6 text-[#5b6b7c]">
-        As an administrator you can approve, decline, and run consultations from Appointments, the same way the assigned doctor can. Notes, screening, and a personal schedule stay on a clinician profile.
+        This account covers the clinic. Use the doctor menu for the dashboard, appointments, patients, notes, screening, follow-ups, and each clinician&apos;s hours. Sign-in for this account is on this profile.
       </p>
       <Link className="inline-flex h-11 w-fit items-center rounded-lg bg-[#0F766E] px-4 text-sm font-semibold text-white" href="/doctor/appointments">
         Open appointments

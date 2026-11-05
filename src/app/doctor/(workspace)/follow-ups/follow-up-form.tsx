@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { scheduleFollowUpAction, type FollowUpState } from "./actions";
 
 const initial: FollowUpState = {};
@@ -11,12 +11,15 @@ export function FollowUpForm({
   locations,
   sourceId,
 }: {
-  offerings: Array<{ id: string; label: string; mode: "ONLINE" | "IN_PERSON" }>;
-  sources: Array<{ id: string; label: string }>;
+  offerings: Array<{ id: string; label: string; mode: "ONLINE" | "IN_PERSON"; doctorProfileId?: string }>;
+  sources: Array<{ id: string; label: string; doctorProfileId?: string }>;
   locations: Array<{ id: string; label: string }>;
   sourceId?: string;
 }) {
   const [state, action, pending] = useActionState(scheduleFollowUpAction, initial);
+  const [source, setSource] = useState(sourceId && sources.some((row) => row.id === sourceId) ? sourceId : sources[0]?.id ?? "");
+  const doctorProfileId = sources.find((row) => row.id === source)?.doctorProfileId;
+  const choices = doctorProfileId ? offerings.filter((row) => row.doctorProfileId === doctorProfileId) : offerings;
   if (sources.length === 0 || offerings.length === 0) {
     return <p className="text-sm leading-6 text-[#5b6b7c]">A follow-up can be scheduled after you have an assigned visit and an active consultation service.</p>;
   }
@@ -26,14 +29,14 @@ export function FollowUpForm({
       <p className="text-sm leading-6 text-[#5b6b7c]">This uses the existing booking rules. The visit is confirmed without payment. Times use Africa/Freetown (GMT).</p>
       <label className="text-sm font-medium">
         Related visit
-        <select className="mt-1 h-11 w-full rounded-lg border border-[#d7e3ee] px-3" name="sourceAppointmentId" defaultValue={sourceId ?? sources[0]?.id} required>
+        <select className="mt-1 h-11 w-full rounded-lg border border-[#d7e3ee] px-3" name="sourceAppointmentId" value={source} onChange={(event) => setSource(event.target.value)} required>
           {sources.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}
         </select>
       </label>
       <label className="text-sm font-medium">
         Service
         <select className="mt-1 h-11 w-full rounded-lg border border-[#d7e3ee] px-3" name="offeringId" required>
-          {offerings.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}
+          {choices.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}
         </select>
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
