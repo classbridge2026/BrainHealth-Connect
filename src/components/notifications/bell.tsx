@@ -139,6 +139,7 @@ export function NotificationBell({
 
   useEffect(() => {
     if (!watch) return;
+    const audience = watch;
     let stop = false;
     let busy = false;
     let timer = 0;
@@ -147,15 +148,15 @@ export function NotificationBell({
       if (stop || busy || document.visibilityState === "hidden") return;
       busy = true;
       try {
-        const response = await fetch(`/api/notices/pulse?audience=${watch}`, { cache: "no-store" });
+        const response = await fetch(`/api/notices/pulse?audience=${audience}`, { cache: "no-store" });
         if (!response.ok) return;
         const pulse = readPulse(await response.json());
         if (stop || !pulse) return;
-        if (heard.current == null) heard.current = readHeard(watch);
+        if (heard.current == null) heard.current = readHeard(audience);
         const previous = heard.current;
         const ring = noticeShouldRing(previous, pulse.unread) && pulse.items.length > 0;
         heard.current = pulse.unread;
-        writeHeard(watch, pulse.unread);
+        writeHeard(audience, pulse.unread);
         if (pulse.stamp === serverStampRef.current) setLive(null);
         else setLive(pulse);
         if (ring) {

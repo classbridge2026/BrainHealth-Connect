@@ -43,9 +43,11 @@ export async function GET(request: Request) {
       || file.mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     );
     const name = file.name.replace(/["\r\n]/g, "");
-    return new NextResponse(new Uint8Array(file.bytes), {
+    const bytes = new Uint8Array(file.bytes);
+    return new NextResponse(bytes, {
       headers: {
         "Content-Type": file.mime || "application/octet-stream",
+        "Content-Length": String(bytes.byteLength),
         "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${name}"`,
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",

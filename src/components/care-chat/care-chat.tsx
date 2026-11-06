@@ -22,7 +22,113 @@ type ActiveChat = {
 type Delivery = "sending" | "sent" | "read" | "failed";
 
 type ViewLine = ChatLine & { state: Delivery; previewUrl?: string; pendingFile?: File; progress?: number };
-type FileLook = { href: string; downloadHref: string; name: string; mime: string };
+type FileLook = { href: string; downloadHref: string; name: string; mime: string; size?: number };
+type BlobState = { status: "loading" | "ready" | "error"; progress: number; url: string };
+
+const blobJobs = new Map<string, { state: BlobState; listeners: Set<(state: BlobState) => void> }>();
+
+function publishBlob(href: string, state: BlobState) {
+  const job = blobJobs.get(href);
+  if (!job) return;
+  job.state = state;
+  job.listeners.forEach((fn) => fn(state));
+}
+
+async function pullChatBlob(href: string, expectedSize: number) {
+  try {
+    const response = await fetch(href, { credentials: "same-origin" });
+    if (!response.ok) {
+      publishBlob(href, { status: "error", progress: 0, url: "" });
+      return;
+    }
+    const total = Number(response.headers.get("content-length")) || expectedSize || 0;
+    const mime = response.headers.get("content-type") || undefined;
+    const reader = response.body?.getReader();
+    if (!reader) {
+      const blob = await response.blob();
+      publishBlob(href, { status: "ready", progress: 100, url: URL.createObjectURL(blob) });
+      return;
+    }
+    const chunks: BlobPart[] = [];
+    let loaded = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loaded += value.byteLength;
+      const progress = total > 0
+        ? Math.min(99, Math.max(1, Math.round((loaded / total) * 100)))
+        : Math.min(90, Math.max(1, Math.round(loaded / (32 * 1024))));
+      publishBlob(href, { status: "loading", progress, url: "" });
+    }
+    publishBlob(href, { status: "ready", progress: 100, url: URL.createObjectURL(new Blob(chunks, mime ? { type: mime } : undefined)) });
+  } catch {
+    publishBlob(href, { status: "error", progress: blobJobs.get(href)?.state.progress ?? 0, url: "" });
+  }
+}
+
+function listenChatBlob(href: string, expectedSize: number, onChange: (state: BlobState) => void) {
+  let job = blobJobs.get(href);
+  if (!job) {
+    job = { state: { status: "loading", progress: 1, url: "" }, listeners: new Set() };
+    blobJobs.set(href, job);
+    void pullChatBlob(href, expectedSize);
+  }
+  onChange(job.state);
+  job.listeners.add(onChange);
+  return () => {
+    job.listeners.delete(onChange);
+  };
+}
+
+function retryChatBlob(href: string) {
+  blobJobs.delete(href);
+}
+
+function useChatBlob(href: string | undefined, expectedSize: number, localUrl?: string) {
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState<BlobState>(() => (
+    localUrl ? { status: "ready", progress: 100, url: localUrl } : { status: href ? "loading" : "error", progress: href ? 1 : 0, url: "" }
+  ));
+  useEffect(() => {
+    if (localUrl) {
+      setState({ status: "ready", progress: 100, url: localUrl });
+      return;
+    }
+    if (!href) {
+      setState({ status: "error", progress: 0, url: "" });
+      return;
+    }
+    return listenChatBlob(href, expectedSize, setState);
+  }, [attempt, expectedSize, href, localUrl]);
+  return {
+    ...state,
+    retry() {
+      if (href) retryChatBlob(href);
+      setAttempt((current) => current + 1);
+    },
+  };
+}
+
+function saveUrl(url: string, name: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function LoadRing({ progress, caption }: { progress: number; caption: string }) {
+  const shown = Math.min(100, Math.max(0, Math.round(progress)));
+  return (
+    <span className="care-chat-load-ring" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={shown} aria-label={caption}>
+      <b className={shown < 3 ? "is-spin" : undefined} style={{ ["--sent" as string]: `${Math.max(8, shown)}%` }} />
+      <em>{shown > 0 ? `${shown}%` : ""}</em>
+    </span>
+  );
+}
 
 function fileHref(side: string, partner: string, messageId: string, download = false) {
   const query = new URLSearchParams({ side, partner, message: messageId });
@@ -75,24 +181,37 @@ function waveOf(seedText: string) {
   });
 }
 
-function VoiceNote({ src, mine }: { src: string; mine: boolean }) {
+function VoiceNote({
+  src,
+  mine,
+  loading,
+  progress,
+  onRetry,
+}: {
+  src?: string;
+  mine: boolean;
+  loading?: boolean;
+  progress?: number;
+  onRetry?: () => void;
+}) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [length, setLength] = useState(0);
-  const bars = waveOf(src);
-  const progress = length > 0 ? Math.min(1, time / length) : 0;
+  const bars = waveOf(src || "voice");
+  const played = length > 0 ? Math.min(1, time / length) : 0;
+  const blocked = loading || !src;
 
   function toggle() {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || blocked) return;
     if (audio.paused) void audio.play().catch(() => setPlaying(false));
     else audio.pause();
   }
 
   function seek(event: MouseEvent<HTMLButtonElement>) {
     const audio = audioRef.current;
-    if (!audio || !Number.isFinite(length) || length <= 0) return;
+    if (!audio || blocked || !Number.isFinite(length) || length <= 0) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
     audio.currentTime = ratio * length;
@@ -100,9 +219,17 @@ function VoiceNote({ src, mine }: { src: string; mine: boolean }) {
   }
 
   return (
-    <div className={`care-chat-voice${mine ? " is-mine" : ""}`}>
-      <button type="button" className="care-chat-voice-play" aria-label={playing ? "Pause voice message" : "Play voice message"} onClick={toggle}>
-        {playing ? (
+    <div className={`care-chat-voice${mine ? " is-mine" : ""}${loading ? " is-loading" : ""}`}>
+      <button
+        type="button"
+        className="care-chat-voice-play"
+        disabled={blocked}
+        aria-label={loading ? `Downloading voice message ${progress ?? 0}%` : playing ? "Pause voice message" : "Play voice message"}
+        onClick={toggle}
+      >
+        {loading ? (
+          <LoadRing progress={progress ?? 1} caption={`Downloading ${progress ?? 0}%`} />
+        ) : playing ? (
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" /></svg>
         ) : (
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" /></svg>
@@ -111,121 +238,152 @@ function VoiceNote({ src, mine }: { src: string; mine: boolean }) {
       <span className="care-chat-voice-body">
         <button type="button" className="care-chat-voice-wave" onClick={seek} aria-label="Voice message progress">
           {bars.map((height, index) => (
-            <i key={index} className={index / bars.length < progress ? "is-played" : undefined} style={{ height }} />
+            <i key={index} className={index / bars.length < played ? "is-played" : undefined} style={{ height }} />
           ))}
         </button>
-        <span>{clock(Math.max(0, Math.floor(playing || time > 0 ? time : length)))}</span>
+        <span>
+          {loading ? `${progress ?? 0}%` : clock(Math.max(0, Math.floor(playing || time > 0 ? time : length)))}
+          {onRetry && !src && !loading ? (
+            <button type="button" className="care-chat-blob-retry" onClick={onRetry}>Retry</button>
+          ) : null}
+        </span>
       </span>
-      <audio
-        ref={audioRef}
-        src={src}
-        preload="metadata"
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => { setPlaying(false); setTime(0); }}
-        onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)}
-        onLoadedMetadata={(event) => setLength(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
-      />
+      {src ? (
+        <audio
+          ref={audioRef}
+          src={src}
+          preload="metadata"
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => { setPlaying(false); setTime(0); }}
+          onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)}
+          onLoadedMetadata={(event) => setLength(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+        />
+      ) : null}
     </div>
   );
 }
 
-function ChatFileView({ line, href, downloadHref, onOpen }: { line: ViewLine; href?: string; downloadHref?: string; onOpen?: (look: FileLook) => void }) {
+function ChatFileView({
+  line,
+  remoteHref,
+  onOpen,
+}: {
+  line: ViewLine;
+  remoteHref?: string;
+  onOpen?: (look: FileLook) => void;
+}) {
   const file = line.file;
-  if (!file) return null;
   const sending = line.state === "sending";
-  const look = href ? { href, downloadHref: downloadHref || href, name: file.name, mime: file.mime } : null;
-  if (file.mime.startsWith("audio/")) return href ? <VoiceNote src={href} mine={line.mine} /> : <p className="care-chat-file-name">{file.name}</p>;
+  const blob = useChatBlob(sending ? undefined : remoteHref, file?.size ?? 0, line.previewUrl);
+  if (!file) return null;
+  const readyUrl = sending ? line.previewUrl : blob.url;
+  const look = readyUrl
+    ? { href: readyUrl, downloadHref: readyUrl, name: file.name, mime: file.mime, size: file.size }
+    : remoteHref
+      ? { href: remoteHref, downloadHref: remoteHref, name: file.name, mime: file.mime, size: file.size }
+      : null;
+  const incoming = !sending && blob.status !== "ready";
+  const overlay = sending
+    ? <LoadRing progress={line.progress ?? 1} caption={`Sending ${line.progress ?? 0}%`} />
+    : incoming
+      ? <LoadRing progress={blob.progress} caption={`Downloading ${blob.progress}%`} />
+      : null;
+
+  if (file.mime.startsWith("audio/")) {
+    return (
+      <VoiceNote
+        src={readyUrl}
+        mine={line.mine}
+        loading={Boolean(overlay)}
+        progress={sending ? line.progress : blob.progress}
+        onRetry={blob.status === "error" ? blob.retry : undefined}
+      />
+    );
+  }
   if (file.mime.startsWith("image/") || file.mime.startsWith("video/")) {
     return (
-      <div className={`care-chat-media${sending ? " is-sending" : ""}`}>
-        <button type="button" className="care-chat-media-open" disabled={sending || !look} onClick={() => look && onOpen?.(look)}>
-          {href && file.mime.startsWith("image/") ? (
-            <img src={href} alt={file.name} />
-          ) : null}
-          {href && file.mime.startsWith("video/") ? (
-            <video src={href} preload="metadata" playsInline muted />
-          ) : null}
+      <div className={`care-chat-media${sending || incoming ? " is-loading" : ""}`}>
+        <button type="button" className="care-chat-media-open" disabled={!look || Boolean(overlay)} onClick={() => look && blob.status === "ready" && onOpen?.(look)}>
+          {readyUrl && file.mime.startsWith("image/") ? <img src={readyUrl} alt={file.name} /> : null}
+          {readyUrl && file.mime.startsWith("video/") ? <video src={readyUrl} preload="metadata" playsInline muted /> : null}
         </button>
-        {sending ? (
-          <span className="care-chat-send-ring" aria-label={`Sending ${line.progress ?? 0}%`}>
-            <b style={{ ["--sent" as string]: `${line.progress ?? 8}%` }} />
-            <em>{line.progress ? `${line.progress}%` : "Sending"}</em>
-          </span>
-        ) : look ? (
+        {overlay}
+        {blob.status === "error" ? (
+          <button type="button" className="care-chat-blob-retry" onClick={blob.retry}>Retry download</button>
+        ) : look && !overlay ? (
           <span className="care-chat-media-actions">
             <button type="button" onClick={() => onOpen?.(look)}>View</button>
-            <a href={look.downloadHref} download={file.name}>Download</a>
+            <button type="button" onClick={() => saveUrl(look.downloadHref, file.name)}>Download</button>
           </span>
         ) : null}
       </div>
     );
   }
   return (
-    <div className={`care-chat-doc-card${sending ? " is-sending" : ""}`}>
+    <div className={`care-chat-doc-card${sending || incoming ? " is-loading" : ""}`}>
       <span className="care-chat-doc-mark">{file.mime.includes("pdf") ? "PDF" : file.mime.includes("word") || file.name.endsWith(".doc") || file.name.endsWith(".docx") ? "DOC" : "FILE"}</span>
       <span>
         <strong>{file.name}</strong>
-        <em>{fileSize(file.size)}{sending ? ` · ${line.progress ? `${line.progress}%` : "Sending"}` : ""}</em>
+        <em>
+          {fileSize(file.size)}
+          {sending ? ` · ${line.progress ? `${line.progress}%` : "Sending"}` : incoming ? ` · ${blob.progress}%` : ""}
+        </em>
       </span>
-      {look && !sending ? (
+      {overlay ? <span className="care-chat-doc-load">{overlay}</span> : look ? (
         <span className="care-chat-doc-actions">
           <button type="button" onClick={() => onOpen?.(look)}>View</button>
-          <a href={look.downloadHref} download={file.name}>Download</a>
+          <button type="button" onClick={() => saveUrl(look.downloadHref, file.name)}>Download</button>
         </span>
+      ) : blob.status === "error" ? (
+        <button type="button" className="care-chat-blob-retry" onClick={blob.retry}>Retry</button>
       ) : null}
     </div>
   );
 }
 
 function FileViewer({ look, onClose }: { look: FileLook; onClose: () => void }) {
-  const [src, setSrc] = useState(look.href);
+  const local = look.href.startsWith("blob:");
+  const blob = useChatBlob(local ? undefined : look.href, look.size ?? 0, local ? look.href : undefined);
+  const src = blob.url || (local ? look.href : "");
   const [text, setText] = useState("");
   const kind = look.mime.startsWith("image/") ? "image" : look.mime.startsWith("video/") ? "video" : look.mime === "application/pdf" ? "pdf" : look.mime === "text/plain" ? "text" : "file";
 
   useEffect(() => {
+    if (kind !== "text" || !src) {
+      setText("");
+      return;
+    }
     let stop = false;
-    let objectUrl = "";
-    setSrc(look.href);
-    setText("");
-    void (async () => {
-      try {
-        const response = await fetch(look.href);
-        if (!response.ok || stop) return;
-        const blob = await response.blob();
-        if (kind === "text") {
-          const body = await blob.text();
-          if (!stop) setText(body);
-          return;
-        }
-        objectUrl = URL.createObjectURL(blob);
-        if (!stop) setSrc(objectUrl);
-      } catch {
-        // The original signed-in file route still opens.
-      }
-    })();
+    void fetch(src).then((response) => response.text()).then((body) => {
+      if (!stop) setText(body);
+    }).catch(() => {
+      if (!stop) setText("");
+    });
     return () => {
       stop = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [kind, look.href]);
+  }, [kind, src]);
 
   return (
     <div className="care-chat-viewer" role="dialog" aria-modal="true" aria-label={look.name}>
       <header>
         <strong>{look.name}</strong>
-        <a href={look.downloadHref} download={look.name}>Download</a>
+        <button type="button" onClick={() => src && saveUrl(src, look.name)} disabled={!src}>Download</button>
         <button type="button" onClick={onClose}>Close</button>
       </header>
-      <div className="care-chat-viewer-stage">
-        {kind === "image" ? <img src={src} alt={look.name} /> : null}
-        {kind === "video" ? <video src={src} controls autoPlay playsInline /> : null}
-        {kind === "pdf" ? <iframe className="care-chat-viewer-frame" title={look.name} src={src} /> : null}
-        {kind === "text" ? <pre className="care-chat-viewer-text">{text || "Opening…"}</pre> : null}
-        {kind === "file" ? (
+      <div className={`care-chat-viewer-stage${blob.status !== "ready" ? " is-loading" : ""}`}>
+        {blob.status !== "ready" ? (
+          <LoadRing progress={blob.progress} caption={`Downloading ${blob.progress}%`} />
+        ) : null}
+        {kind === "image" && src ? <img src={src} alt={look.name} /> : null}
+        {kind === "video" && src ? <video src={src} controls autoPlay playsInline /> : null}
+        {kind === "pdf" && src ? <iframe className="care-chat-viewer-frame" title={look.name} src={src} /> : null}
+        {kind === "text" ? <pre className="care-chat-viewer-text">{text || (blob.status === "ready" ? "" : "Opening…")}</pre> : null}
+        {kind === "file" && src ? (
           <p className="care-chat-viewer-doc">
             <a href={src} target="_blank" rel="noreferrer">Open</a>
-            <a href={look.downloadHref} download={look.name}>Download</a>
+            <button type="button" onClick={() => saveUrl(src, look.name)}>Download</button>
           </p>
         ) : null}
       </div>
@@ -765,8 +923,7 @@ export function CareChat({
                       {line.file ? (
                         <ChatFileView
                           line={line}
-                          href={line.previewUrl || (!line.id.startsWith("local-") ? fileHref(side, active.id, line.id) : undefined)}
-                          downloadHref={line.id.startsWith("local-") ? line.previewUrl : fileHref(side, active.id, line.id, true)}
+                          remoteHref={!line.id.startsWith("local-") ? fileHref(side, active.id, line.id) : undefined}
                           onOpen={setViewer}
                         />
                       ) : null}

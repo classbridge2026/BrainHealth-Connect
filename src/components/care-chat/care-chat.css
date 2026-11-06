@@ -539,6 +539,12 @@
   margin: 0 0 0.35rem;
 }
 
+.care-chat-media.is-loading .care-chat-media-open {
+  min-height: 10rem;
+  background: #1a2a38;
+  border-radius: 0.75rem;
+}
+
 .care-chat-media-open {
   display: block;
   width: 100%;
@@ -559,11 +565,15 @@
 }
 
 .care-chat-media.is-sending img,
-.care-chat-media.is-sending video {
-  filter: brightness(0.72);
+.care-chat-media.is-sending video,
+.care-chat-media.is-loading img,
+.care-chat-media.is-loading video {
+  filter: brightness(0.62);
 }
 
-.care-chat-send-ring {
+.care-chat-send-ring,
+.care-chat-media > .care-chat-load-ring,
+.care-chat-viewer-stage > .care-chat-load-ring {
   position: absolute;
   inset: 0;
   display: grid;
@@ -573,15 +583,39 @@
   color: #fff;
   font-size: 0.75rem;
   font-weight: 800;
+  background: rgba(7, 19, 31, 0.38);
+  border-radius: inherit;
+  pointer-events: none;
 }
 
-.care-chat-send-ring b {
-  width: 2.6rem;
-  height: 2.6rem;
+.care-chat-load-ring {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.2rem;
+  color: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.care-chat-send-ring b,
+.care-chat-load-ring b {
+  width: 2.7rem;
+  height: 2.7rem;
   border-radius: 999px;
   background:
-    conic-gradient(#fff var(--sent, 8%), rgba(255, 255, 255, 0.25) 0);
-  mask: radial-gradient(circle 0.95rem, transparent 96%, #000 100%);
+    conic-gradient(#fff var(--sent, 8%), rgba(255, 255, 255, 0.22) 0);
+  mask: radial-gradient(circle 1rem, transparent 96%, #000 100%);
+}
+
+.care-chat-load-ring b.is-spin {
+  animation: care-chat-spin 0.85s linear infinite;
+}
+
+@keyframes care-chat-spin {
+  to {
+    transform: rotate(1turn);
+  }
 }
 
 .care-chat-media-actions,
@@ -607,10 +641,29 @@
 
 .care-chat-doc-card {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
   gap: 0.2rem 0.65rem;
   margin: 0 0 0.35rem;
   min-width: 12rem;
+}
+
+.care-chat-doc-load {
+  grid-row: 1 / span 2;
+  color: inherit;
+}
+
+.care-chat-doc-load .care-chat-load-ring b {
+  width: 2.2rem;
+  height: 2.2rem;
+  background:
+    conic-gradient(currentColor var(--sent, 8%), rgba(15, 118, 110, 0.2) 0);
+  mask: radial-gradient(circle 0.78rem, transparent 96%, #000 100%);
+}
+
+.care-chat-log article.is-mine .care-chat-doc-load .care-chat-load-ring b {
+  background:
+    conic-gradient(#fff var(--sent, 8%), rgba(255, 255, 255, 0.22) 0);
 }
 
 .care-chat-doc-mark {
@@ -642,8 +695,11 @@
   opacity: 0.8;
 }
 
+.care-chat-doc-load,
 .care-chat-doc-actions {
-  grid-column: 2;
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
 }
 
 .care-chat-viewer {
@@ -682,7 +738,6 @@
 
 .care-chat-viewer header a,
 .care-chat-viewer header button {
-  margin-left: auto;
   border: 0;
   background: transparent;
   color: #fff;
@@ -691,11 +746,12 @@
   cursor: pointer;
 }
 
-.care-chat-viewer header button {
-  margin-left: 0;
+.care-chat-viewer header strong + * {
+  margin-left: auto;
 }
 
 .care-chat-viewer-stage {
+  position: relative;
   display: grid;
   place-items: center;
   min-width: 0;
@@ -758,17 +814,53 @@
 }
 
 .care-chat-voice-play {
+  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 2.35rem;
-  height: 2.35rem;
+  width: 2.55rem;
+  height: 2.55rem;
   padding: 0;
   border: 0;
   border-radius: 999px;
   background: #0f766e;
   color: #fff;
+  cursor: pointer;
+}
+
+.care-chat-voice-play:disabled {
+  cursor: wait;
+}
+
+.care-chat-voice-play .care-chat-load-ring {
+  position: absolute;
+  inset: 0;
+  color: #fff;
+}
+
+.care-chat-voice-play .care-chat-load-ring b {
+  width: 2.55rem;
+  height: 2.55rem;
+  background:
+    conic-gradient(#fff var(--sent, 8%), rgba(255, 255, 255, 0.22) 0);
+  mask: radial-gradient(circle 0.92rem, transparent 96%, #000 100%);
+}
+
+.care-chat-voice-play .care-chat-load-ring em {
+  display: none;
+}
+
+.care-chat-blob-retry {
+  margin-top: 0.25rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-decoration: underline;
   cursor: pointer;
 }
 

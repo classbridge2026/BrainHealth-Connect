@@ -79,9 +79,12 @@ export async function POST(request: Request) {
     } catch {
       return NextResponse.json({ message: "That file could not be read." }, { status: 400, headers: noStore });
     }
-    const side = sideOf(form.get("side"));
-    const partner = parseUuid(typeof form.get("partner") === "string" ? form.get("partner") : "");
-    const body = typeof form.get("body") === "string" ? form.get("body") : "";
+    const sideValue = form.get("side");
+    const partnerValue = form.get("partner");
+    const bodyValue = form.get("body");
+    const side = sideOf(sideValue);
+    const partner = parseUuid(typeof partnerValue === "string" ? partnerValue : "");
+    const body = typeof bodyValue === "string" ? bodyValue : "";
     const file = form.get("file");
     if (!side || !partner || !(file instanceof File)) {
       return NextResponse.json({ message: "That conversation is not available." }, { status: 400, headers: noStore });
