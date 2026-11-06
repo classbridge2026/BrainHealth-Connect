@@ -35,7 +35,7 @@ type Delivery = "sending" | "sent" | "read" | "failed";
 
 type ViewLine = ChatLine & { state: Delivery; previewUrl?: string; pendingFile?: File; progress?: number };
 type FileLook = { href: string; downloadHref: string; name: string; mime: string; size?: number };
-type BlobState = { status: "loading" | "ready" | "error"; progress: number; url: string };
+type BlobState = { status: "idle" | "loading" | "ready" | "error"; progress: number; url: string };
 
 const blobJobs = new Map<string, { state: BlobState; listeners: Set<(state: BlobState) => void> }>();
 
@@ -135,10 +135,11 @@ function retryChatBlob(href: string) {
   blobJobs.delete(href);
 }
 
-function useChatBlob(href: string | undefined, expectedSize: number, userId: string, localUrl?: string) {
+function useChatBlob(href: string | undefined, expectedSize: number, userId: string, localUrl?: string, eager = false) {
   const [attempt, setAttempt] = useState(0);
+  const [armed, setArmed] = useState(eager);
   const [state, setState] = useState<BlobState>(() => (
-    localUrl ? { status: "ready", progress: 100, url: localUrl } : { status: href ? "loading" : "error", progress: 0, url: "" }
+    localUrl ? { status: "ready", progress: 100, url: localUrl } : { status: href ? "idle" : "error", progress: 0, url: "" }
   ));
   const statusRef = useRef(state.status);
   statusRef.current = state.status;
@@ -151,8 +152,21 @@ function useChatBlob(href: string | undefined, expectedSize: number, userId: str
       setState({ status: "error", progress: 0, url: "" });
       return;
     }
+    let stop = false;
+    const ids = fileIds(href);
+    if (!ids || !userId) return;
+    void recallChatFile({ userId, side: ids.side, partnerId: ids.partnerId, messageId: ids.messageId }).then((saved) => {
+      if (stop || !saved) return;
+      setState({ status: "ready", progress: 100, url: URL.createObjectURL(saved) });
+    });
+    return () => {
+      stop = true;
+    };
+  }, [href, localUrl, userId]);
+  useEffect(() => {
+    if (!armed || localUrl || !href || statusRef.current === "ready") return;
     return listenChatBlob(href, expectedSize, userId, setState);
-  }, [attempt, expectedSize, href, localUrl, userId]);
+  }, [armed, attempt, expectedSize, href, localUrl, userId]);
   useEffect(() => {
     if (!href || localUrl) return;
     const resume = () => {
@@ -165,8 +179,12 @@ function useChatBlob(href: string | undefined, expectedSize: number, userId: str
   }, [href, localUrl]);
   return {
     ...state,
+    start() {
+      setArmed(true);
+    },
     retry() {
       if (href) retryChatBlob(href);
+      setArmed(true);
       setAttempt((current) => current + 1);
     },
   };
@@ -249,6 +267,7 @@ function VoiceNote({
   loading,
   progress,
   onRetry,
+  onRequest,
   connected = true,
 }: {
   src?: string;
@@ -256,6 +275,7 @@ function VoiceNote({
   loading?: boolean;
   progress?: number;
   onRetry?: () => void;
+  onRequest?: () => void;
   connected?: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -267,6 +287,10 @@ function VoiceNote({
   const blocked = loading || !src;
 
   function toggle() {
+    if (!src) {
+      onRequest?.();
+      return;
+    }
     const audio = audioRef.current;
     if (!audio || blocked) return;
     if (audio.paused) void audio.play().catch(() => setPlaying(false));
@@ -287,7 +311,7 @@ function VoiceNote({
       <button
         type="button"
         className="care-chat-voice-play"
-        disabled={blocked}
+        disabled={loading}
         aria-label={loading ? `Downloading voice message ${progress ?? 0}%` : playing ? "Pause voice message" : "Play voice message"}
         onClick={toggle}
       >
@@ -343,7 +367,8 @@ function ChatFileView({
 }) {
   const file = line.file;
   const sending = line.state === "sending";
-  const blob = useChatBlob(sending ? undefined : remoteHref, file?.size ?? 0, userId, line.previewUrl);
+  const media = Boolean(file && (file.mime.startsWith("image/") || file.mime.startsWith("video/") || file.mime.startsWith("audio/")));
+  const blob = useChatBlob(sending ? undefined : remoteHref, file?.size ?? 0, userId, line.previewUrl, media);
   if (!file) return null;
   const readyUrl = sending ? line.previewUrl : blob.url;
   const look = readyUrl
@@ -351,7 +376,7 @@ function ChatFileView({
     : remoteHref
       ? { href: remoteHref, downloadHref: remoteHref, name: file.name, mime: file.mime, size: file.size }
       : null;
-  const incoming = !sending && blob.status !== "ready";
+  const incoming = !sending && media && (blob.status === "idle" || blob.status === "loading");
   const overlay = sending
     ? <LoadRing progress={line.progress ?? 0} caption={`Sending ${line.progress ?? 0}%`} />
     : incoming
@@ -366,6 +391,7 @@ function ChatFileView({
         loading={Boolean(overlay)}
         progress={sending ? line.progress : blob.progress}
         onRetry={blob.status === "error" ? blob.retry : undefined}
+        onRequest={blob.start}
         connected={connected}
       />
     );
@@ -390,16 +416,13 @@ function ChatFileView({
     );
   }
   return (
-    <div className={`care-chat-doc-card${sending || incoming ? " is-loading" : ""}`}>
+    <div className="care-chat-doc-card">
       <span className="care-chat-doc-mark">{file.mime.includes("pdf") ? "PDF" : file.mime.includes("word") || file.name.endsWith(".doc") || file.name.endsWith(".docx") ? "DOC" : "FILE"}</span>
       <span>
         <strong>{file.name}</strong>
-        <em>
-          {fileSize(file.size)}
-          {sending ? ` · ${line.progress ?? 0}%` : incoming ? ` · ${blob.progress}%` : ""}
-        </em>
+        <em>{fileSize(file.size)}</em>
       </span>
-      {overlay ? <span className="care-chat-doc-load">{overlay}</span> : look ? (
+      {look ? (
         <span className="care-chat-doc-actions">
           <button type="button" onClick={() => onOpen?.(look)}>View</button>
           <button type="button" onClick={() => saveUrl(look.downloadHref, file.name)}>Download</button>
@@ -413,7 +436,7 @@ function ChatFileView({
 
 function FileViewer({ look, userId, connected, onClose }: { look: FileLook; userId: string; connected: boolean; onClose: () => void }) {
   const local = look.href.startsWith("blob:");
-  const blob = useChatBlob(local ? undefined : look.href, look.size ?? 0, userId, local ? look.href : undefined);
+  const blob = useChatBlob(local ? undefined : look.href, look.size ?? 0, userId, local ? look.href : undefined, true);
   const src = blob.url || (local ? look.href : "");
   const [text, setText] = useState("");
   const kind = look.mime.startsWith("image/") ? "image" : look.mime.startsWith("video/") ? "video" : look.mime === "application/pdf" ? "pdf" : look.mime === "text/plain" ? "text" : "file";
@@ -495,7 +518,7 @@ export function CareChat({
   side,
   userId,
   people,
-  active,
+  active: opened,
 }: {
   listHref: string;
   side: "patient" | "doctor" | "admin";
@@ -503,6 +526,9 @@ export function CareChat({
   people: ChatPerson[];
   active: ActiveChat | null;
 }) {
+  const [panel, setPanel] = useState<ActiveChat | null>(opened);
+  const [quietId, setQuietId] = useState<string | null>(null);
+  const active = panel;
   const [roster, setRoster] = useState(people);
   const [connected, setConnected] = useState(true);
   const [lines, setLines] = useState<ViewLine[]>(() => (active?.messages ?? []).map(viewOf));
@@ -534,13 +560,14 @@ export function CareChat({
   linesRef.current = lines;
 
   useEffect(() => {
-    const next = (active?.messages ?? []).map(viewOf);
+    if (panel && panel.id !== opened?.id) return;
+    const next = (opened?.messages ?? []).map(viewOf);
     setLines(next);
-    setConversationId(active?.conversationId ?? null);
+    setConversationId(opened?.conversationId ?? null);
     setDraft("");
     setError("");
-    setOnline(active?.online ?? false);
-    setSeenAt(active?.seenAt ?? null);
+    setOnline(opened?.online ?? false);
+    setSeenAt(opened?.seenAt ?? null);
     setAttachment(null);
     setAttachmentPreview((current) => {
       if (current) URL.revokeObjectURL(current);
@@ -560,20 +587,20 @@ export function CareChat({
     setRecording(false);
     seen.current = new Set(next.map((line) => line.id));
     seenOnServer.current = new Set(next.map((line) => line.id));
-    if (userId && active && navigator.onLine !== false) {
+    if (userId && opened && navigator.onLine !== false) {
       void rememberThread({
         userId,
         side,
-        partnerId: active.id,
-        conversationId: active.conversationId,
-        messages: active.messages,
+        partnerId: opened.id,
+        conversationId: opened.conversationId,
+        messages: opened.messages,
       });
     }
-    if (!userId || !active || navigator.onLine !== false) return;
+    if (!userId || !opened || navigator.onLine !== false) return;
     let stop = false;
-    void recallThread(userId, side, active.id).then((stored) => {
+    void recallThread(userId, side, opened.id).then((stored) => {
       if (stop || !stored) return;
-      const chosen = messagesForOffline(active.messages, stored.messages);
+      const chosen = messagesForOffline(opened.messages, stored.messages);
       setLines(chosen.map(viewOf));
       if (stored.conversationId) setConversationId(stored.conversationId);
       seen.current = new Set(chosen.map((line) => line.id));
@@ -582,7 +609,62 @@ export function CareChat({
     return () => {
       stop = true;
     };
-  }, [active, side, userId]);
+  }, [opened, panel?.id, side, userId]);
+
+  function openPerson(person: ChatPerson, push: boolean) {
+    if (person.id === panel?.id) return;
+    setPanel({
+      id: person.id,
+      name: person.name,
+      detail: person.detail,
+      imageUserId: person.imageUserId,
+      imageVersion: person.imageVersion,
+      conversationId: null,
+      messages: [],
+      online: false,
+      seenAt: null,
+      canReply: person.canReply,
+    });
+    setLines([]);
+    setConversationId(null);
+    setOnline(false);
+    setSeenAt(null);
+    setDraft("");
+    setError("");
+    setViewer(null);
+    setConfirmClear(false);
+    setOpenMenu(null);
+    setQuietId(person.id);
+    seen.current = new Set();
+    seenOnServer.current = new Set();
+    if (push) window.history.pushState(null, "", `${listHref}/${person.id}`);
+    void recallThread(userId, side, person.id).then((stored) => {
+      if (!stored) return;
+      setPanel((current) => (current?.id === person.id ? { ...current, conversationId: stored.conversationId, messages: stored.messages } : current));
+      setLines((current) => (current.some((line) => !line.id.startsWith("local-")) ? current : stored.messages.map(viewOf)));
+      if (stored.conversationId) setConversationId(stored.conversationId);
+      seen.current = new Set(stored.messages.map((line) => line.id));
+      seenOnServer.current = new Set(stored.messages.map((line) => line.id));
+    });
+  }
+
+  useEffect(() => {
+    function onPop() {
+      const path = window.location.pathname;
+      const prefix = `${listHref}/`;
+      if (!path.startsWith(prefix)) {
+        setPanel(null);
+        setLines([]);
+        setConversationId(null);
+        return;
+      }
+      const id = decodeURIComponent(path.slice(prefix.length).split("/")[0] ?? "");
+      const person = roster.find((item) => item.id === id);
+      if (person) openPerson(person, false);
+    }
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  });
 
   useEffect(() => {
     const apply = () => setConnected(navigator.onLine);
@@ -745,6 +827,7 @@ export function CareChat({
         // The next check tries again.
       } finally {
         chatPolls.delete(key);
+        setQuietId((current) => (current === partnerId ? null : current));
       }
     }
     void (async () => {
@@ -756,7 +839,7 @@ export function CareChat({
     return () => {
       stop = true;
     };
-  }, [active, side, userId]);
+  }, [active?.id, side, userId]);
 
   async function deliver(localId: string, body: string, file?: File | null) {
     if (!active) return;
@@ -1020,8 +1103,16 @@ export function CareChat({
               const current = person.id === active?.id;
               const unread = current ? 0 : chatUnread.byPartner[person.id] ?? person.unread;
               return (
-                <li key={person.id}>
-                  <Link href={`${listHref}/${person.id}`} aria-current={current ? "page" : undefined}>
+            <li key={person.id}>
+              <a
+                href={`${listHref}/${person.id}`}
+                aria-current={current ? "page" : undefined}
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                  event.preventDefault();
+                  openPerson(person, true);
+                }}
+              >
                     <span className={current && online ? "care-chat-avatar is-online" : "care-chat-avatar"}>
                       <ProfilePhoto userId={person.imageUserId} name={person.name} version={person.imageVersion} size={48} alt="" />
                     </span>
@@ -1033,7 +1124,7 @@ export function CareChat({
                       {person.when ? <time dateTime={person.when} suppressHydrationWarning>{listWhen(person.when)}</time> : null}
                       {unread > 0 ? <b>{unread > 9 ? "9+" : unread}</b> : null}
                     </span>
-                  </Link>
+                  </a>
                 </li>
               );
             })}
@@ -1080,7 +1171,7 @@ export function CareChat({
               </div>
             ) : null}
             <div ref={logRef} className="care-chat-log" aria-live="polite">
-              {lines.length === 0 ? <p className="care-chat-empty">Say hello. This stays between you and {active.name}.</p> : null}
+              {lines.length === 0 && quietId !== active.id ? <p className="care-chat-empty">Say hello. This stays between you and {active.name}.</p> : null}
               {lines.map((line, index) => {
                 const showDay = index === 0 || dayLabel(lines[index - 1]!.at) !== dayLabel(line.at);
                 return (

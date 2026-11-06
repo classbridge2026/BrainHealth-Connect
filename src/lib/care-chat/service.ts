@@ -537,7 +537,111 @@ export async function listPatientChats(db: ChatDb, userId: string, now = new Dat
   })), "patient");
 }
 
+async function listDoctorChatsFast(db: SqlClient, userId: string, now: Date): Promise<ChatPerson[]> {
+  const statuses = Prisma.join(CHAT_APPOINTMENT_STATUSES);
+  const rows = await db.$queryRaw<Array<{
+    id: string;
+    name: string;
+    visitAt: Date | null;
+    imageUserId: string;
+    imageVersion: Date | null;
+    preview: string | null;
+    previewAt: Date | null;
+    lastMessageAt: Date | null;
+    unread: number;
+  }>>(Prisma.sql`
+    WITH me AS (
+      SELECT id FROM "DoctorProfile" WHERE "userId" = ${userId}::uuid
+    ),
+    visits AS (
+      SELECT a."patientProfileId" AS id,
+             MIN(a."startsAt") FILTER (WHERE a."startsAt" >= ${now}::timestamptz) AS next,
+             MAX(a."startsAt") AS last
+      FROM "Appointment" a
+      JOIN me ON me.id = a."doctorProfileId"
+      WHERE a.status::text IN (${statuses})
+      GROUP BY a."patientProfileId"
+    ),
+    people AS (
+      SELECT v.id,
+             p."fullName" AS name,
+             COALESCE(v.next, v.last) AS "visitAt",
+             p."userId" AS "imageUserId",
+             u."profileImageUpdatedAt" AS "imageVersion"
+      FROM visits v
+      JOIN "PatientProfile" p ON p.id = v.id
+      JOIN "User" u ON u.id = p."userId"
+      UNION
+      SELECT p.id,
+             p."fullName",
+             NULL::timestamptz,
+             p."userId",
+             u."profileImageUpdatedAt"
+      FROM "CareConversation" c
+      JOIN me ON me.id = c."doctorProfileId"
+      JOIN "PatientProfile" p ON p.id = c."patientProfileId"
+      JOIN "User" u ON u.id = p."userId"
+      JOIN "UserRole" ur ON ur."userId" = p."userId"
+      JOIN "Role" r ON r.id = ur."roleId"
+      WHERE r.code IN ('ADMIN', 'SUPER_ADMIN')
+        AND NOT EXISTS (SELECT 1 FROM visits WHERE visits.id = p.id)
+    )
+    SELECT p.id,
+           p.name,
+           p."visitAt",
+           p."imageUserId",
+           p."imageVersion",
+           latest.body AS preview,
+           latest."createdAt" AS "previewAt",
+           c."lastMessageAt",
+           COALESCE((
+             SELECT COUNT(*)::int FROM "CareMessage" m
+             WHERE m."conversationId" = c.id
+               AND m."senderUserId" <> ${userId}::uuid
+               AND m."readAt" IS NULL
+               AND (c."doctorClearedAt" IS NULL OR m."createdAt" > c."doctorClearedAt")
+           ), 0) AS unread
+    FROM people p
+    LEFT JOIN "CareConversation" c
+      ON c."patientProfileId" = p.id
+     AND c."doctorProfileId" = (SELECT id FROM me)
+    LEFT JOIN LATERAL (
+      SELECT m.body, m."createdAt"
+      FROM "CareMessage" m
+      WHERE c.id IS NOT NULL
+        AND m."conversationId" = c.id
+        AND (c."doctorClearedAt" IS NULL OR m."createdAt" > c."doctorClearedAt")
+      ORDER BY m."createdAt" DESC
+      LIMIT 1
+    ) latest ON TRUE
+  `);
+  return rows
+    .map((row) => {
+      const when = row.previewAt ?? row.lastMessageAt;
+      return {
+        id: row.id,
+        name: row.name,
+        detail: `Patient · ${visitDetail(row.visitAt ?? now, now)}`,
+        preview: row.preview,
+        when: when ? new Date(when).toISOString() : null,
+        unread: Number(row.unread) || 0,
+        imageUserId: row.imageUserId,
+        imageVersion: row.imageVersion ? new Date(row.imageVersion).toISOString() : null,
+        canReply: true,
+      };
+    })
+    .sort((a, b) => (b.when ?? "").localeCompare(a.when ?? "") || a.name.localeCompare(b.name));
+}
+
 export async function listDoctorChats(db: ChatDb, userId: string, now = new Date()): Promise<ChatPerson[]> {
+  const client = sqlClient(db);
+  if (client) {
+    try {
+      return await listDoctorChatsFast(client, userId, now);
+    } catch {
+      // The query path can fail on an older database. The regular list still opens.
+    }
+  }
   const doctorProfileId = await doctorIdFor(db, userId);
   if (!doctorProfileId) return [];
   const visits = await db.appointment.findMany({
