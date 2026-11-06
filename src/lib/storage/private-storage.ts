@@ -168,9 +168,9 @@ async function s3Request(
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
   const dateStamp = amzDate.slice(0, 8);
-  const payloadHash = body ? sha256Hex(body) : EMPTY_SHA256;
+  const payloadHash = method === "PUT" ? "UNSIGNED-PAYLOAD" : EMPTY_SHA256;
   const target = s3Target(config, key);
-  const contentType = mimeType ?? "application/octet-stream";
+  const contentType = (mimeType ?? "application/octet-stream").split(";")[0]?.trim().toLowerCase() || "application/octet-stream";
   const canonicalHeaders =
     method === "PUT"
       ? `content-type:${contentType}\nhost:${target.host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`
@@ -211,8 +211,12 @@ function s3Storage(config: S3Config): PrivateObjectStorage {
     async put({ key, body, mimeType }) {
       try {
         const response = await s3Request(config, "PUT", key, body, mimeType);
-        return response.ok ? { ok: true } : { ok: false, reason: "provider_failed" };
-      } catch {
+        if (response.ok) return { ok: true };
+        const detail = await response.text().catch(() => "");
+        console.error("private_storage_put_failed", response.status, detail.slice(0, 400));
+        return { ok: false, reason: "provider_failed" };
+      } catch (error) {
+        console.error("private_storage_put_failed", error instanceof Error ? error.message : "unknown");
         return { ok: false, reason: "provider_failed" };
       }
     },

@@ -39,6 +39,7 @@ describe("doctor consultation workspace", () => {
   it("keeps notes, follow-up, summary, and completion as separate actions", () => {
     render(<DoctorWorkspace {...props} />);
     expect(screen.getByRole("tab", { name: "Notes" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Files" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Save clinical notes" })).toBeTruthy();
     expect(screen.queryByText("Saved")).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Follow-up" }));
@@ -48,5 +49,7 @@ describe("doctor consultation workspace", () => {
     expect(screen.getByRole("button", { name: "Prepare patient summary" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "End consultation" })).toBeTruthy();
     expect(screen.getByText(/marks it complete/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Files" }));
+    expect(screen.getByRole("button", { name: "Store in private bucket" })).toBeTruthy();
   });
 });

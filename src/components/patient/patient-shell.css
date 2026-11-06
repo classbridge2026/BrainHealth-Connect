@@ -1,3 +1,18 @@
+.chat-nav-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  margin-left: auto;
+  padding: 0.05rem 0.32rem;
+  border-radius: 999px;
+  background: #e11d48;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
 .portal-navbar {
   position: relative;
   z-index: 20;
@@ -255,6 +270,16 @@
     z-index: 35;
   }
 
+  .patient-app .patient-scroll.is-chat {
+    padding-bottom: 0;
+    overflow: hidden;
+  }
+
+  .patient-app:has(.patient-scroll.is-chat) .guide,
+  .doctor-app.is-chat .guide {
+    display: none;
+  }
+
   .patient-app .patient-scroll {
     padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
     scrollbar-width: none;
@@ -340,6 +365,17 @@
   .patient-tabbar svg {
     width: 1.05rem;
     height: 1.05rem;
+  }
+
+  .patient-tab-icon {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .patient-tabbar .chat-nav-count {
+    position: absolute;
+    top: -0.35rem;
+    right: -0.55rem;
   }
 
   .patient-tabbar span {

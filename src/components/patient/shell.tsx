@@ -13,6 +13,7 @@ import {
   faChevronDown,
   faChevronLeft,
   faClipboardList,
+  faComments,
   faCreditCard,
   faGaugeHigh,
   faKey,
@@ -32,6 +33,7 @@ import { LiveSearchInput } from "@/components/live-query";
 import { NotificationBell, type BellItem } from "@/components/notifications/bell";
 import { PatientCallAlert } from "@/components/consultation/patient-call-alert";
 import { PatientGuide } from "@/components/guide/patient-guide";
+import { ChatCount, ChatUnreadProvider, useChatUnread } from "@/components/care-chat/unread";
 import { ProfilePhoto } from "@/components/profile-photo";
 import "./patient-shell.css";
 
@@ -41,6 +43,7 @@ const links: Array<{ href: string; label: string; icon: IconDefinition; exact?: 
   { href: "/patient", label: "Dashboard", icon: faGaugeHigh, exact: true },
   { href: "/patient/find", label: "Find a Doctor", icon: faUserDoctor },
   { href: "/patient/appointments", label: "Appointments", icon: faCalendarDays },
+  { href: "/patient/messages", label: "Messages", icon: faComments },
   { href: "/patient/screening", label: "Screening Centre", icon: faClipboardList },
   { href: "/patient/payments", label: "Payments", icon: faCreditCard },
   { href: "/patient/summaries", label: "Clinical Summaries", icon: faNotesMedical },
@@ -49,12 +52,12 @@ const links: Array<{ href: string; label: string; icon: IconDefinition; exact?: 
   { href: "/patient/profile", label: "Profile", icon: faUser },
 ];
 
-const tabOrder = ["/patient", "/patient/find", "/patient/appointments", "/patient/summaries", "/patient/profile"] as const;
+const tabOrder = ["/patient", "/patient/find", "/patient/appointments", "/patient/messages", "/patient/profile"] as const;
 const tabLabel: Record<(typeof tabOrder)[number], string> = {
   "/patient": "Home",
   "/patient/find": "Find",
   "/patient/appointments": "Visits",
-  "/patient/summaries": "Records",
+  "/patient/messages": "Chat",
   "/patient/profile": "Profile",
 };
 const tabs = tabOrder.map((href) => links.find((link) => link.href === href)!);
@@ -87,9 +90,37 @@ export function PatientShell({
   notices: BellItem[];
   children: ReactNode;
 }) {
+  return (
+    <ChatUnreadProvider side="patient">
+      <PatientShellView userId={userId} name={name} systemName={systemName} imageVersion={imageVersion} unread={unread} notices={notices}>
+        {children}
+      </PatientShellView>
+    </ChatUnreadProvider>
+  );
+}
+
+function PatientShellView({
+  userId,
+  name,
+  systemName,
+  imageVersion,
+  unread,
+  notices,
+  children,
+}: {
+  userId: string;
+  name: string;
+  systemName: string;
+  imageVersion: string | null;
+  unread: number;
+  notices: BellItem[];
+  children: ReactNode;
+}) {
   const pathname = usePathname();
+  const chatUnread = useChatUnread();
   const active = currentHref(pathname);
   const room = /\/patient\/appointments\/[^/]+\/consultation\/?$/.test(pathname);
+  const chat = pathname.startsWith("/patient/messages");
   const [accountPath, setAccountPath] = useState<string | null>(null);
   const [morePath, setMorePath] = useState<string | null>(null);
   const accountRef = useRef<HTMLDivElement>(null);
@@ -194,6 +225,7 @@ export function PatientShell({
                   <Link href={link.href} prefetch={false} aria-current={current ? "page" : undefined} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${current ? "bg-[#0F766E] text-white" : "text-white/80 hover:bg-white/10"}`}>
                     <FontAwesomeIcon icon={link.icon} className="w-4" aria-hidden="true" />
                     <span className={collapsed ? "lg:sr-only" : undefined}>{link.label}</span>
+                    {link.href === "/patient/messages" ? <ChatCount count={chatUnread.total} /> : null}
                   </Link>
                 </li>
               );
@@ -264,8 +296,8 @@ export function PatientShell({
           </div>
         </header>
         <div className="patient-scroll-frame">
-          <div ref={scrollRef} className="patient-scroll min-h-0 flex-1 overflow-y-auto">
-            <main className="px-4 py-6 lg:px-8 lg:py-7">{children}</main>
+          <div ref={scrollRef} className={`patient-scroll min-h-0 flex-1 ${chat ? "is-chat overflow-hidden" : "overflow-y-auto"}`}>
+            <main className={chat ? "h-full min-h-0" : "px-4 py-6 lg:px-8 lg:py-7"}>{children}</main>
           </div>
           <div ref={scrollThumbRef} className="patient-scroll-thumb" aria-hidden="true" />
         </div>
@@ -274,7 +306,10 @@ export function PatientShell({
             const current = link.href === active;
             return (
               <Link key={link.href} href={link.href} prefetch={false} aria-current={current ? "page" : undefined} onClick={() => setMorePath(null)}>
-                <FontAwesomeIcon icon={link.icon} aria-hidden="true" />
+                <span className="patient-tab-icon">
+                  <FontAwesomeIcon icon={link.icon} aria-hidden="true" />
+                  {link.href === "/patient/messages" ? <ChatCount count={chatUnread.total} /> : null}
+                </span>
                 <span>{tabLabel[link.href as (typeof tabOrder)[number]]}</span>
               </Link>
             );

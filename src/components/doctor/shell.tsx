@@ -12,6 +12,7 @@ import {
   faChevronDown,
   faClipboardCheck,
   faClock,
+  faComments,
   faGaugeHigh,
   faKey,
   faMagnifyingGlass,
@@ -34,6 +35,7 @@ import { LiveSearchInput } from "@/components/live-query";
 import { NotificationBell, type BellItem } from "@/components/notifications/bell";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { DoctorGuide } from "@/components/guide/doctor-guide";
+import { ChatCount, ChatUnreadProvider, useChatUnread } from "@/components/care-chat/unread";
 import "../patient/patient-shell.css";
 
 config.autoAddCss = false;
@@ -41,6 +43,7 @@ config.autoAddCss = false;
 const links: Array<{ href: string; label: string; icon: IconDefinition; exact?: boolean }> = [
   { href: "/doctor", label: "Dashboard", icon: faGaugeHigh, exact: true },
   { href: "/doctor/appointments", label: "Appointments", icon: faCalendarDays },
+  { href: "/doctor/messages", label: "Messages", icon: faComments },
   { href: "/doctor/patients", label: "Patients", icon: faUsers },
   { href: "/doctor/screening", label: "Screening Assessments", icon: faClipboardCheck },
   { href: "/doctor/availability", label: "Availability", icon: faClock },
@@ -80,7 +83,38 @@ export function DoctorShell({
   administration?: boolean;
   children: ReactNode;
 }) {
+  return (
+    <ChatUnreadProvider side="doctor">
+      <DoctorShellView userId={userId} name={name} systemName={systemName} specialty={specialty} imageVersion={imageVersion} unread={unread} notices={notices} administration={administration}>
+        {children}
+      </DoctorShellView>
+    </ChatUnreadProvider>
+  );
+}
+
+function DoctorShellView({
+  userId,
+  name,
+  systemName,
+  specialty,
+  imageVersion,
+  unread,
+  notices,
+  administration = false,
+  children,
+}: {
+  userId: string;
+  name: string;
+  systemName: string;
+  specialty: string;
+  imageVersion: string | null;
+  unread: number | null;
+  notices: BellItem[];
+  administration?: boolean;
+  children: ReactNode;
+}) {
   const pathname = usePathname();
+  const chatUnread = useChatUnread();
   const active = currentHref(pathname);
   const room = /\/appointments\/[^/]+\/consultation\/?$/.test(pathname);
   const [openPath, setOpenPath] = useState<string | null>(null);
@@ -108,17 +142,18 @@ export function DoctorShell({
     };
   }, []);
 
-  const tabOrder = ["/doctor", "/doctor/appointments", "/doctor/patients", "/doctor/notes", "/doctor/profile"] as const;
+  const tabOrder = ["/doctor", "/doctor/appointments", "/doctor/messages", "/doctor/patients", "/doctor/profile"] as const;
   const tabLabel: Record<(typeof tabOrder)[number], string> = {
     "/doctor": "Home",
     "/doctor/appointments": "Schedule",
+    "/doctor/messages": "Chat",
     "/doctor/patients": "Patients",
-    "/doctor/notes": "Tasks",
     "/doctor/profile": "Profile",
   };
+  const chat = pathname.startsWith("/doctor/messages");
 
   return (
-    <div className="doctor-app fixed inset-0 flex overflow-hidden bg-[#F3F8FC] text-[#10233c]">
+    <div className={`doctor-app fixed inset-0 flex overflow-hidden bg-[#F3F8FC] text-[#10233c] ${chat ? "is-chat" : ""}`}>
       {open ? (
         <button aria-label="Close navigation" className="fixed inset-0 z-30 bg-[#0C2B45]/40 lg:hidden" type="button" onClick={() => setOpenPath(null)} />
       ) : null}
@@ -151,6 +186,7 @@ export function DoctorShell({
                   >
                     <FontAwesomeIcon icon={link.icon} className="w-4" aria-hidden="true" />
                     <span className={collapsed ? "lg:sr-only" : undefined}>{link.label}</span>
+                    {link.href === "/doctor/messages" ? <ChatCount count={chatUnread.total} /> : null}
                   </Link>
                 </li>
               );
@@ -230,8 +266,8 @@ export function DoctorShell({
             </div>
           </div>
         </header>
-        <div className={`min-h-0 w-full min-w-0 flex-1 ${room ? "flex flex-col overflow-hidden" : "doctor-scroll overflow-y-auto"}`}>
-          <main className={room ? "flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden" : "w-full min-w-0 px-4 py-6 lg:px-8 lg:py-7"}>{children}</main>
+        <div className={`min-h-0 w-full min-w-0 flex-1 ${room ? "flex flex-col overflow-hidden" : chat ? "flex flex-col overflow-hidden" : "doctor-scroll overflow-y-auto"}`}>
+          <main className={room || chat ? "flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden" : "w-full min-w-0 px-4 py-6 lg:px-8 lg:py-7"}>{children}</main>
         </div>
         {room || open ? null : (
           <nav className="patient-tabbar" aria-label="Doctor" data-no-busy="">
@@ -241,7 +277,10 @@ export function DoctorShell({
               const current = href === active;
               return (
                 <Link key={href} href={href} prefetch={false} aria-current={current ? "page" : undefined}>
-                  <FontAwesomeIcon icon={link.icon} aria-hidden="true" />
+                  <span className="patient-tab-icon">
+                    <FontAwesomeIcon icon={link.icon} aria-hidden="true" />
+                    {href === "/doctor/messages" ? <ChatCount count={chatUnread.total} /> : null}
+                  </span>
                   <span>{tabLabel[href]}</span>
                 </Link>
               );

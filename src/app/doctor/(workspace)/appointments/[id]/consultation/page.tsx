@@ -65,6 +65,12 @@ export default async function DoctorConsultationPage({ params }: { params: Promi
   const notes = record.ok ? record.view.notes : [];
   const privateNote = toNote(notes.filter((note) => note.kind === "PRIVATE_WORKING").at(-1));
   const summaryNote = toNote(notes.filter((note) => note.kind === "PATIENT_SUMMARY").at(-1));
+  const fileNotes = notes
+    .filter((note) => !note.archived)
+    .map((note) => ({
+      id: note.id,
+      label: `${note.kind === "PATIENT_SUMMARY" ? "Patient summary" : "Working note"} · ${note.release === "RELEASED" ? "Released" : "Private"}`,
+    }));
   const latestPayment = visit.paymentStatuses.at(-1);
   const paid = visit.paymentStatuses.includes("PAID");
   const canComplete = canTransition({
@@ -84,6 +90,8 @@ export default async function DoctorConsultationPage({ params }: { params: Promi
       encounterLabel={record.ok && record.view.encounter ? encounterStatusLabel(record.view.encounter.status) : null}
       concern={visit.patientConcern}
       fee={visit.fee}
+      files={record.ok ? record.view.files : []}
+      fileNotes={fileNotes}
       followUps={linked.map((row) => ({ id: row.id, when: formatBookingWhen(row.startsAt), statusLabel: appointmentStatusLabel(row.status) }))}
       intake={visit.intakeHistory}
       locations={form.ok ? form.locations : []}

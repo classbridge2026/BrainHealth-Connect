@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { loadNoticePulse, markAllInAppNotificationsRead, markViewedNotificationsRead, nextRetryAt, notificationKey, reminderChannelAllowed, retryDelayMs, safeInternalHref, saveChannelNotice } from "./delivery";
-import { noticeStamp } from "./stamp";
+import { noticeShouldRing, noticeStamp } from "./stamp";
 
 describe("notification delivery tracking", () => {
   it("builds a key from the event, recipient, and channel", () => {
@@ -137,5 +137,13 @@ describe("notification delivery tracking", () => {
     expect(pulse.items[0]?.href).toBe("/doctor/appointments/22222222-2222-4222-8222-222222222222");
     expect(pulse.stamp).toBe(noticeStamp(1, ["note-1"]));
     expect(pulse.stamp).not.toBe(noticeStamp(0, []));
+  });
+
+  it("does not ring for unread notices already waiting when the portal opens", () => {
+    expect(noticeShouldRing(null, 4)).toBe(false);
+    expect(noticeShouldRing(4, 4)).toBe(false);
+    expect(noticeShouldRing(4, 0)).toBe(false);
+    expect(noticeShouldRing(4, 5)).toBe(true);
+    expect(noticeShouldRing(0, 1)).toBe(true);
   });
 });

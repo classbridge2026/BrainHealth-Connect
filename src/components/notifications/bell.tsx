@@ -6,7 +6,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { faBell, faChevronLeft } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { noticeStamp } from "@/lib/notifications/stamp";
+import { noticeShouldRing, noticeStamp } from "@/lib/notifications/stamp";
 import { markAllNotificationsReadAction, markViewedNotificationsAction } from "./actions";
 import { armNoticeSound, playNoticeSound } from "./sound";
 import "./bell.css";
@@ -23,6 +23,28 @@ export type BellItem = {
 type NoticeAudience = "patient" | "doctor" | "admin";
 
 type NoticeSnapshot = { unread: number; items: BellItem[]; stamp: string };
+
+function heardKey(watch: NoticeAudience) {
+  return `bhc-notice-heard:${watch}`;
+}
+
+function readHeard(watch: NoticeAudience) {
+  try {
+    const raw = window.localStorage.getItem(heardKey(watch));
+    const stored = raw == null ? null : Number(raw);
+    return stored != null && Number.isFinite(stored) && stored >= 0 ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeHeard(watch: NoticeAudience, count: number) {
+  try {
+    window.localStorage.setItem(heardKey(watch), String(count));
+  } catch {
+    // The in-memory count is enough for this visit.
+  }
+}
 
 function safeNoticeHref(value: unknown) {
   if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return null;
@@ -77,6 +99,7 @@ export function NotificationBell({
   const [cleared, setCleared] = useState(false);
   const [live, setLive] = useState<NoticeSnapshot | null>(null);
   const openedPayment = useRef(unread);
+  const heard = useRef<number | null>(null);
   const routerRef = useRef(router);
   routerRef.current = router;
   const serverStamp = noticeStamp(unread, items.map((item) => item.id));
@@ -128,11 +151,17 @@ export function NotificationBell({
         if (!response.ok) return;
         const pulse = readPulse(await response.json());
         if (stop || !pulse) return;
-        if (pulse.stamp === serverStampRef.current) {
-          setLive(null);
-          return;
+        if (heard.current == null) heard.current = readHeard(watch);
+        const previous = heard.current;
+        const ring = noticeShouldRing(previous, pulse.unread) && pulse.items.length > 0;
+        heard.current = pulse.unread;
+        writeHeard(watch, pulse.unread);
+        if (pulse.stamp === serverStampRef.current) setLive(null);
+        else setLive(pulse);
+        if (ring) {
+          void playNoticeSound();
+          routerRef.current.refresh();
         }
-        setLive(pulse);
       } catch {
         // The next check tries again.
       } finally {
@@ -143,7 +172,7 @@ export function NotificationBell({
     function schedule(delay: number) {
       timer = window.setTimeout(() => {
         void look().finally(() => {
-          if (!stop) schedule(8000);
+          if (!stop) schedule(15000);
         });
       }, delay);
     }
@@ -164,18 +193,6 @@ export function NotificationBell({
   const visible = cleared ? [] : shownItems.filter((item) => !item.read && !hidden.has(item.id));
   const pending = shownItems.filter((item) => !item.read && hidden.has(item.id)).length;
   const badge = cleared ? 0 : Math.max(0, shownUnread - pending);
-  const heard = useRef(badge);
-
-  useEffect(() => {
-    if (badge <= heard.current) {
-      heard.current = badge;
-      return;
-    }
-    if (visible.length === 0) return;
-    heard.current = badge;
-    void playNoticeSound();
-    routerRef.current.refresh();
-  }, [badge, visible.length]);
 
   useEffect(() => setMounted(true), []);
 
@@ -214,6 +231,11 @@ export function NotificationBell({
     };
   }, [open]);
 
+  function rememberHeard(count: number) {
+    heard.current = count;
+    if (watch) writeHeard(watch, count);
+  }
+
   function hide(id: string) {
     setHidden((current) => {
       const next = new Set(current);
@@ -231,6 +253,7 @@ export function NotificationBell({
   }
 
   function readOne(item: BellItem, follow: boolean) {
+    rememberHeard(Math.max(0, badge - 1));
     hide(item.id);
     void markViewedNotificationsAction([item.id]).then((result) => {
       if (!result.ok) {
@@ -246,6 +269,7 @@ export function NotificationBell({
   }
 
   function readAll() {
+    rememberHeard(0);
     setCleared(true);
     void markAllNotificationsReadAction().then((result) => {
       if (!result.ok) {

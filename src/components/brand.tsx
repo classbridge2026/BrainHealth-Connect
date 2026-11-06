@@ -3,7 +3,7 @@ import Image from "next/image";
 export function CareCircleMark({ className }: { className?: string }) {
   return (
     <span className={`brand-mark relative inline-block shrink-0 ${className ?? "h-10 w-10"}`}>
-      <Image src="/carecircle-logo.png" alt="" fill sizes="80px" className="object-cover" />
+      <Image src="/carecircle-logo.png" alt="" fill sizes="80px" className="object-cover" priority loading="eager" />
     </span>
   );
 }

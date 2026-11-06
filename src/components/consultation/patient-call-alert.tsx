@@ -49,7 +49,7 @@ export function PatientCallAlert() {
       if (stop) return;
       timer = window.setTimeout(() => {
         void look().finally(schedule);
-      }, 12000);
+      }, 15000);
     }
     void look().finally(schedule);
     return () => {

@@ -22,6 +22,7 @@ import {
   saveFollowUpRecommendationAction,
   savePatientSummaryAction,
   saveStructuredNoteAction,
+  uploadClinicalFileAction,
   type ClinicalActionState,
 } from "@/app/doctor/(workspace)/appointments/[id]/record/actions";
 import "./doctor-room.css";
@@ -42,7 +43,17 @@ export type DoctorWorkspaceNote = {
   versions: Array<{ id: string; version: number; body: string; amendmentReason: string | null; when: string }>;
 };
 
-type Tab = "notes" | "follow-up" | "summary";
+type Tab = "notes" | "follow-up" | "summary" | "files";
+
+export type DoctorWorkspaceFile = {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  when: string;
+  patientVisible: boolean;
+  removed: boolean;
+};
 
 function Feedback({ message, tone }: { message?: string; tone?: "ok" | "error" }) {
   if (!message) return null;
@@ -82,6 +93,8 @@ export function DoctorWorkspace({
   offerings,
   locations,
   followUps,
+  files = [],
+  fileNotes = [],
 }: {
   appointmentId: string;
   patientName: string;
@@ -108,6 +121,8 @@ export function DoctorWorkspace({
   offerings: Array<{ id: string; label: string; mode: "ONLINE" | "IN_PERSON" }>;
   locations: Array<{ id: string; label: string }>;
   followUps: Array<{ id: string; when: string; statusLabel: string }>;
+  files?: DoctorWorkspaceFile[];
+  fileNotes?: Array<{ id: string; label: string }>;
 }) {
   const [tab, setTab] = useState<Tab>("notes");
   return (
@@ -136,6 +151,7 @@ export function DoctorWorkspace({
         <button type="button" role="tab" aria-selected={tab === "notes"} onClick={() => setTab("notes")}>Notes</button>
         <button type="button" role="tab" aria-selected={tab === "follow-up"} onClick={() => setTab("follow-up")}>Follow-up</button>
         <button type="button" role="tab" aria-selected={tab === "summary"} onClick={() => setTab("summary")}>Summary</button>
+        <button type="button" role="tab" aria-selected={tab === "files"} onClick={() => setTab("files")}>Files</button>
       </div>
       <div className="dr-card">
         {writeBlocked ? <p className="dr-alert" role="status">{writeBlocked}</p> : null}
@@ -152,6 +168,7 @@ export function DoctorWorkspace({
           />
         ) : null}
         {tab === "summary" ? <SummaryTab appointmentId={appointmentId} locked={Boolean(writeBlocked) || canOpen} note={summaryNote} /> : null}
+        {tab === "files" ? <FilesTab appointmentId={appointmentId} files={files} locked={Boolean(writeBlocked) || canOpen} notes={fileNotes} /> : null}
         {canComplete ? <CompleteVisit appointmentId={appointmentId} /> : null}
       </div>
     </div>
@@ -370,6 +387,58 @@ function SummaryTab({ appointmentId, note, locked }: { appointmentId: string; no
           <Feedback message={releaseState.message} tone={releaseState.tone} />
         </form>
       ) : null}
+    </div>
+  );
+}
+
+function FilesTab({
+  appointmentId,
+  files,
+  notes,
+  locked,
+}: {
+  appointmentId: string;
+  files: DoctorWorkspaceFile[];
+  notes: Array<{ id: string; label: string }>;
+  locked: boolean;
+}) {
+  const [state, action, pending] = useActionState(uploadClinicalFileAction, clinicalInitial);
+  useRefreshOnSave(state.message, state.tone);
+  const visible = files.filter((file) => !file.removed);
+  return (
+    <div>
+      <h3>Consultation files</h3>
+      <p className="dr-quiet">PDF, JPEG, or PNG, up to 10 MB. Files go to the private bucket. They stay off the public web and the patient sees them only after they are attached to a released summary.</p>
+      {visible.length === 0 ? <p className="dr-quiet">No document is stored for this visit yet.</p> : (
+        <ul className="dr-history">
+          {visible.map((file) => (
+            <li key={file.id}>
+              <a href={`/api/clinical-files/${file.id}`}>{file.name}</a>
+              <div>{file.patientVisible ? "Visible with a released summary." : "Private to the consultation."} · {Math.max(1, Math.round(file.sizeBytes / 1024))} KB · {file.when}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form action={action}>
+        <input name="appointmentId" type="hidden" value={appointmentId} />
+        <label className="dr-field">
+          Attach to
+          <select name="noteId" defaultValue="" disabled={locked}>
+            <option value="">Consultation record only</option>
+            {notes.map((note) => (
+              <option key={note.id} value={note.id}>{note.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="dr-field">
+          Document
+          <input accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={locked} name="file" required type="file" />
+        </label>
+        <div className="dr-actions">
+          <button className="dr-primary" disabled={pending || locked} type="submit">{pending ? "Storing…" : "Store in private bucket"}</button>
+        </div>
+        <Feedback message={state.message} tone={state.tone} />
+      </form>
     </div>
   );
 }

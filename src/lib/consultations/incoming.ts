@@ -9,7 +9,7 @@ import { listedDoctorCallIds, readDoctorCall } from "./calling";
 import { consultationRoomName, joinDecision, participantIdentity, type ConsultationAppointment } from "./eligibility";
 
 const callLimiter = sharedRateLimiter("consultation-call", { limit: 40, windowMs: 60_000 });
-const PARTICIPANT_LOOKUP_MS = 12_000;
+const PARTICIPANT_LOOKUP_MS = 1_500;
 
 const callSelect = {
   id: true,
@@ -206,11 +206,7 @@ export async function listIncomingCalls(
     take: 8,
     select: callSelect,
   });
-  const listParticipants = deps.listParticipants ?? ((roomName: string) => listConsultationParticipants(config.config, roomName));
-  const calls: IncomingCall[] = [];
-  for (const row of rows) {
-    const call = await callForRow(row, { ...input, now }, config, listParticipants);
-    if (call) calls.push(call);
-  }
-  return { ok: true, calls };
+  const listParticipants = deps.listParticipants ?? (async () => []);
+  const found = await Promise.all(rows.map((row) => callForRow(row, { ...input, now }, config, listParticipants)));
+  return { ok: true, calls: found.filter((call): call is IncomingCall => Boolean(call)) };
 }

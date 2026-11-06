@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Suspense } from "react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ButtonBusy } from "@/components/button-busy";
 import { InstallRegistrar } from "@/components/install-registrar";
@@ -55,9 +54,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ButtonBusy />
         <InstallRegistrar />
-        <Suspense fallback={null}>
-          <RememberPath />
-        </Suspense>
+        <RememberPath />
         {children}
         <SpeedInsights />
       </body>

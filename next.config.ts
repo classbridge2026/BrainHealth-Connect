@@ -14,8 +14,9 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["nodemailer", "livekit-server-sdk"],
   experimental: {
     serverActions: {
-      bodySizeLimit: "12mb",
+      bodySizeLimit: "16mb",
     },
+    proxyClientMaxBodySize: "16mb",
   },
   async headers() {
     return [

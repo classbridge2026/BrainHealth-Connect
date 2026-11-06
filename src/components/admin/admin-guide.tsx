@@ -110,6 +110,8 @@ export function AdminGuide({ superAdmin, systemName }: { superAdmin: boolean; sy
 
   const showStarters = messages.length === 1 && !typing;
 
+  if (/\/messages(\/|$)/.test(pathname)) return null;
+
   return (
     <div className={open ? "guide is-open" : "guide"} data-no-busy="">
       {open ? (

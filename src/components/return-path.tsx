@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { safeReturnPath } from "@/lib/db/return-path";
 
@@ -8,12 +8,11 @@ const LAST_PATH_KEY = "carecircle:last-path";
 
 export function RememberPath() {
   const pathname = usePathname();
-  const search = useSearchParams();
   useEffect(() => {
     if (!pathname || pathname === "/offline") return;
-    const query = search.toString();
+    const query = window.location.search.replace(/^\?/, "");
     sessionStorage.setItem(LAST_PATH_KEY, query ? `${pathname}?${query}` : pathname);
-  }, [pathname, search]);
+  }, [pathname]);
   return null;
 }
 

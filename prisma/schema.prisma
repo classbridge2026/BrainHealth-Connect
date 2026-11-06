@@ -240,6 +240,8 @@ model User {
   emailVerifiedAt DateTime?  @db.Timestamptz(6)
   phoneVerifiedAt DateTime?  @db.Timestamptz(6)
   lastLoginAt     DateTime?  @db.Timestamptz(6)
+  /// Last time this account had a chat open. Used only to show online or last seen.
+  chatSeenAt      DateTime?  @db.Timestamptz(6)
   deletedAt       DateTime?  @db.Timestamptz(6)
   /// Account photo bytes. Kept on the user row so it can be shown without private object storage.
   profileImageBytes     Bytes?
@@ -264,6 +266,7 @@ model User {
   summaryReleaseEvents    SummaryRelease[]         @relation("SummaryReleaseActor")
   paymentsPaid            Payment[]                @relation("Payer")
   appointmentEvents       AppointmentEvent[]
+  careMessages            CareMessage[]
   uploadedFiles           MedicalFile[]            @relation("FileUploader")
   noteVersionsEdited      ClinicalNoteVersion[]
   credentialsReviewed     DoctorCredential[]       @relation("CredentialReviewer")
@@ -425,6 +428,7 @@ model PatientProfile {
   screenings            ScreeningResponse[]
   screeningConsents     ScreeningConsent[]
   screeningAssessments  ScreeningAssessment[]
+  careConversations     CareConversation[]
 
   @@index([isDependent])
 }
@@ -497,6 +501,7 @@ model DoctorProfile {
   invitations        DoctorInvitation[]
   verificationEvents DoctorVerificationEvent[]
   screeningReviews   ScreeningClinicalReview[]
+  careConversations  CareConversation[]
 
   @@unique([licenseJurisdiction, licenseNumberNormalized])
   @@index([verificationStatus])
@@ -820,6 +825,53 @@ model AppointmentEvent {
 
   @@index([appointmentId, occurredAt])
   @@index([actorUserId])
+}
+
+// ---------------------------------------------------------------------------
+// Messages between a patient and a doctor they have booked.
+// A conversation cannot be opened for a doctor with no qualifying visit.
+// ---------------------------------------------------------------------------
+
+model CareConversation {
+  id               String    @id @default(uuid()) @db.Uuid
+  patientProfileId String    @db.Uuid
+  doctorProfileId  String    @db.Uuid
+  lastMessageAt    DateTime  @default(now()) @db.Timestamptz(6)
+  /// WhatsApp-style clear: hides history for this person only.
+  patientClearedAt DateTime? @db.Timestamptz(6)
+  doctorClearedAt  DateTime? @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(6)
+
+  patient  PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  doctor   DoctorProfile  @relation(fields: [doctorProfileId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  messages CareMessage[]
+
+  @@unique([patientProfileId, doctorProfileId])
+  @@index([doctorProfileId, lastMessageAt])
+  @@index([patientProfileId, lastMessageAt])
+}
+
+model CareMessage {
+  id             String    @id @default(uuid()) @db.Uuid
+  conversationId String    @db.Uuid
+  senderUserId   String    @db.Uuid
+  body           String
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  readAt         DateTime? @db.Timestamptz(6)
+  /// Optional image, document, or video. Left out of normal message reads.
+  attachmentName  String?
+  attachmentMime  String?
+  attachmentSize  Int?
+  /// Private object key in STORAGE_BUCKET / STORAGE_LOCAL_ROOT. Bytes kept only for older rows.
+  attachmentKey   String?
+  attachmentBytes Bytes?
+
+  conversation CareConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sender       User             @relation(fields: [senderUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([senderUserId])
 }
 
 // ---------------------------------------------------------------------------

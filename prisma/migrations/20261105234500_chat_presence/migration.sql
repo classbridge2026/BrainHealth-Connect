@@ -1,0 +1,1 @@
+ALTER TABLE "User" ADD COLUMN "chatSeenAt" TIMESTAMPTZ(6);
