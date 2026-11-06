@@ -35,6 +35,7 @@ import { LiveSearchInput } from "@/components/live-query";
 import { NotificationBell, type BellItem } from "@/components/notifications/bell";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { DoctorGuide } from "@/components/guide/doctor-guide";
+import { openMessagesList } from "@/components/care-chat/list-nav";
 import { ChatCount, ChatUnreadProvider, useChatUnread } from "@/components/care-chat/unread";
 import { claimChatDevice, forgetChatDevice } from "@/lib/care-chat/device-copy";
 import "../patient/patient-shell.css";
@@ -188,6 +189,9 @@ function DoctorShellView({
                     prefetch={false}
                     aria-current={current ? "page" : undefined}
                     className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${current ? "bg-[#0F766E] text-white" : "text-white/80 hover:bg-white/10"}`}
+                    onClick={(event) => {
+                      if (link.href === "/doctor/messages") openMessagesList(event, link.href);
+                    }}
                   >
                     <FontAwesomeIcon icon={link.icon} className="w-4" aria-hidden="true" />
                     <span className={collapsed ? "lg:sr-only" : undefined}>{link.label}</span>
@@ -281,7 +285,9 @@ function DoctorShellView({
               if (!link) return null;
               const current = href === active;
               return (
-                <Link key={href} href={href} prefetch={false} aria-current={current ? "page" : undefined}>
+                <Link key={href} href={href} prefetch={false} aria-current={current ? "page" : undefined} onClick={(event) => {
+                  if (href === "/doctor/messages") openMessagesList(event, href);
+                }}>
                   <span className="patient-tab-icon">
                     <FontAwesomeIcon icon={link.icon} aria-hidden="true" />
                     {href === "/doctor/messages" ? <ChatCount count={chatUnread.total} /> : null}

@@ -11,6 +11,7 @@ import { NotificationBell, type BellItem } from "@/components/notifications/bell
 import { ProfilePhoto } from "@/components/profile-photo";
 import { signOutAction } from "@/app/admin/account-actions";
 import { claimChatDevice, forgetChatDevice } from "@/lib/care-chat/device-copy";
+import { openMessagesList } from "@/components/care-chat/list-nav";
 import { ChatCount, useChatUnread } from "@/components/care-chat/unread";
 import { AdminNoticesContext } from "./admin-notices";
 import { AdminIcon, type AdminIconName } from "./admin-icons";
@@ -410,7 +411,10 @@ export function AdminShell({
                           aria-current={current ? "page" : undefined}
                           title={item.label}
                           className="admin-nav-link"
-                          onClick={() => setOpenPath(null)}
+                          onClick={(event) => {
+                            setOpenPath(null);
+                            if (item.href === "/admin/messages") openMessagesList(event, item.href);
+                          }}
                         >
                           <AdminIcon name={item.icon} />
                           <span className="admin-nav-text">{item.label}</span>

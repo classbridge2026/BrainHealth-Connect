@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { ProfilePhoto } from "@/components/profile-photo";
 import type { ChatLine, ChatPerson } from "@/lib/care-chat/service";
@@ -38,6 +37,13 @@ type FileLook = { href: string; downloadHref: string; name: string; mime: string
 type BlobState = { status: "idle" | "loading" | "ready" | "error"; progress: number; url: string };
 
 const blobJobs = new Map<string, { state: BlobState; listeners: Set<(state: BlobState) => void> }>();
+
+function writeChatUrl(url: string, mode: "push" | "replace") {
+  const current = window.history.state;
+  const data = current && typeof current === "object" ? { ...current, __NA: true } : { __NA: true };
+  if (mode === "push") window.history.pushState(data, "", url);
+  else window.history.replaceState(data, "", url);
+}
 
 function publishBlob(href: string, state: BlobState) {
   const job = blobJobs.get(href);
@@ -208,6 +214,11 @@ function LoadRing({ progress, caption }: { progress: number; caption: string }) 
       <em>{shown}%</em>
     </span>
   );
+}
+
+function shownPreview(preview: string | null) {
+  if (!preview || /^voice message\.[a-z0-9]+$/i.test(preview.trim())) return null;
+  return preview;
 }
 
 function fileHref(side: string, partner: string, messageId: string, download = false) {
@@ -637,7 +648,11 @@ export function CareChat({
     setQuietId(person.id);
     seen.current = new Set();
     seenOnServer.current = new Set();
-    if (push) window.history.pushState(null, "", `${listHref}/${person.id}`);
+    if (push) {
+      const url = `${listHref}/${person.id}`;
+      const onThread = window.location.pathname.startsWith(`${listHref}/`);
+      writeChatUrl(url, onThread ? "replace" : "push");
+    }
     void recallThread(userId, side, person.id).then((stored) => {
       if (!stored) return;
       setPanel((current) => (current?.id === person.id ? { ...current, conversationId: stored.conversationId, messages: stored.messages } : current));
@@ -648,23 +663,52 @@ export function CareChat({
     });
   }
 
+  function closeChat(updateUrl: boolean) {
+    setPanel(null);
+    setLines([]);
+    setConversationId(null);
+    setOnline(false);
+    setSeenAt(null);
+    setDraft("");
+    setError("");
+    setViewer(null);
+    setConfirmClear(false);
+    setOpenMenu(null);
+    setQuietId(null);
+    if (!updateUrl || window.location.pathname === listHref) return;
+    writeChatUrl(listHref, "replace");
+  }
+
+  const openPersonRef = useRef(openPerson);
+  const closeChatRef = useRef(closeChat);
+  openPersonRef.current = openPerson;
+  closeChatRef.current = closeChat;
+
   useEffect(() => {
-    function onPop() {
+    function onPop(event: PopStateEvent) {
       const path = window.location.pathname;
-      const prefix = `${listHref}/`;
-      if (!path.startsWith(prefix)) {
-        setPanel(null);
-        setLines([]);
-        setConversationId(null);
+      const inside = path === listHref || path.startsWith(`${listHref}/`);
+      if (!inside) return;
+      event.stopImmediatePropagation();
+      if (!path.startsWith(`${listHref}/`)) {
+        closeChatRef.current(false);
         return;
       }
-      const id = decodeURIComponent(path.slice(prefix.length).split("/")[0] ?? "");
+      const id = decodeURIComponent(path.slice(listHref.length + 1).split("/")[0] ?? "");
       const person = roster.find((item) => item.id === id);
-      if (person) openPerson(person, false);
+      if (person) openPersonRef.current(person, false);
+      else closeChatRef.current(false);
     }
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  });
+    function onClose() {
+      closeChatRef.current(true);
+    }
+    window.addEventListener("popstate", onPop, true);
+    window.addEventListener("care-chat:close", onClose);
+    return () => {
+      window.removeEventListener("popstate", onPop, true);
+      window.removeEventListener("care-chat:close", onClose);
+    };
+  }, [listHref, roster]);
 
   useEffect(() => {
     const apply = () => setConnected(navigator.onLine);
@@ -1088,7 +1132,7 @@ export function CareChat({
   const presence = online ? "Online" : seenAt ? `Last seen ${listWhen(seenAt)}` : null;
 
   return (
-    <section className={`care-chat ${active ? "is-open" : ""}`} aria-label="Messages">
+    <section className={`care-chat ${active ? "is-open" : ""}`} aria-label="Messages" data-no-busy="">
       <aside className="care-chat-list">
         <header>
           <h1>Messages</h1>
@@ -1118,7 +1162,7 @@ export function CareChat({
                     </span>
                     <span>
                       <strong>{person.name}</strong>
-                      <em>{person.preview || person.detail}</em>
+                      <em>{shownPreview(person.preview) || person.detail}</em>
                     </span>
                     <span className="care-chat-row-meta">
                       {person.when ? <time dateTime={person.when} suppressHydrationWarning>{listWhen(person.when)}</time> : null}
@@ -1135,9 +1179,18 @@ export function CareChat({
         {active ? (
           <>
             <header>
-              <Link href={listHref} className="care-chat-back" aria-label="Back to messages">
+              <a
+                href={listHref}
+                className="care-chat-back"
+                aria-label="Back to messages"
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                  event.preventDefault();
+                  closeChat(true);
+                }}
+              >
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5.5 9 12l6.5 6.5" /></svg>
-              </Link>
+              </a>
               <span className={online ? "care-chat-avatar is-online" : "care-chat-avatar"}>
                 <ProfilePhoto userId={active.imageUserId} name={active.name} version={active.imageVersion} size={42} alt="" />
               </span>
@@ -1201,7 +1254,7 @@ export function CareChat({
                           onOpen={setViewer}
                         />
                       ) : null}
-                      {line.body && line.body !== line.file?.name ? <p>{line.body}</p> : null}
+                      {line.body && line.body !== line.file?.name && shownPreview(line.body) ? <p>{line.body}</p> : null}
                       <time dateTime={line.at} suppressHydrationWarning>
                         <span>{stamp(line.at)}</span>
                         {line.mine ? <span className={`care-chat-tick is-${line.state}`}>{deliveryLabel(line.state)}</span> : null}
@@ -1223,7 +1276,7 @@ export function CareChat({
                   {attachment.type.startsWith("image/") && attachmentPreview ? <img src={attachmentPreview} alt="" /> : null}
                   {attachment.type.startsWith("video/") && attachmentPreview ? <video src={attachmentPreview} muted playsInline /> : null}
                   {attachment.type.startsWith("audio/") && attachmentPreview ? <VoiceNote src={attachmentPreview} mine /> : null}
-                  <span>{attachment.name}<em>{fileSize(attachment.size)}</em></span>
+                  {attachment.type.startsWith("audio/") ? null : <span>{attachment.name}<em>{fileSize(attachment.size)}</em></span>}
                   <button type="button" onClick={clearAttachment}>Remove</button>
                 </div>
               ) : null}

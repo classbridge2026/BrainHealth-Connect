@@ -1467,6 +1467,7 @@ export async function sendCareFile(
   const pair = await resolveChatPair(db, input, "send");
   if (!pair) return { ok: false, message: denied(input.side) };
   const name = cleanChatFileName(input.file.name);
+  const storedBody = caption || (mime.startsWith("audio/") ? "" : name);
   const now = new Date();
   const ids = { patientProfileId: pair.patientProfileId, doctorProfileId: pair.doctorProfileId };
   const conversation = await db.careConversation.upsert({
@@ -1495,12 +1496,12 @@ export async function sendCareFile(
     const rows = key
       ? await client.$queryRaw<Array<{ id: string; body: string; createdAt: Date }>>`
           INSERT INTO "CareMessage" ("id", "conversationId", "senderUserId", "body", "createdAt", "attachmentName", "attachmentMime", "attachmentSize", "attachmentKey")
-          VALUES (${messageId}::uuid, ${conversation.id}::uuid, ${input.actorUserId}::uuid, ${caption || name}, NOW(), ${name}, ${mime}, ${input.file.bytes.length}, ${key})
+          VALUES (${messageId}::uuid, ${conversation.id}::uuid, ${input.actorUserId}::uuid, ${storedBody}, NOW(), ${name}, ${mime}, ${input.file.bytes.length}, ${key})
           RETURNING id, body, "createdAt"
         `
       : await client.$queryRaw<Array<{ id: string; body: string; createdAt: Date }>>`
           INSERT INTO "CareMessage" ("id", "conversationId", "senderUserId", "body", "createdAt", "attachmentName", "attachmentMime", "attachmentSize", "attachmentBytes")
-          VALUES (${messageId}::uuid, ${conversation.id}::uuid, ${input.actorUserId}::uuid, ${caption || name}, NOW(), ${name}, ${mime}, ${input.file.bytes.length}, ${input.file.bytes})
+          VALUES (${messageId}::uuid, ${conversation.id}::uuid, ${input.actorUserId}::uuid, ${storedBody}, NOW(), ${name}, ${mime}, ${input.file.bytes.length}, ${input.file.bytes})
           RETURNING id, body, "createdAt"
         `;
     const row = rows[0];

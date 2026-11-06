@@ -33,6 +33,7 @@ import { LiveSearchInput } from "@/components/live-query";
 import { NotificationBell, type BellItem } from "@/components/notifications/bell";
 import { PatientCallAlert } from "@/components/consultation/patient-call-alert";
 import { PatientGuide } from "@/components/guide/patient-guide";
+import { openMessagesList } from "@/components/care-chat/list-nav";
 import { ChatCount, ChatUnreadProvider, useChatUnread } from "@/components/care-chat/unread";
 import { claimChatDevice, forgetChatDevice } from "@/lib/care-chat/device-copy";
 import { ProfilePhoto } from "@/components/profile-photo";
@@ -227,7 +228,9 @@ function PatientShellView({
               const current = link.href === active;
               return (
                 <li key={link.href}>
-                  <Link href={link.href} prefetch={false} aria-current={current ? "page" : undefined} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${current ? "bg-[#0F766E] text-white" : "text-white/80 hover:bg-white/10"}`}>
+                  <Link href={link.href} prefetch={false} aria-current={current ? "page" : undefined} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${current ? "bg-[#0F766E] text-white" : "text-white/80 hover:bg-white/10"}`} onClick={(event) => {
+                    if (link.href === "/patient/messages") openMessagesList(event, link.href);
+                  }}>
                     <FontAwesomeIcon icon={link.icon} className="w-4" aria-hidden="true" />
                     <span className={collapsed ? "lg:sr-only" : undefined}>{link.label}</span>
                     {link.href === "/patient/messages" ? <ChatCount count={chatUnread.total} /> : null}
@@ -310,7 +313,10 @@ function PatientShellView({
           {tabs.map((link) => {
             const current = link.href === active;
             return (
-              <Link key={link.href} href={link.href} prefetch={false} aria-current={current ? "page" : undefined} onClick={() => setMorePath(null)}>
+              <Link key={link.href} href={link.href} prefetch={false} aria-current={current ? "page" : undefined} onClick={(event) => {
+                setMorePath(null);
+                if (link.href === "/patient/messages") openMessagesList(event, link.href);
+              }}>
                 <span className="patient-tab-icon">
                   <FontAwesomeIcon icon={link.icon} aria-hidden="true" />
                   {link.href === "/patient/messages" ? <ChatCount count={chatUnread.total} /> : null}
