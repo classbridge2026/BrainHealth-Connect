@@ -171,8 +171,6 @@ export async function listIncomingCalls(
   if (!parseUuid(input.actorUserId)) return { ok: false, code: "NOT_FOUND" };
   const limiter = deps.limiter ?? callLimiter;
   if (!limiter.check(`consultation-calls:${input.actorUserId}`, now.getTime()).allowed) return { ok: false, code: "RATE_LIMITED" };
-  const patient = await db.patientProfile.findUnique({ where: { userId: input.actorUserId }, select: { id: true } });
-  if (!patient) return { ok: true, calls: [] };
   const config = deps.config ?? readLiveKitConfig();
   if (!config.ok) return { ok: true, calls: [] };
   const windowStart = new Date(now.getTime() - config.config.rejoinGraceMinutes * 60_000);
@@ -198,7 +196,7 @@ export async function listIncomingCalls(
   }
   const rows = await db.appointment.findMany({
     where: {
-      patientProfileId: patient.id,
+      patient: { userId: input.actorUserId },
       mode: "ONLINE",
       OR: openForCall,
     },

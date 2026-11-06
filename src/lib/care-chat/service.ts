@@ -323,7 +323,143 @@ async function lookupChatPair(
   return null;
 }
 
+async function listPatientChatsFast(db: SqlClient, userId: string, now: Date): Promise<ChatPerson[]> {
+  const statuses = Prisma.join(CHAT_APPOINTMENT_STATUSES);
+  const rows = await db.$queryRaw<Array<{
+    id: string;
+    name: string;
+    specialty: string;
+    detailKind: string;
+    visitAt: Date | null;
+    imageUserId: string;
+    imageVersion: Date | null;
+    canReply: boolean;
+    preview: string | null;
+    previewAt: Date | null;
+    lastMessageAt: Date | null;
+    unread: number;
+  }>>(Prisma.sql`
+    WITH me AS (
+      SELECT id FROM "PatientProfile" WHERE "userId" = ${userId}::uuid
+    ),
+    visits AS (
+      SELECT a."doctorProfileId" AS id,
+             MIN(a."startsAt") FILTER (WHERE a."startsAt" >= ${now}::timestamptz) AS next,
+             MAX(a."startsAt") AS last
+      FROM "Appointment" a
+      JOIN me ON me.id = a."patientProfileId"
+      WHERE a.status::text IN (${statuses})
+      GROUP BY a."doctorProfileId"
+    ),
+    staff AS (
+      SELECT DISTINCT d.id
+      FROM "DoctorProfile" d
+      JOIN "UserRole" ur ON ur."userId" = d."userId"
+      JOIN "Role" r ON r.id = ur."roleId"
+      WHERE r.code IN ('ADMIN', 'SUPER_ADMIN')
+        AND (
+          d.id IN (SELECT id FROM visits)
+          OR d.id IN (
+            SELECT c."doctorProfileId" FROM "CareConversation" c
+            JOIN me ON me.id = c."patientProfileId"
+          )
+        )
+    ),
+    people AS (
+      SELECT v.id,
+             d."displayName" AS name,
+             COALESCE((
+               SELECT s.name FROM "DoctorSpecialty" ds
+               JOIN "Specialty" s ON s.id = ds."specialtyId"
+               WHERE ds."doctorProfileId" = d.id AND ds."isPrimary" = true
+               LIMIT 1
+             ), 'Clinician') AS specialty,
+             'visit' AS "detailKind",
+             COALESCE(v.next, v.last) AS "visitAt",
+             d."userId" AS "imageUserId",
+             u."profileImageUpdatedAt" AS "imageVersion",
+             TRUE AS "canReply"
+      FROM visits v
+      JOIN "DoctorProfile" d ON d.id = v.id
+      JOIN "User" u ON u.id = d."userId"
+      WHERE NOT EXISTS (SELECT 1 FROM staff WHERE staff.id = v.id)
+      UNION ALL
+      SELECT d.id,
+             d."displayName",
+             'Administrator',
+             'clinic',
+             NULL::timestamptz,
+             d."userId",
+             u."profileImageUpdatedAt",
+             FALSE
+      FROM staff
+      JOIN "DoctorProfile" d ON d.id = staff.id
+      JOIN "User" u ON u.id = d."userId"
+      JOIN "CareConversation" c ON c."doctorProfileId" = d.id
+      JOIN me ON me.id = c."patientProfileId"
+    )
+    SELECT p.id,
+           p.name,
+           p.specialty,
+           p."detailKind",
+           p."visitAt",
+           p."imageUserId",
+           p."imageVersion",
+           p."canReply",
+           latest.body AS preview,
+           latest."createdAt" AS "previewAt",
+           c."lastMessageAt",
+           COALESCE((
+             SELECT COUNT(*)::int FROM "CareMessage" m
+             WHERE m."conversationId" = c.id
+               AND m."senderUserId" <> ${userId}::uuid
+               AND m."readAt" IS NULL
+               AND (c."patientClearedAt" IS NULL OR m."createdAt" > c."patientClearedAt")
+           ), 0) AS unread
+    FROM people p
+    LEFT JOIN "CareConversation" c
+      ON c."doctorProfileId" = p.id
+     AND c."patientProfileId" = (SELECT id FROM me)
+    LEFT JOIN LATERAL (
+      SELECT m.body, m."createdAt"
+      FROM "CareMessage" m
+      WHERE c.id IS NOT NULL
+        AND m."conversationId" = c.id
+        AND (c."patientClearedAt" IS NULL OR m."createdAt" > c."patientClearedAt")
+      ORDER BY m."createdAt" DESC
+      LIMIT 1
+    ) latest ON TRUE
+  `);
+  return rows
+    .map((row) => {
+      const when = row.previewAt ?? row.lastMessageAt;
+      const detail = row.detailKind === "clinic"
+        ? "Messages from the clinic"
+        : visitDetail(row.visitAt ?? now, now);
+      return {
+        id: row.id,
+        name: row.name,
+        detail: `${row.specialty} · ${detail}`,
+        preview: row.preview,
+        when: when ? new Date(when).toISOString() : null,
+        unread: Number(row.unread) || 0,
+        imageUserId: row.imageUserId,
+        imageVersion: row.imageVersion ? new Date(row.imageVersion).toISOString() : null,
+        canReply: row.canReply !== false,
+      };
+    })
+    .sort((a, b) => (b.when ?? "").localeCompare(a.when ?? "") || a.name.localeCompare(b.name));
+}
+
 export async function listPatientChats(db: ChatDb, userId: string, now = new Date()): Promise<ChatPerson[]> {
+  const client = sqlClient(db);
+  if (client) {
+    try {
+      return await listPatientChatsFast(client, userId, now);
+    } catch {
+      // The query path can fail on an older database. The regular list still opens.
+    }
+  }
   const patientProfileId = await patientIdFor(db, userId);
   if (!patientProfileId) return [];
   const visits = await db.appointment.findMany({
@@ -610,7 +746,7 @@ export async function unreadCareChats(
           `);
       const byPartner = rows.filter((row) => row.unread > 0).map((row) => ({ id: row.id, unread: row.unread }));
       const value = { total: byPartner.reduce((sum, row) => sum + row.unread, 0), byPartner };
-      unreadMemo.set(memoKey, { until: Date.now() + 4000, value });
+      unreadMemo.set(memoKey, { until: Date.now() + 30_000, value });
       return value;
     } catch {
       // The Prisma path still works on an older schema.
@@ -628,7 +764,7 @@ export async function unreadCareChats(
     return [{ id: side === "patient" ? conversation.doctorProfileId : conversation.patientProfileId, unread }];
   });
   const value = { total: byPartner.reduce((sum, row) => sum + row.unread, 0), byPartner };
-  unreadMemo.set(memoKey, { until: Date.now() + 4000, value });
+  unreadMemo.set(memoKey, { until: Date.now() + 30_000, value });
   return value;
 }
 
@@ -812,6 +948,23 @@ export async function readChatThread(
   db: ChatDb,
   input: { actorUserId: string; side: ChatSide; partnerProfileId: string },
 ): Promise<ChatThread | null> {
+  const client = sqlClient(db);
+  if (client && (input.side === "patient" || input.side === "doctor")) {
+    try {
+      const fast = await readChatSinceFast(client, { ...input, side: input.side, after: null });
+      if (fast.ok) {
+        unreadMemo.delete(`${input.side}:${input.actorUserId}`);
+        return {
+          conversationId: fast.conversationId,
+          messages: fast.messages,
+          online: fast.online,
+          seenAt: fast.seenAt,
+        };
+      }
+    } catch {
+      // The query path can fail on an older database. The regular read still opens the thread.
+    }
+  }
   const pair = await resolveChatPair(db, input, "read");
   if (!pair) {
     if (input.side !== "admin") return null;

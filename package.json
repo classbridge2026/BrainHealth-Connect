@@ -48,9 +48,6 @@
     "sweetalert2": "^11.26.25",
     "zod": "^4.6.7"
   },
-  "prisma": {
-    "seed": "node prisma/seed.mjs"
-  },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
     "@testing-library/dom": "^10.4.2",

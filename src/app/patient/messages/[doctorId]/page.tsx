@@ -16,10 +16,12 @@ export default async function PatientMessageThreadPage({ params }: { params: Pro
   const doctorId = parseUuid((await params).doctorId);
   if (!doctorId) return <RecordsUnavailable code="NOT_FOUND" />;
   try {
-    const people = await listPatientChats(prisma, user.id);
+    const [people, thread] = await Promise.all([
+      listPatientChats(prisma, user.id),
+      readChatThread(prisma, { actorUserId: user.id, side: "patient", partnerProfileId: doctorId }),
+    ]);
     const person = people.find((item) => item.id === doctorId);
     if (!person) return <RecordsUnavailable code="NOT_FOUND" />;
-    const thread = await readChatThread(prisma, { actorUserId: user.id, side: "patient", partnerProfileId: doctorId });
     if (!thread) return <RecordsUnavailable code="NOT_FOUND" />;
     return (
       <CareChat

@@ -137,7 +137,7 @@ type NoticeRow = {
   unread: number;
 };
 
-const NOTICE_TTL_MS = 12_000;
+const NOTICE_TTL_MS = 30_000;
 
 export function forgetNoticeSummary(userId: string) {
   forgetRemembered(`notices:${userId}:`);
