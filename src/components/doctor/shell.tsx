@@ -36,6 +36,7 @@ import { NotificationBell, type BellItem } from "@/components/notifications/bell
 import { ProfilePhoto } from "@/components/profile-photo";
 import { DoctorGuide } from "@/components/guide/doctor-guide";
 import { ChatCount, ChatUnreadProvider, useChatUnread } from "@/components/care-chat/unread";
+import { claimChatDevice, forgetChatDevice } from "@/lib/care-chat/device-copy";
 import "../patient/patient-shell.css";
 
 config.autoAddCss = false;
@@ -125,6 +126,10 @@ function DoctorShellView({
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
+    void claimChatDevice(userId);
+  }, [userId]);
+
+  useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setOpenPath(null);
@@ -193,7 +198,7 @@ function DoctorShellView({
             })}
           </ul>
         </nav>
-        <form action={signOutAction} className="border-t border-white/10 p-3">
+        <form action={signOutAction} className="border-t border-white/10 p-3" onSubmit={() => { void forgetChatDevice(userId); }}>
           <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/80 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" type="submit">
             <FontAwesomeIcon icon={faRightFromBracket} className="w-4" aria-hidden="true" />
             <span className={collapsed ? "lg:sr-only" : undefined}>Log Out</span>
@@ -255,7 +260,7 @@ function DoctorShellView({
                     <FontAwesomeIcon icon={faKey} aria-hidden="true" />
                     {administration ? "Email and password" : "Reset password"}
                   </Link>
-                  <form action={signOutAction}>
+                  <form action={signOutAction} onSubmit={() => { void forgetChatDevice(userId); }}>
                     <button type="submit" role="menuitem">
                       <FontAwesomeIcon icon={faRightFromBracket} aria-hidden="true" />
                       Log Out

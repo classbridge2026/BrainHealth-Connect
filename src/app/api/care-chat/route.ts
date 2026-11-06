@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { PATIENT_ROLE_CODE } from "@/lib/auth/constants";
+import { isPortalAdministrator } from "@/lib/admin/rules";
 import { readApiSession } from "@/lib/auth/current-user";
 import { SESSION_COOKIE } from "@/lib/auth/session";
 import { parseUuid } from "@/lib/catalog/rules";
@@ -14,16 +15,20 @@ export const dynamic = "force-dynamic";
 const noStore = { "Cache-Control": "private, no-store" };
 
 function sideOf(value: unknown) {
-  return value === "patient" || value === "doctor" ? value : null;
+  return value === "patient" || value === "doctor" || value === "admin" ? value : null;
 }
 
-async function actor(side: "patient" | "doctor") {
+async function actor(side: "patient" | "doctor" | "admin") {
   const cookieStore = await cookies();
   const session = await readApiSession(prisma, cookieStore.get(SESSION_COOKIE)?.value, new Date());
   if (session.offline) return { error: NextResponse.json({ message: "Records are offline." }, { status: 503, headers: noStore }) };
   const user = session.user;
   if (!user || user.status !== "ACTIVE") return { error: NextResponse.json({ message: "Sign in to continue." }, { status: 401, headers: noStore }) };
-  const allowed = side === "patient" ? user.roleCodes.includes(PATIENT_ROLE_CODE) : DOCTOR_PORTAL_ROLES.some((code) => user.roleCodes.includes(code));
+  const allowed = side === "patient"
+    ? user.roleCodes.includes(PATIENT_ROLE_CODE)
+    : side === "admin"
+      ? isPortalAdministrator(user.roleCodes)
+      : DOCTOR_PORTAL_ROLES.some((code) => user.roleCodes.includes(code));
   if (!allowed) return { error: NextResponse.json({ message: "Sign in to continue." }, { status: 403, headers: noStore }) };
   return { userId: user.id };
 }

@@ -82,6 +82,7 @@ const icons = {
   ellipsis: faEllipsisVertical,
   clock: faClock,
   guide: faComments,
+  messages: faComments,
   search: faMagnifyingGlass,
   bolt: faBolt,
   arrow: faArrowRight,

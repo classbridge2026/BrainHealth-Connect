@@ -423,6 +423,21 @@
   text-decoration: none;
 }
 
+.admin-nav-link .chat-nav-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  margin-left: auto;
+  padding: 0.05rem 0.32rem;
+  border-radius: 999px;
+  background: #e11d48;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
 .admin-nav-link svg {
   width: 1rem;
   height: 1rem;

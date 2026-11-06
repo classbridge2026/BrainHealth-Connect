@@ -2,6 +2,28 @@ import type { NextConfig } from "next";
 import { portalNoStoreHeaders, securityHeaders } from "./src/lib/security/headers";
 
 const nextConfig: NextConfig = {
+  // GitHub Actions already runs `npm run typecheck`. On Vercel this pass took 38s
+  // of a 2-core build, so the deploy does not typecheck a second time.
+  typescript: {
+    ignoreBuildErrors: process.env.VERCEL === "1",
+  },
+  // The Prisma CLI and its engine downloads are build tools. The running app
+  // uses the generated client under node_modules/.prisma/client.
+  outputFileTracingExcludes: {
+    "*": [
+      "node_modules/.prisma/client/query_engine-*.tmp*",
+      "node_modules/@prisma/engines/**/*",
+      "node_modules/prisma/query_engine-*",
+      "node_modules/prisma/schema-engine-*",
+      "node_modules/prisma/libquery_engine-*",
+      "node_modules/typescript/**/*",
+      "node_modules/eslint/**/*",
+      "node_modules/eslint-config-next/**/*",
+      "node_modules/vitest/**/*",
+      "node_modules/happy-dom/**/*",
+      "node_modules/@testing-library/**/*",
+    ],
+  },
   images: {
     qualities: [55, 60, 75],
     minimumCacheTTL: 60 * 60 * 24,

@@ -34,6 +34,7 @@ import { NotificationBell, type BellItem } from "@/components/notifications/bell
 import { PatientCallAlert } from "@/components/consultation/patient-call-alert";
 import { PatientGuide } from "@/components/guide/patient-guide";
 import { ChatCount, ChatUnreadProvider, useChatUnread } from "@/components/care-chat/unread";
+import { claimChatDevice, forgetChatDevice } from "@/lib/care-chat/device-copy";
 import { ProfilePhoto } from "@/components/profile-photo";
 import "./patient-shell.css";
 
@@ -130,6 +131,10 @@ function PatientShellView({
   const moreOpen = morePath === pathname;
   const moreCurrent = moreLinks.some((link) => link.href === active);
   const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    void claimChatDevice(userId);
+  }, [userId]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -232,7 +237,7 @@ function PatientShellView({
             })}
           </ul>
         </nav>
-        <form action={signOutAction} className="border-t border-white/10 p-3">
+        <form action={signOutAction} className="border-t border-white/10 p-3" onSubmit={() => { void forgetChatDevice(userId); }}>
           <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/80 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" type="submit">
             <FontAwesomeIcon icon={faRightFromBracket} className="w-4" aria-hidden="true" />
             <span className={collapsed ? "lg:sr-only" : undefined}>Log Out</span>
@@ -284,7 +289,7 @@ function PatientShellView({
                     <FontAwesomeIcon icon={faKey} aria-hidden="true" />
                     Reset password
                   </Link>
-                  <form action={signOutAction}>
+                  <form action={signOutAction} onSubmit={() => { void forgetChatDevice(userId); }}>
                     <button type="submit" role="menuitem">
                       <FontAwesomeIcon icon={faRightFromBracket} aria-hidden="true" />
                       Log Out
@@ -329,7 +334,7 @@ function PatientShellView({
                   {link.label}
                 </Link>
               ))}
-              <form action={signOutAction}>
+              <form action={signOutAction} onSubmit={() => { void forgetChatDevice(userId); }}>
                 <button type="submit">
                   <FontAwesomeIcon icon={faRightFromBracket} aria-hidden="true" />
                   Log Out

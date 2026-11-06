@@ -4,6 +4,17 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { ProfilePhoto } from "@/components/profile-photo";
 import type { ChatLine, ChatPerson } from "@/lib/care-chat/service";
+import {
+  forgetChatFile,
+  forgetChatPartner,
+  messagesForOffline,
+  recallChatFile,
+  recallPeople,
+  recallThread,
+  rememberChatFile,
+  rememberPeople,
+  rememberThread,
+} from "@/lib/care-chat/device-copy";
 import { useChatUnread } from "@/components/care-chat/unread";
 import "./care-chat.css";
 
@@ -17,6 +28,7 @@ type ActiveChat = {
   messages: ChatLine[];
   online: boolean;
   seenAt: string | null;
+  canReply: boolean;
 };
 
 type Delivery = "sending" | "sent" | "read" | "failed";
@@ -34,7 +46,43 @@ function publishBlob(href: string, state: BlobState) {
   job.listeners.forEach((fn) => fn(state));
 }
 
-async function pullChatBlob(href: string, expectedSize: number) {
+function fileIds(href: string): { side: "patient" | "doctor" | "admin"; partnerId: string; messageId: string } | null {
+  const url = new URL(href, "https://carecircle.local");
+  const side = url.searchParams.get("side");
+  const partnerId = url.searchParams.get("partner");
+  const messageId = url.searchParams.get("message");
+  if (side !== "patient" && side !== "doctor" && side !== "admin") return null;
+  if (!partnerId || !messageId) return null;
+  return { side, partnerId, messageId };
+}
+
+async function keepChatFile(userId: string, href: string, blob: Blob) {
+  const ids = fileIds(href);
+  if (!ids || !userId) return;
+  await rememberChatFile({
+    userId,
+    side: ids.side,
+    partnerId: ids.partnerId,
+    messageId: ids.messageId,
+    name: ids.messageId,
+    mime: blob.type || "application/octet-stream",
+    bytes: await blob.arrayBuffer(),
+  });
+}
+
+async function pullChatBlob(href: string, expectedSize: number, userId: string) {
+  const ids = fileIds(href);
+  if (ids && userId) {
+    const saved = await recallChatFile({ userId, side: ids.side, partnerId: ids.partnerId, messageId: ids.messageId });
+    if (saved) {
+      publishBlob(href, { status: "ready", progress: 100, url: URL.createObjectURL(saved) });
+      return;
+    }
+  }
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    publishBlob(href, { status: "error", progress: 0, url: "" });
+    return;
+  }
   try {
     const response = await fetch(href, { credentials: "same-origin" });
     if (!response.ok) {
@@ -46,33 +94,35 @@ async function pullChatBlob(href: string, expectedSize: number) {
     const reader = response.body?.getReader();
     if (!reader) {
       const blob = await response.blob();
+      await keepChatFile(userId, href, blob);
       publishBlob(href, { status: "ready", progress: 100, url: URL.createObjectURL(blob) });
       return;
     }
     const chunks: BlobPart[] = [];
     let loaded = 0;
+    publishBlob(href, { status: "loading", progress: 0, url: "" });
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       chunks.push(value);
       loaded += value.byteLength;
-      const progress = total > 0
-        ? Math.min(99, Math.max(1, Math.round((loaded / total) * 100)))
-        : Math.min(90, Math.max(1, Math.round(loaded / (32 * 1024))));
+      const progress = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
       publishBlob(href, { status: "loading", progress, url: "" });
     }
-    publishBlob(href, { status: "ready", progress: 100, url: URL.createObjectURL(new Blob(chunks, mime ? { type: mime } : undefined)) });
+    const blob = new Blob(chunks, mime ? { type: mime } : undefined);
+    await keepChatFile(userId, href, blob);
+    publishBlob(href, { status: "ready", progress: 100, url: URL.createObjectURL(blob) });
   } catch {
     publishBlob(href, { status: "error", progress: blobJobs.get(href)?.state.progress ?? 0, url: "" });
   }
 }
 
-function listenChatBlob(href: string, expectedSize: number, onChange: (state: BlobState) => void) {
+function listenChatBlob(href: string, expectedSize: number, userId: string, onChange: (state: BlobState) => void) {
   let job = blobJobs.get(href);
   if (!job) {
-    job = { state: { status: "loading", progress: 1, url: "" }, listeners: new Set() };
+    job = { state: { status: "loading", progress: 0, url: "" }, listeners: new Set() };
     blobJobs.set(href, job);
-    void pullChatBlob(href, expectedSize);
+    void pullChatBlob(href, expectedSize, userId);
   }
   onChange(job.state);
   job.listeners.add(onChange);
@@ -85,11 +135,13 @@ function retryChatBlob(href: string) {
   blobJobs.delete(href);
 }
 
-function useChatBlob(href: string | undefined, expectedSize: number, localUrl?: string) {
+function useChatBlob(href: string | undefined, expectedSize: number, userId: string, localUrl?: string) {
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<BlobState>(() => (
-    localUrl ? { status: "ready", progress: 100, url: localUrl } : { status: href ? "loading" : "error", progress: href ? 1 : 0, url: "" }
+    localUrl ? { status: "ready", progress: 100, url: localUrl } : { status: href ? "loading" : "error", progress: 0, url: "" }
   ));
+  const statusRef = useRef(state.status);
+  statusRef.current = state.status;
   useEffect(() => {
     if (localUrl) {
       setState({ status: "ready", progress: 100, url: localUrl });
@@ -99,8 +151,18 @@ function useChatBlob(href: string | undefined, expectedSize: number, localUrl?: 
       setState({ status: "error", progress: 0, url: "" });
       return;
     }
-    return listenChatBlob(href, expectedSize, setState);
-  }, [attempt, expectedSize, href, localUrl]);
+    return listenChatBlob(href, expectedSize, userId, setState);
+  }, [attempt, expectedSize, href, localUrl, userId]);
+  useEffect(() => {
+    if (!href || localUrl) return;
+    const resume = () => {
+      if (statusRef.current !== "error") return;
+      retryChatBlob(href);
+      setAttempt((current) => current + 1);
+    };
+    window.addEventListener("online", resume);
+    return () => window.removeEventListener("online", resume);
+  }, [href, localUrl]);
   return {
     ...state,
     retry() {
@@ -124,8 +186,8 @@ function LoadRing({ progress, caption }: { progress: number; caption: string }) 
   const shown = Math.min(100, Math.max(0, Math.round(progress)));
   return (
     <span className="care-chat-load-ring" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={shown} aria-label={caption}>
-      <b className={shown < 3 ? "is-spin" : undefined} style={{ ["--sent" as string]: `${Math.max(8, shown)}%` }} />
-      <em>{shown > 0 ? `${shown}%` : ""}</em>
+      <b style={{ ["--sent" as string]: `${shown}%` }} />
+      <em>{shown}%</em>
     </span>
   );
 }
@@ -187,12 +249,14 @@ function VoiceNote({
   loading,
   progress,
   onRetry,
+  connected = true,
 }: {
   src?: string;
   mine: boolean;
   loading?: boolean;
   progress?: number;
   onRetry?: () => void;
+  connected?: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -228,7 +292,7 @@ function VoiceNote({
         onClick={toggle}
       >
         {loading ? (
-          <LoadRing progress={progress ?? 1} caption={`Downloading ${progress ?? 0}%`} />
+          <LoadRing progress={progress ?? 0} caption={`Downloading ${progress ?? 0}%`} />
         ) : playing ? (
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" /></svg>
         ) : (
@@ -244,7 +308,7 @@ function VoiceNote({
         <span>
           {loading ? `${progress ?? 0}%` : clock(Math.max(0, Math.floor(playing || time > 0 ? time : length)))}
           {onRetry && !src && !loading ? (
-            <button type="button" className="care-chat-blob-retry" onClick={onRetry}>Retry</button>
+            <button type="button" className="care-chat-blob-retry" onClick={onRetry} disabled={!connected}>{connected ? "Retry" : "Not on this device"}</button>
           ) : null}
         </span>
       </span>
@@ -267,15 +331,19 @@ function VoiceNote({
 function ChatFileView({
   line,
   remoteHref,
+  userId,
+  connected,
   onOpen,
 }: {
   line: ViewLine;
   remoteHref?: string;
+  userId: string;
+  connected: boolean;
   onOpen?: (look: FileLook) => void;
 }) {
   const file = line.file;
   const sending = line.state === "sending";
-  const blob = useChatBlob(sending ? undefined : remoteHref, file?.size ?? 0, line.previewUrl);
+  const blob = useChatBlob(sending ? undefined : remoteHref, file?.size ?? 0, userId, line.previewUrl);
   if (!file) return null;
   const readyUrl = sending ? line.previewUrl : blob.url;
   const look = readyUrl
@@ -285,7 +353,7 @@ function ChatFileView({
       : null;
   const incoming = !sending && blob.status !== "ready";
   const overlay = sending
-    ? <LoadRing progress={line.progress ?? 1} caption={`Sending ${line.progress ?? 0}%`} />
+    ? <LoadRing progress={line.progress ?? 0} caption={`Sending ${line.progress ?? 0}%`} />
     : incoming
       ? <LoadRing progress={blob.progress} caption={`Downloading ${blob.progress}%`} />
       : null;
@@ -298,6 +366,7 @@ function ChatFileView({
         loading={Boolean(overlay)}
         progress={sending ? line.progress : blob.progress}
         onRetry={blob.status === "error" ? blob.retry : undefined}
+        connected={connected}
       />
     );
   }
@@ -310,7 +379,7 @@ function ChatFileView({
         </button>
         {overlay}
         {blob.status === "error" ? (
-          <button type="button" className="care-chat-blob-retry" onClick={blob.retry}>Retry download</button>
+          <button type="button" className="care-chat-blob-retry" onClick={blob.retry} disabled={!connected}>{connected ? "Retry download" : "Not on this device"}</button>
         ) : look && !overlay ? (
           <span className="care-chat-media-actions">
             <button type="button" onClick={() => onOpen?.(look)}>View</button>
@@ -327,7 +396,7 @@ function ChatFileView({
         <strong>{file.name}</strong>
         <em>
           {fileSize(file.size)}
-          {sending ? ` · ${line.progress ? `${line.progress}%` : "Sending"}` : incoming ? ` · ${blob.progress}%` : ""}
+          {sending ? ` · ${line.progress ?? 0}%` : incoming ? ` · ${blob.progress}%` : ""}
         </em>
       </span>
       {overlay ? <span className="care-chat-doc-load">{overlay}</span> : look ? (
@@ -336,15 +405,15 @@ function ChatFileView({
           <button type="button" onClick={() => saveUrl(look.downloadHref, file.name)}>Download</button>
         </span>
       ) : blob.status === "error" ? (
-        <button type="button" className="care-chat-blob-retry" onClick={blob.retry}>Retry</button>
+        <button type="button" className="care-chat-blob-retry" onClick={blob.retry} disabled={!connected}>{connected ? "Retry" : "Not on this device"}</button>
       ) : null}
     </div>
   );
 }
 
-function FileViewer({ look, onClose }: { look: FileLook; onClose: () => void }) {
+function FileViewer({ look, userId, connected, onClose }: { look: FileLook; userId: string; connected: boolean; onClose: () => void }) {
   const local = look.href.startsWith("blob:");
-  const blob = useChatBlob(local ? undefined : look.href, look.size ?? 0, local ? look.href : undefined);
+  const blob = useChatBlob(local ? undefined : look.href, look.size ?? 0, userId, local ? look.href : undefined);
   const src = blob.url || (local ? look.href : "");
   const [text, setText] = useState("");
   const kind = look.mime.startsWith("image/") ? "image" : look.mime.startsWith("video/") ? "video" : look.mime === "application/pdf" ? "pdf" : look.mime === "text/plain" ? "text" : "file";
@@ -373,7 +442,9 @@ function FileViewer({ look, onClose }: { look: FileLook; onClose: () => void }) 
         <button type="button" onClick={onClose}>Close</button>
       </header>
       <div className={`care-chat-viewer-stage${blob.status !== "ready" ? " is-loading" : ""}`}>
-        {blob.status !== "ready" ? (
+        {blob.status === "error" ? (
+          <p className="care-chat-viewer-doc">{connected ? "That file could not be opened." : "Not on this device. It will open after it has been downloaded."}</p>
+        ) : blob.status !== "ready" ? (
           <LoadRing progress={blob.progress} caption={`Downloading ${blob.progress}%`} />
         ) : null}
         {kind === "image" && src ? <img src={src} alt={look.name} /> : null}
@@ -413,17 +484,27 @@ function deliveryLabel(state: Delivery) {
   return "Sent";
 }
 
+function savedLines(lines: ViewLine[]): ChatLine[] {
+  return lines
+    .filter((line) => !line.id.startsWith("local-") && line.state !== "sending" && line.state !== "failed")
+    .map((line) => ({ id: line.id, body: line.body, at: line.at, mine: line.mine, readAt: line.readAt, file: line.file }));
+}
+
 export function CareChat({
   listHref,
   side,
+  userId,
   people,
   active,
 }: {
   listHref: string;
-  side: "patient" | "doctor";
+  side: "patient" | "doctor" | "admin";
+  userId: string;
   people: ChatPerson[];
   active: ActiveChat | null;
 }) {
+  const [roster, setRoster] = useState(people);
+  const [connected, setConnected] = useState(true);
   const [lines, setLines] = useState<ViewLine[]>(() => (active?.messages ?? []).map(viewOf));
   const [conversationId, setConversationId] = useState(active?.conversationId ?? null);
   const [draft, setDraft] = useState("");
@@ -479,7 +560,55 @@ export function CareChat({
     setRecording(false);
     seen.current = new Set(next.map((line) => line.id));
     seenOnServer.current = new Set(next.map((line) => line.id));
-  }, [active]);
+    if (userId && active && navigator.onLine !== false) {
+      void rememberThread({
+        userId,
+        side,
+        partnerId: active.id,
+        conversationId: active.conversationId,
+        messages: active.messages,
+      });
+    }
+    if (!userId || !active || navigator.onLine !== false) return;
+    let stop = false;
+    void recallThread(userId, side, active.id).then((stored) => {
+      if (stop || !stored) return;
+      const chosen = messagesForOffline(active.messages, stored.messages);
+      setLines(chosen.map(viewOf));
+      if (stored.conversationId) setConversationId(stored.conversationId);
+      seen.current = new Set(chosen.map((line) => line.id));
+      seenOnServer.current = new Set(chosen.map((line) => line.id));
+    });
+    return () => {
+      stop = true;
+    };
+  }, [active, side, userId]);
+
+  useEffect(() => {
+    const apply = () => setConnected(navigator.onLine);
+    apply();
+    window.addEventListener("online", apply);
+    window.addEventListener("offline", apply);
+    return () => {
+      window.removeEventListener("online", apply);
+      window.removeEventListener("offline", apply);
+    };
+  }, []);
+
+  useEffect(() => {
+    let stop = false;
+    if (navigator.onLine !== false) {
+      setRoster(people);
+      void rememberPeople(userId, side, people);
+      return;
+    }
+    void recallPeople(userId, side).then((stored) => {
+      if (!stop) setRoster(stored ?? people);
+    });
+    return () => {
+      stop = true;
+    };
+  }, [people, side, userId]);
 
   useEffect(() => {
     if (!openMenu) return;
@@ -534,13 +663,15 @@ export function CareChat({
 
   useEffect(() => {
     if (!active) return;
-    const key = `${side}:${active.id}`;
+    const partnerId = active.id;
+    const openConversation = active.conversationId;
+    const key = `${side}:${partnerId}`;
     let stop = false;
     async function pull() {
       if (stop || document.visibilityState === "hidden" || chatPolls.has(key)) return;
       chatPolls.add(key);
       const confirmed = [...linesRef.current].reverse().find((line) => line.state === "sent" || line.state === "read");
-      const query = new URLSearchParams({ side, partner: active!.id, after: confirmed?.at ?? "" });
+      const query = new URLSearchParams({ side, partner: partnerId, after: confirmed?.at ?? "" });
       try {
         const response = await fetch(`/api/care-chat?${query}`, { cache: "no-store" });
         if (!response.ok || stop) return;
@@ -599,6 +730,15 @@ export function CareChat({
               return { ...line, readAt, state: "read" };
             });
           }
+          if (changed) {
+            void rememberThread({
+              userId,
+              side,
+              partnerId,
+              conversationId: payload.conversationId ?? openConversation,
+              messages: savedLines(next),
+            });
+          }
           return changed ? next : current;
         });
       } catch {
@@ -616,7 +756,7 @@ export function CareChat({
     return () => {
       stop = true;
     };
-  }, [active, side]);
+  }, [active, side, userId]);
 
   async function deliver(localId: string, body: string, file?: File | null) {
     if (!active) return;
@@ -635,7 +775,7 @@ export function CareChat({
           xhr.open("POST", "/api/care-chat");
           xhr.upload.onprogress = (event) => {
             if (!event.lengthComputable) return;
-            const progress = Math.max(1, Math.round((event.loaded / event.total) * 100));
+            const progress = Math.min(100, Math.round((event.loaded / event.total) * 100));
             setLines((current) => current.map((line) => (line.id === localId ? { ...line, progress } : line)));
           };
           xhr.onload = () => resolve(new Response(xhr.responseText, { status: xhr.status, headers: { "content-type": xhr.getResponseHeader("content-type") || "application/json" } }));
@@ -657,10 +797,31 @@ export function CareChat({
       }
       seen.current.add(payload.line.id);
       if (payload.conversationId) setConversationId(payload.conversationId);
-      setLines((current) => current.map((line) => {
-        if (line.id !== localId) return line;
-        return { ...viewOf(payload.line!), previewUrl: line.previewUrl };
-      }));
+      if (file) {
+        void rememberChatFile({
+          userId,
+          side,
+          partnerId: active.id,
+          messageId: payload.line.id,
+          name: file.name,
+          mime: file.type || "application/octet-stream",
+          bytes: await file.arrayBuffer(),
+        });
+      }
+      setLines((current) => {
+        const next = current.map((line) => {
+          if (line.id !== localId) return line;
+          return { ...viewOf(payload.line!), previewUrl: line.previewUrl };
+        });
+        void rememberThread({
+          userId,
+          side,
+          partnerId: active.id,
+          conversationId: payload.conversationId ?? active.conversationId,
+          messages: savedLines(next),
+        });
+        return next;
+      });
     } catch {
       setLines((current) => current.map((line) => (line.id === localId ? { ...line, state: "failed" } : line)));
       setError("The message could not be sent.");
@@ -762,7 +923,18 @@ export function CareChat({
         return;
       }
       seenOnServer.current.delete(line.id);
-      setLines((current) => current.filter((item) => item.id !== line.id));
+      void forgetChatFile(userId, side, active.id, line.id);
+      setLines((current) => {
+        const next = current.filter((item) => item.id !== line.id);
+        void rememberThread({
+          userId,
+          side,
+          partnerId: active.id,
+          conversationId,
+          messages: savedLines(next),
+        });
+        return next;
+      });
       setOpenMenu(null);
     } catch {
       setError("That message could not be deleted.");
@@ -773,7 +945,7 @@ export function CareChat({
 
   function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!active) return;
+    if (!active || active.canReply === false) return;
     const body = draft.trim();
     const file = attachment;
     if (!body && !file) {
@@ -789,7 +961,7 @@ export function CareChat({
       mine: true,
       readAt: null,
       state: "sending",
-      progress: file ? 1 : undefined,
+      progress: file ? 0 : undefined,
       previewUrl,
       pendingFile: file ?? undefined,
       file: file ? { name: file.name, mime: file.type || "application/octet-stream", size: file.size } : null,
@@ -815,6 +987,13 @@ export function CareChat({
       setLines([]);
       seen.current = new Set();
       seenOnServer.current = new Set();
+      void forgetChatPartner(userId, side, active.id).then(() => rememberThread({
+        userId,
+        side,
+        partnerId: active.id,
+        conversationId,
+        messages: [],
+      }));
       setConfirmClear(false);
     } catch {
       setError("The chat could not be cleared.");
@@ -830,13 +1009,14 @@ export function CareChat({
       <aside className="care-chat-list">
         <header>
           <h1>Messages</h1>
-          <p>{side === "patient" ? "Only doctors you have booked." : "Only patients who booked you."}</p>
+          <p>{side === "patient" ? "Only doctors you have booked." : side === "admin" ? "Every patient and doctor." : "Only patients who booked you."}</p>
         </header>
-        {people.length === 0 ? (
+            {!connected ? <p className="care-chat-offline">You are offline. Chats and files you already opened stay on this device.</p> : null}
+            {roster.length === 0 ? (
           <p className="care-chat-empty">{side === "patient" ? "Book a visit to start a conversation. Other doctors stay hidden." : "Patients show up here after they book a visit with you."}</p>
         ) : (
           <ul>
-            {people.map((person) => {
+            {roster.map((person) => {
               const current = person.id === active?.id;
               const unread = current ? 0 : chatUnread.byPartner[person.id] ?? person.unread;
               return (
@@ -891,6 +1071,7 @@ export function CareChat({
                 ) : null}
               </span>
             </header>
+            {!connected ? <p className="care-chat-offline">You are offline. Messages and files already on this device still open.</p> : null}
             {confirmClear ? (
               <div className="care-chat-clear-bar">
                 <p>This clears messages from your chat only. {active.name} will still have them.</p>
@@ -924,6 +1105,8 @@ export function CareChat({
                         <ChatFileView
                           line={line}
                           remoteHref={!line.id.startsWith("local-") ? fileHref(side, active.id, line.id) : undefined}
+                          userId={userId}
+                          connected={connected}
                           onOpen={setViewer}
                         />
                       ) : null}
@@ -940,6 +1123,9 @@ export function CareChat({
                 );
               })}
             </div>
+            {active.canReply === false ? (
+              <p className="care-chat-locked">You can't message an administrator.</p>
+            ) : (
             <form onSubmit={send} className={recording ? "is-recording" : undefined}>
               {attachment ? (
                 <div className="care-chat-file-chip">
@@ -1012,12 +1198,13 @@ export function CareChat({
               {error ? <p role="alert">{error}</p> : null}
               {conversationId ? <span className="sr-only">Conversation open</span> : null}
             </form>
-            {viewer ? <FileViewer look={viewer} onClose={() => setViewer(null)} /> : null}
+            )}
+            {viewer ? <FileViewer look={viewer} userId={userId} connected={connected} onClose={() => setViewer(null)} /> : null}
           </>
         ) : (
           <div className="care-chat-welcome">
-            <h2>{people.length === 0 ? "No conversations yet" : "Choose a person"}</h2>
-            <p>{side === "patient" ? "Open a doctor you have booked to send a private message." : "Open a patient who booked you to reply."}</p>
+            <h2>{roster.length === 0 ? "No conversations yet" : "Choose a person"}</h2>
+            <p>{side === "patient" ? "Open a doctor you have booked to send a private message." : side === "admin" ? "Choose a person to send a message." : "Open a patient who booked you to reply."}</p>
           </div>
         )}
       </div>

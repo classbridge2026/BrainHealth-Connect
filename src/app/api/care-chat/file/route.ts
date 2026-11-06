@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { isPortalAdministrator } from "@/lib/admin/rules";
 import { PATIENT_ROLE_CODE } from "@/lib/auth/constants";
 import { readApiSession } from "@/lib/auth/current-user";
 import { SESSION_COOKIE } from "@/lib/auth/session";
@@ -13,7 +14,7 @@ import { DOCTOR_PORTAL_ROLES } from "@/lib/doctor/session";
 export const dynamic = "force-dynamic";
 
 function sideOf(value: string | null) {
-  return value === "patient" || value === "doctor" ? value : null;
+  return value === "patient" || value === "doctor" || value === "admin" ? value : null;
 }
 
 export async function GET(request: Request) {
@@ -27,7 +28,11 @@ export async function GET(request: Request) {
   if (session.offline) return new NextResponse(null, { status: 503 });
   const user = session.user;
   if (!user || user.status !== "ACTIVE") return new NextResponse(null, { status: 401 });
-  const allowed = side === "patient" ? user.roleCodes.includes(PATIENT_ROLE_CODE) : DOCTOR_PORTAL_ROLES.some((code) => user.roleCodes.includes(code));
+  const allowed = side === "patient"
+    ? user.roleCodes.includes(PATIENT_ROLE_CODE)
+    : side === "admin"
+      ? isPortalAdministrator(user.roleCodes)
+      : DOCTOR_PORTAL_ROLES.some((code) => user.roleCodes.includes(code));
   if (!allowed) return new NextResponse(null, { status: 403 });
   try {
     const file = await openChatFile(prisma, { actorUserId: user.id, side, partnerProfileId: partner, messageId: message }, createPrivateStorage());
@@ -44,7 +49,20 @@ export async function GET(request: Request) {
     );
     const name = file.name.replace(/["\r\n]/g, "");
     const bytes = new Uint8Array(file.bytes);
-    return new NextResponse(bytes, {
+    const chunkSize = 16 * 1024;
+    let offset = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (offset >= bytes.byteLength) {
+          controller.close();
+          return;
+        }
+        const end = Math.min(offset + chunkSize, bytes.byteLength);
+        controller.enqueue(bytes.subarray(offset, end));
+        offset = end;
+      },
+    });
+    return new NextResponse(body, {
       headers: {
         "Content-Type": file.mime || "application/octet-stream",
         "Content-Length": String(bytes.byteLength),

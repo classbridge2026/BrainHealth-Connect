@@ -22,7 +22,7 @@ export function ChatUnreadProvider({
   side,
   children,
 }: {
-  side: "patient" | "doctor";
+  side: "patient" | "doctor" | "admin";
   children: ReactNode;
 }) {
   const [unread, setUnread] = useState<ChatUnreadState>({ total: 0, byPartner: {} });

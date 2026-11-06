@@ -21,7 +21,11 @@ export function careMessageError(body: string): string | null {
   return null;
 }
 
-type ChatDb = Pick<PrismaClient, "appointment" | "patientProfile" | "doctorProfile" | "careConversation" | "careMessage">;
+type ChatDb = Pick<PrismaClient, "appointment" | "patientProfile" | "doctorProfile" | "careConversation" | "careMessage" | "user">;
+
+export type ChatSide = "patient" | "doctor" | "admin";
+
+const STAFF_ROLE_CODES = ["ADMIN", "SUPER_ADMIN"] as const;
 
 export type ChatPerson = {
   id: string;
@@ -32,6 +36,8 @@ export type ChatPerson = {
   unread: number;
   imageUserId: string;
   imageVersion: string | null;
+  /** Patients cannot write to an administrator. Everyone else can reply. */
+  canReply: boolean;
 };
 
 export type ChatFile = {
@@ -137,8 +143,8 @@ export type ChatThread = {
 
 const presenceTouch = new Map<string, number>();
 
-function clearedAtOf(conversation: { patientClearedAt: Date | null; doctorClearedAt: Date | null }, side: "patient" | "doctor") {
-  return side === "patient" ? conversation.patientClearedAt : conversation.doctorClearedAt;
+function clearedAtOf(conversation: { patientClearedAt: Date | null; doctorClearedAt: Date | null }, seat: "patient" | "doctor") {
+  return seat === "patient" ? conversation.patientClearedAt : conversation.doctorClearedAt;
 }
 
 function visibleSince(after: Date | null, clearedAt: Date | null) {
@@ -181,36 +187,140 @@ async function doctorIdFor(db: ChatDb, userId: string) {
   return profile?.id ?? null;
 }
 
-const pairCache = new Map<string, { patientProfileId: string; doctorProfileId: string; until: number }>();
+type ChatPair = { patientProfileId: string; doctorProfileId: string; seat: "patient" | "doctor" };
+
+const pairCache = new Map<string, ChatPair & { until: number }>();
+
+async function isStaffUser(db: ChatDb, userId: string | null | undefined) {
+  if (!userId) return false;
+  const row = await db.user.findFirst({
+    where: { id: userId, roles: { some: { role: { code: { in: [...STAFF_ROLE_CODES] } } } } },
+    select: { id: true },
+  });
+  return Boolean(row);
+}
+
+async function staffUserIds(db: ChatDb, userIds: string[]) {
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (ids.length === 0) return new Set<string>();
+  const rows = await db.user.findMany({
+    where: { id: { in: ids }, roles: { some: { role: { code: { in: [...STAFF_ROLE_CODES] } } } } },
+    select: { id: true },
+  });
+  return new Set(rows.map((row) => row.id));
+}
+
+async function partnerIsStaffDoctor(db: ChatDb, doctorProfileId: string) {
+  const doctor = await db.doctorProfile.findUnique({ where: { id: doctorProfileId }, select: { userId: true } });
+  return isStaffUser(db, doctor?.userId);
+}
+
+async function ensureStaffDoctor(db: ChatDb, userId: string) {
+  const existing = await db.doctorProfile.findUnique({ where: { userId }, select: { id: true } });
+  if (existing) return existing.id;
+  if (!(await isStaffUser(db, userId))) return null;
+  const created = await db.doctorProfile.create({
+    data: { userId, fullName: "Administrator", displayName: "Administrator", verificationStatus: "DRAFT" },
+    select: { id: true },
+  });
+  return created.id;
+}
+
+async function ensureStaffPatient(db: ChatDb, userId: string) {
+  const existing = await db.patientProfile.findUnique({ where: { userId }, select: { id: true } });
+  if (existing) return existing.id;
+  if (!(await isStaffUser(db, userId))) return null;
+  const created = await db.patientProfile.create({
+    data: { userId, fullName: "Administrator", gender: "PREFER_NOT_TO_SAY", archivedAt: new Date() },
+    select: { id: true },
+  });
+  return created.id;
+}
+
+async function messageablePerson(db: ChatDb, userId: string) {
+  return db.user.findFirst({
+    where: {
+      id: userId,
+      status: "ACTIVE",
+      deletedAt: null,
+      OR: [{ patientProfile: { is: { archivedAt: null } } }, { doctorProfile: { isNot: null } }],
+    },
+    select: {
+      id: true,
+      patientProfile: { select: { id: true, archivedAt: true } },
+      doctorProfile: { select: { id: true } },
+    },
+  });
+}
+
+async function adminPair(db: ChatDb, adminUserId: string, personUserId: string, create: boolean): Promise<ChatPair | null> {
+  if (!personUserId || personUserId === adminUserId) return null;
+  if (!(await isStaffUser(db, adminUserId))) return null;
+  const person = await messageablePerson(db, personUserId);
+  if (!person) return null;
+  if (person.patientProfile && !person.patientProfile.archivedAt) {
+    const doctorProfileId = create ? await ensureStaffDoctor(db, adminUserId) : await doctorIdFor(db, adminUserId);
+    if (!doctorProfileId) return null;
+    return { patientProfileId: person.patientProfile.id, doctorProfileId, seat: "doctor" };
+  }
+  if (person.doctorProfile) {
+    const patientProfileId = create ? await ensureStaffPatient(db, adminUserId) : await patientIdFor(db, adminUserId);
+    if (!patientProfileId) return null;
+    return { patientProfileId, doctorProfileId: person.doctorProfile.id, seat: "patient" };
+  }
+  return null;
+}
 
 export async function resolveChatPair(
   db: ChatDb,
-  input: { actorUserId: string; side: "patient" | "doctor"; partnerProfileId: string },
+  input: { actorUserId: string; side: ChatSide; partnerProfileId: string },
+  purpose: "read" | "send" = "read",
 ) {
-  const key = `${input.actorUserId}:${input.side}:${input.partnerProfileId}`;
+  const key = `${purpose}:${input.actorUserId}:${input.side}:${input.partnerProfileId}`;
   const cached = pairCache.get(key);
-  if (cached && cached.until > Date.now()) return { patientProfileId: cached.patientProfileId, doctorProfileId: cached.doctorProfileId };
-  const pair = await lookupChatPair(db, input);
+  if (cached && cached.until > Date.now()) {
+    return { patientProfileId: cached.patientProfileId, doctorProfileId: cached.doctorProfileId, seat: cached.seat };
+  }
+  const pair = await lookupChatPair(db, input, purpose);
   if (pair) pairCache.set(key, { ...pair, until: Date.now() + 60_000 });
   return pair;
 }
 
 async function lookupChatPair(
   db: ChatDb,
-  input: { actorUserId: string; side: "patient" | "doctor"; partnerProfileId: string },
-) {
+  input: { actorUserId: string; side: ChatSide; partnerProfileId: string },
+  purpose: "read" | "send",
+): Promise<ChatPair | null> {
+  if (input.side === "admin") return adminPair(db, input.actorUserId, input.partnerProfileId, purpose === "send");
   if (input.side === "patient") {
     const patientProfileId = await patientIdFor(db, input.actorUserId);
     if (!patientProfileId) return null;
+    if (await partnerIsStaffDoctor(db, input.partnerProfileId)) {
+      if (purpose === "send") return null;
+      const existing = await db.careConversation.findUnique({
+        where: { patientProfileId_doctorProfileId: { patientProfileId, doctorProfileId: input.partnerProfileId } },
+        select: { id: true },
+      });
+      return existing ? { patientProfileId, doctorProfileId: input.partnerProfileId, seat: "patient" } : null;
+    }
     const allowed = await bookedPair(db, patientProfileId, input.partnerProfileId);
     if (!allowed) return null;
-    return { patientProfileId, doctorProfileId: input.partnerProfileId };
+    return { patientProfileId, doctorProfileId: input.partnerProfileId, seat: "patient" };
   }
   const doctorProfileId = await doctorIdFor(db, input.actorUserId);
   if (!doctorProfileId) return null;
-  const allowed = await bookedPair(db, input.partnerProfileId, doctorProfileId);
-  if (!allowed) return null;
-  return { patientProfileId: input.partnerProfileId, doctorProfileId };
+  const patient = await db.patientProfile.findUnique({
+    where: { id: input.partnerProfileId },
+    select: { id: true, archivedAt: true, userId: true },
+  });
+  if (!patient) return null;
+  const booked = await bookedPair(db, patient.id, doctorProfileId);
+  if (booked) return { patientProfileId: patient.id, doctorProfileId, seat: "doctor" };
+  if ((await isStaffUser(db, input.actorUserId)) && !patient.archivedAt) {
+    return { patientProfileId: patient.id, doctorProfileId, seat: "doctor" };
+  }
+  if (await isStaffUser(db, patient.userId)) return { patientProfileId: patient.id, doctorProfileId, seat: "doctor" };
+  return null;
 }
 
 export async function listPatientChats(db: ChatDb, userId: string, now = new Date()): Promise<ChatPerson[]> {
@@ -233,7 +343,7 @@ export async function listPatientChats(db: ChatDb, userId: string, now = new Dat
       },
     },
   });
-  const doctors = new Map<string, { name: string; specialty: string; imageUserId: string; imageVersion: string | null; next: Date | null; last: Date | null }>();
+  const doctors = new Map<string, { name: string; specialty: string; imageUserId: string; imageVersion: string | null; next: Date | null; last: Date | null; canReply: boolean }>();
   for (const visit of visits) {
     const current = doctors.get(visit.doctorProfileId);
     const next = visit.startsAt.getTime() >= now.getTime() ? visit.startsAt : current?.next ?? null;
@@ -245,15 +355,49 @@ export async function listPatientChats(db: ChatDb, userId: string, now = new Dat
       imageVersion: visit.doctor.user.profileImageUpdatedAt?.toISOString() ?? null,
       next: current?.next ?? next,
       last,
+      canReply: true,
+    });
+  }
+  const staff = await staffUserIds(db, [...doctors.values()].map((doctor) => doctor.imageUserId));
+  for (const [id, doctor] of doctors) {
+    if (staff.has(doctor.imageUserId)) doctors.delete(id);
+  }
+  const fromStaff = await db.careConversation.findMany({
+    where: {
+      patientProfileId,
+      doctor: { user: { roles: { some: { role: { code: { in: [...STAFF_ROLE_CODES] } } } } } },
+    },
+    select: {
+      doctorProfileId: true,
+      doctor: {
+        select: {
+          displayName: true,
+          userId: true,
+          user: { select: { profileImageUpdatedAt: true } },
+        },
+      },
+    },
+  });
+  for (const thread of fromStaff) {
+    if (doctors.has(thread.doctorProfileId)) continue;
+    doctors.set(thread.doctorProfileId, {
+      name: thread.doctor.displayName,
+      specialty: "Administrator",
+      imageUserId: thread.doctor.userId,
+      imageVersion: thread.doctor.user.profileImageUpdatedAt?.toISOString() ?? null,
+      next: null,
+      last: now,
+      canReply: false,
     });
   }
   return decorate(db, userId, patientProfileId, [...doctors.entries()].map(([id, doctor]) => ({
     id,
     name: doctor.name,
-    detail: visitDetail(doctor.next ?? doctor.last ?? now, now),
+    detail: doctor.canReply ? visitDetail(doctor.next ?? doctor.last ?? now, now) : "Messages from the clinic",
     specialty: doctor.specialty,
     imageUserId: doctor.imageUserId,
     imageVersion: doctor.imageVersion,
+    canReply: doctor.canReply,
   })), "patient");
 }
 
@@ -282,6 +426,26 @@ export async function listDoctorChats(db: ChatDb, userId: string, now = new Date
       last,
     });
   }
+  const fromStaff = await db.careConversation.findMany({
+    where: {
+      doctorProfileId,
+      patient: { user: { roles: { some: { role: { code: { in: [...STAFF_ROLE_CODES] } } } } } },
+    },
+    select: {
+      patientProfileId: true,
+      patient: { select: { fullName: true, userId: true, user: { select: { profileImageUpdatedAt: true } } } },
+    },
+  });
+  for (const thread of fromStaff) {
+    if (patients.has(thread.patientProfileId)) continue;
+    patients.set(thread.patientProfileId, {
+      name: thread.patient.fullName,
+      imageUserId: thread.patient.userId,
+      imageVersion: thread.patient.user.profileImageUpdatedAt?.toISOString() ?? null,
+      next: null,
+      last: now,
+    });
+  }
   return decorate(db, userId, doctorProfileId, [...patients.entries()].map(([id, patient]) => ({
     id,
     name: patient.name,
@@ -292,11 +456,74 @@ export async function listDoctorChats(db: ChatDb, userId: string, now = new Date
   })), "doctor");
 }
 
+export async function listAdminChats(db: ChatDb, adminUserId: string): Promise<ChatPerson[]> {
+  if (!(await isStaffUser(db, adminUserId))) return [];
+  const [users, threads] = await Promise.all([
+    db.user.findMany({
+      where: {
+        id: { not: adminUserId },
+        status: "ACTIVE",
+        deletedAt: null,
+        OR: [{ patientProfile: { is: { archivedAt: null } } }, { doctorProfile: { isNot: null } }],
+      },
+      select: {
+        id: true,
+        email: true,
+        profileImageUpdatedAt: true,
+        patientProfile: { select: { fullName: true, archivedAt: true } },
+        doctorProfile: { select: { displayName: true } },
+      },
+      orderBy: { email: "asc" },
+    }),
+    db.careConversation.findMany({
+      where: { OR: [{ doctor: { userId: adminUserId } }, { patient: { userId: adminUserId } }] },
+      select: {
+        id: true,
+        lastMessageAt: true,
+        patientClearedAt: true,
+        doctorClearedAt: true,
+        patient: { select: { userId: true } },
+        doctor: { select: { userId: true } },
+        messages: { orderBy: { createdAt: "desc" }, take: 1, select: { body: true, createdAt: true, senderUserId: true, readAt: true } },
+      },
+    }),
+  ]);
+  const byUser = new Map(threads.flatMap((thread) => {
+    const personId = thread.doctor.userId === adminUserId ? thread.patient.userId : thread.doctor.userId;
+    if (!personId || personId === adminUserId) return [];
+    return [[personId, thread] as const];
+  }));
+  return users
+    .map((person) => {
+      const patientName = person.patientProfile && !person.patientProfile.archivedAt ? person.patientProfile.fullName : null;
+      const name = patientName || person.doctorProfile?.displayName || person.email;
+      const kind = patientName ? "Patient" : "Doctor";
+      const thread = byUser.get(person.id);
+      const seat = thread && thread.doctor.userId === adminUserId ? "doctor" : "patient";
+      const latest = thread?.messages[0];
+      const clearedAt = thread ? clearedAtOf(thread, seat as "patient" | "doctor") : null;
+      const visible = latest && (!clearedAt || latest.createdAt > clearedAt) ? latest : null;
+      const unread = visible && visible.senderUserId !== adminUserId && !visible.readAt ? 1 : 0;
+      return {
+        id: person.id,
+        name,
+        detail: kind,
+        preview: visible?.body ?? null,
+        when: (visible?.createdAt ?? thread?.lastMessageAt)?.toISOString() ?? null,
+        unread,
+        imageUserId: person.id,
+        imageVersion: person.profileImageUpdatedAt?.toISOString() ?? null,
+        canReply: true,
+      };
+    })
+    .sort((a, b) => (b.when ?? "").localeCompare(a.when ?? "") || a.name.localeCompare(b.name));
+}
+
 async function decorate(
   db: ChatDb,
   userId: string,
   ownerProfileId: string,
-  people: Array<{ id: string; name: string; detail: string; specialty: string; imageUserId: string; imageVersion: string | null }>,
+  people: Array<{ id: string; name: string; detail: string; specialty: string; imageUserId: string; imageVersion: string | null; canReply?: boolean }>,
   side: "patient" | "doctor",
 ): Promise<ChatPerson[]> {
   if (people.length === 0) return [];
@@ -332,6 +559,7 @@ async function decorate(
         unread: conversation ? unread.get(conversation.id) ?? 0 : 0,
         imageUserId: person.imageUserId,
         imageVersion: person.imageVersion,
+        canReply: person.canReply !== false,
       };
     })
     .sort((a, b) => (b.when ?? "").localeCompare(a.when ?? "") || a.name.localeCompare(b.name));
@@ -347,8 +575,9 @@ const unreadMemo = new Map<string, { until: number; value: ChatUnread }>();
 export async function unreadCareChats(
   db: ChatDb,
   userId: string,
-  side: "patient" | "doctor",
+  side: ChatSide,
 ): Promise<ChatUnread> {
+  if (side === "admin") return unreadAdminChats(db, userId);
   const empty: ChatUnread = { total: 0, byPartner: [] };
   const memoKey = `${side}:${userId}`;
   const memo = unreadMemo.get(memoKey);
@@ -407,6 +636,29 @@ type SqlClient = {
   $queryRaw: PrismaClient["$queryRaw"];
   $executeRaw: PrismaClient["$executeRaw"];
 };
+
+async function unreadAdminChats(db: ChatDb, userId: string): Promise<ChatUnread> {
+  const empty: ChatUnread = { total: 0, byPartner: [] };
+  if (!(await isStaffUser(db, userId))) return empty;
+  const conversations = await db.careConversation.findMany({
+    where: { OR: [{ doctor: { userId } }, { patient: { userId } }] },
+    select: { id: true, patient: { select: { userId: true } }, doctor: { select: { userId: true } } },
+  });
+  if (conversations.length === 0) return empty;
+  const counts = await db.careMessage.groupBy({
+    by: ["conversationId"],
+    where: { conversationId: { in: conversations.map((row) => row.id) }, senderUserId: { not: userId }, readAt: null },
+    _count: { _all: true },
+  });
+  const countOf = new Map(counts.map((row) => [row.conversationId, row._count._all]));
+  const byPartner = conversations.flatMap((conversation) => {
+    const unread = countOf.get(conversation.id) ?? 0;
+    if (unread < 1) return [];
+    const id = conversation.doctor.userId === userId ? conversation.patient.userId : conversation.doctor.userId;
+    return [{ id, unread }];
+  });
+  return { total: byPartner.reduce((sum, row) => sum + row.unread, 0), byPartner };
+}
 
 async function unreadByConversation(db: ChatDb, userId: string, side: "patient" | "doctor", conversationIds: string[]) {
   const unread = new Map<string, number>();
@@ -517,11 +769,26 @@ export async function noteChatPresence(db: ChatDb, userId: string) {
   }
 }
 
+async function userPresence(db: ChatDb, userId: string): Promise<{ online: boolean; seenAt: string | null }> {
+  const client = sqlClient(db);
+  if (!client) return { online: false, seenAt: null };
+  try {
+    const rows = await client.$queryRaw<Array<{ seenAt: Date | null; online: boolean }>>`
+      SELECT "chatSeenAt" AS "seenAt", "chatSeenAt" > NOW() - INTERVAL '70 seconds' AS online
+      FROM "User" WHERE id = ${userId}::uuid`;
+    const row = rows[0];
+    return { online: Boolean(row?.online), seenAt: iso(row?.seenAt ?? null) };
+  } catch {
+    return { online: false, seenAt: null };
+  }
+}
+
 export async function partnerPresence(
   db: ChatDb,
-  side: "patient" | "doctor",
+  side: ChatSide,
   partnerProfileId: string,
 ): Promise<{ online: boolean; seenAt: string | null }> {
+  if (side === "admin") return userPresence(db, partnerProfileId);
   const client = sqlClient(db);
   if (!client) return { online: false, seenAt: null };
   try {
@@ -543,20 +810,25 @@ export async function partnerPresence(
 
 export async function readChatThread(
   db: ChatDb,
-  input: { actorUserId: string; side: "patient" | "doctor"; partnerProfileId: string },
+  input: { actorUserId: string; side: ChatSide; partnerProfileId: string },
 ): Promise<ChatThread | null> {
-  const pair = await resolveChatPair(db, input);
-  if (!pair) return null;
+  const pair = await resolveChatPair(db, input, "read");
+  if (!pair) {
+    if (input.side !== "admin") return null;
+    const person = await messageablePerson(db, input.partnerProfileId);
+    if (!person || !(await isStaffUser(db, input.actorUserId))) return null;
+    return { conversationId: null, messages: [], ...(await userPresence(db, input.partnerProfileId)) };
+  }
   const [conversation, presence] = await Promise.all([
     db.careConversation.findUnique({
-      where: { patientProfileId_doctorProfileId: pair },
+      where: { patientProfileId_doctorProfileId: { patientProfileId: pair.patientProfileId, doctorProfileId: pair.doctorProfileId } },
       select: { id: true },
     }),
     partnerPresence(db, input.side, input.partnerProfileId),
   ]);
   if (!conversation) return { conversationId: null, messages: [], ...presence };
   const stamp = (await clearedById(db, [conversation.id])).get(conversation.id);
-  const clearedAt = stamp ? clearedAtOf(stamp, input.side) : null;
+  const clearedAt = stamp ? clearedAtOf(stamp, pair.seat) : null;
   const visible = clearedAt ? { createdAt: { gt: clearedAt } } : {};
   await db.careMessage.updateMany({
     where: { conversationId: conversation.id, senderUserId: { not: input.actorUserId }, readAt: null, ...visible },
@@ -575,8 +847,10 @@ export async function readChatThread(
   };
 }
 
-function denied(side: "patient" | "doctor") {
-  return side === "patient" ? "You can message only a doctor you have booked." : "You can reply only to a patient who booked you.";
+function denied(side: ChatSide) {
+  if (side === "patient") return "You can message only a doctor you have booked.";
+  if (side === "admin") return "That person is not available to message.";
+  return "You can reply only to a patient who booked you.";
 }
 
 async function sendCareMessageFast(
@@ -594,16 +868,36 @@ async function sendCareMessageFast(
             WHERE a."patientProfileId" = p.id
               AND a."doctorProfileId" = ${input.partnerProfileId}::uuid
               AND a.status::text IN (${statuses})
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM "DoctorProfile" d
+            JOIN "UserRole" ur ON ur."userId" = d."userId"
+            JOIN "Role" r ON r.id = ur."roleId"
+            WHERE d.id = ${input.partnerProfileId}::uuid
+              AND r.code IN ('ADMIN', 'SUPER_ADMIN')
           )`
     : Prisma.sql`
         SELECT ${input.partnerProfileId}::uuid AS "patientProfileId", d.id AS "doctorProfileId"
         FROM "DoctorProfile" d
         WHERE d."userId" = ${input.actorUserId}::uuid
-          AND EXISTS (
-            SELECT 1 FROM "Appointment" a
-            WHERE a."patientProfileId" = ${input.partnerProfileId}::uuid
-              AND a."doctorProfileId" = d.id
-              AND a.status::text IN (${statuses})
+          AND (
+            EXISTS (
+              SELECT 1 FROM "Appointment" a
+              WHERE a."patientProfileId" = ${input.partnerProfileId}::uuid
+                AND a."doctorProfileId" = d.id
+                AND a.status::text IN (${statuses})
+            )
+            OR EXISTS (
+              SELECT 1 FROM "UserRole" ur
+              JOIN "Role" r ON r.id = ur."roleId"
+              WHERE ur."userId" = d."userId" AND r.code IN ('ADMIN', 'SUPER_ADMIN')
+            )
+            OR EXISTS (
+              SELECT 1 FROM "PatientProfile" p
+              JOIN "UserRole" ur ON ur."userId" = p."userId"
+              JOIN "Role" r ON r.id = ur."roleId"
+              WHERE p.id = ${input.partnerProfileId}::uuid AND r.code IN ('ADMIN', 'SUPER_ADMIN')
+            )
           )`;
   const rows = await db.$queryRaw<Array<{ id: string; body: string; createdAt: Date; conversationId: string }>>(Prisma.sql`
     WITH touch AS (
@@ -637,26 +931,30 @@ async function sendCareMessageFast(
 
 export async function sendCareMessage(
   db: ChatDb,
-  input: { actorUserId: string; side: "patient" | "doctor"; partnerProfileId: string; body: string },
+  input: { actorUserId: string; side: ChatSide; partnerProfileId: string; body: string },
 ): Promise<{ ok: true; conversationId: string; message: ChatLine } | { ok: false; message: string }> {
   const textError = careMessageError(input.body);
   if (textError) return { ok: false, message: textError };
   const body = input.body.trim();
+  if (input.side === "patient" && await partnerIsStaffDoctor(db, input.partnerProfileId)) {
+    return { ok: false, message: "You can't message an administrator." };
+  }
   const client = sqlClient(db);
-  if (client) {
+  if (client && (input.side === "patient" || input.side === "doctor")) {
     try {
-      const fast = await sendCareMessageFast(client, { ...input, body });
+      const fast = await sendCareMessageFast(client, { ...input, body, side: input.side });
       if (fast) return fast;
     } catch {
       // The query path can fail on an older database. The regular write still sends.
     }
   }
-  const pair = await resolveChatPair(db, input);
+  const pair = await resolveChatPair(db, input, "send");
   if (!pair) return { ok: false, message: denied(input.side) };
   const now = new Date();
+  const ids = { patientProfileId: pair.patientProfileId, doctorProfileId: pair.doctorProfileId };
   const conversation = await db.careConversation.upsert({
-    where: { patientProfileId_doctorProfileId: pair },
-    create: { ...pair, lastMessageAt: now },
+    where: { patientProfileId_doctorProfileId: ids },
+    create: { ...ids, lastMessageAt: now },
     update: { lastMessageAt: now },
     select: { id: true },
   });
@@ -693,20 +991,45 @@ async function readChatSinceFast(
   const statuses = Prisma.join(CHAT_APPOINTMENT_STATUSES);
   const booked = input.side === "patient"
     ? Prisma.sql`
-        SELECT EXISTS (
-          SELECT 1 FROM "Appointment" a
-          JOIN "PatientProfile" p ON p.id = a."patientProfileId"
-          WHERE p."userId" = ${input.actorUserId}::uuid
-            AND a."doctorProfileId" = ${input.partnerProfileId}::uuid
-            AND a.status::text IN (${statuses})
+        SELECT (
+          EXISTS (
+            SELECT 1 FROM "Appointment" a
+            JOIN "PatientProfile" p ON p.id = a."patientProfileId"
+            WHERE p."userId" = ${input.actorUserId}::uuid
+              AND a."doctorProfileId" = ${input.partnerProfileId}::uuid
+              AND a.status::text IN (${statuses})
+          )
+          OR EXISTS (
+            SELECT 1 FROM "CareConversation" c
+            JOIN "PatientProfile" p ON p.id = c."patientProfileId"
+            JOIN "DoctorProfile" d ON d.id = c."doctorProfileId"
+            JOIN "UserRole" ur ON ur."userId" = d."userId"
+            JOIN "Role" r ON r.id = ur."roleId"
+            WHERE p."userId" = ${input.actorUserId}::uuid
+              AND c."doctorProfileId" = ${input.partnerProfileId}::uuid
+              AND r.code IN ('ADMIN', 'SUPER_ADMIN')
+          )
         ) AS ok`
     : Prisma.sql`
-        SELECT EXISTS (
-          SELECT 1 FROM "Appointment" a
-          JOIN "DoctorProfile" d ON d.id = a."doctorProfileId"
-          WHERE d."userId" = ${input.actorUserId}::uuid
-            AND a."patientProfileId" = ${input.partnerProfileId}::uuid
-            AND a.status::text IN (${statuses})
+        SELECT (
+          EXISTS (
+            SELECT 1 FROM "Appointment" a
+            JOIN "DoctorProfile" d ON d.id = a."doctorProfileId"
+            WHERE d."userId" = ${input.actorUserId}::uuid
+              AND a."patientProfileId" = ${input.partnerProfileId}::uuid
+              AND a.status::text IN (${statuses})
+          )
+          OR EXISTS (
+            SELECT 1 FROM "UserRole" ur
+            JOIN "Role" r ON r.id = ur."roleId"
+            WHERE ur."userId" = ${input.actorUserId}::uuid AND r.code IN ('ADMIN', 'SUPER_ADMIN')
+          )
+          OR EXISTS (
+            SELECT 1 FROM "PatientProfile" p
+            JOIN "UserRole" ur ON ur."userId" = p."userId"
+            JOIN "Role" r ON r.id = ur."roleId"
+            WHERE p.id = ${input.partnerProfileId}::uuid AND r.code IN ('ADMIN', 'SUPER_ADMIN')
+          )
         ) AS ok`;
   const partner = input.side === "patient"
     ? Prisma.sql`
@@ -801,22 +1124,27 @@ async function readChatSinceFast(
 
 export async function readChatSince(
   db: ChatDb,
-  input: { actorUserId: string; side: "patient" | "doctor"; partnerProfileId: string; after: string | null },
+  input: { actorUserId: string; side: ChatSide; partnerProfileId: string; after: string | null },
 ): Promise<{ ok: true; conversationId: string | null; messages: ChatLine[]; reads: Array<{ id: string; readAt: string }>; ids: string[]; online: boolean; seenAt: string | null } | { ok: false }> {
   const client = sqlClient(db);
-  if (client) {
+  if (client && (input.side === "patient" || input.side === "doctor")) {
     try {
-      return await readChatSinceFast(client, input);
+      return await readChatSinceFast(client, { ...input, side: input.side });
     } catch (error) {
       console.error("chat_sync_failed", error instanceof Error ? error.message : "unknown");
     }
   }
   void noteChatPresence(db, input.actorUserId);
-  const pair = await resolveChatPair(db, input);
-  if (!pair) return { ok: false };
+  const pair = await resolveChatPair(db, input, "read");
+  if (!pair) {
+    if (input.side !== "admin") return { ok: false };
+    const person = await messageablePerson(db, input.partnerProfileId);
+    if (!person || !(await isStaffUser(db, input.actorUserId))) return { ok: false };
+    return { ok: true, conversationId: null, messages: [], reads: [], ids: [], ...(await userPresence(db, input.partnerProfileId)) };
+  }
   const [conversation, presence] = await Promise.all([
     db.careConversation.findUnique({
-      where: { patientProfileId_doctorProfileId: pair },
+      where: { patientProfileId_doctorProfileId: { patientProfileId: pair.patientProfileId, doctorProfileId: pair.doctorProfileId } },
       select: { id: true },
     }),
     partnerPresence(db, input.side, input.partnerProfileId),
@@ -824,7 +1152,7 @@ export async function readChatSince(
   if (!conversation) return { ok: true, conversationId: null, messages: [], reads: [], ids: [], ...presence };
   const after = input.after ? new Date(input.after) : null;
   const stamp = (await clearedById(db, [conversation.id])).get(conversation.id);
-  const clearedAt = stamp ? clearedAtOf(stamp, input.side) : null;
+  const clearedAt = stamp ? clearedAtOf(stamp, pair.seat) : null;
   const since = visibleSince(after && !Number.isNaN(after.getTime()) ? after : null, clearedAt);
   const visible = since ? { createdAt: { gt: since } } : {};
   const keptWhere = { conversationId: conversation.id, ...(clearedAt ? { createdAt: { gt: clearedAt } } : {}) };
@@ -866,7 +1194,7 @@ export async function readChatSince(
 
 export async function sendCareFile(
   db: ChatDb,
-  input: { actorUserId: string; side: "patient" | "doctor"; partnerProfileId: string; body: string; file: { name: string; mime: string; bytes: Buffer } },
+  input: { actorUserId: string; side: ChatSide; partnerProfileId: string; body: string; file: { name: string; mime: string; bytes: Buffer } },
   storage: PrivateObjectStorage = createPrivateStorage(),
 ): Promise<{ ok: true; conversationId: string; message: ChatLine } | { ok: false; message: string }> {
   const mime = chatFileMime(input.file.name, input.file.mime);
@@ -874,15 +1202,19 @@ export async function sendCareFile(
   if (fileError) return { ok: false, message: fileError };
   const caption = input.body.trim();
   if (caption.length > CARE_MESSAGE_MAX) return { ok: false, message: "Use 2000 characters or fewer." };
+  if (input.side === "patient" && await partnerIsStaffDoctor(db, input.partnerProfileId)) {
+    return { ok: false, message: "You can't message an administrator." };
+  }
   const client = sqlClient(db);
   if (!client) return { ok: false, message: "Files cannot be sent right now." };
-  const pair = await resolveChatPair(db, input);
+  const pair = await resolveChatPair(db, input, "send");
   if (!pair) return { ok: false, message: denied(input.side) };
   const name = cleanChatFileName(input.file.name);
   const now = new Date();
+  const ids = { patientProfileId: pair.patientProfileId, doctorProfileId: pair.doctorProfileId };
   const conversation = await db.careConversation.upsert({
-    where: { patientProfileId_doctorProfileId: pair },
-    create: { ...pair, lastMessageAt: now },
+    where: { patientProfileId_doctorProfileId: ids },
+    create: { ...ids, lastMessageAt: now },
     update: { lastMessageAt: now },
     select: { id: true },
   });
@@ -933,7 +1265,7 @@ export async function sendCareFile(
 
 export async function deleteCareMessage(
   db: ChatDb,
-  input: { actorUserId: string; side: "patient" | "doctor"; partnerProfileId: string; messageId: string },
+  input: { actorUserId: string; side: ChatSide; partnerProfileId: string; messageId: string },
   storage: PrivateObjectStorage = createPrivateStorage(),
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const pair = await resolveChatPair(db, input);
@@ -970,18 +1302,18 @@ export async function deleteCareMessage(
 
 export async function clearCareChat(
   db: ChatDb,
-  input: { actorUserId: string; side: "patient" | "doctor"; partnerProfileId: string },
+  input: { actorUserId: string; side: ChatSide; partnerProfileId: string },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const pair = await resolveChatPair(db, input);
   if (!pair) return { ok: false, message: denied(input.side) };
   const conversation = await db.careConversation.findUnique({
-    where: { patientProfileId_doctorProfileId: pair },
+    where: { patientProfileId_doctorProfileId: { patientProfileId: pair.patientProfileId, doctorProfileId: pair.doctorProfileId } },
     select: { id: true },
   });
   if (!conversation) return { ok: true };
   const client = sqlClient(db);
   if (!client) return { ok: false, message: "The chat could not be cleared." };
-  if (input.side === "patient") {
+  if (pair.seat === "patient") {
     await client.$executeRaw`UPDATE "CareConversation" SET "patientClearedAt" = NOW(), "updatedAt" = NOW() WHERE id = ${conversation.id}::uuid`;
   } else {
     await client.$executeRaw`UPDATE "CareConversation" SET "doctorClearedAt" = NOW(), "updatedAt" = NOW() WHERE id = ${conversation.id}::uuid`;
@@ -991,7 +1323,7 @@ export async function clearCareChat(
 
 export async function openChatFile(
   db: ChatDb,
-  input: { actorUserId: string; side: "patient" | "doctor"; partnerProfileId: string; messageId: string },
+  input: { actorUserId: string; side: ChatSide; partnerProfileId: string; messageId: string },
   storage: PrivateObjectStorage = createPrivateStorage(),
 ): Promise<{ name: string; mime: string; bytes: Uint8Array } | null> {
   const pair = await resolveChatPair(db, input);
@@ -1005,7 +1337,7 @@ export async function openChatFile(
       AND c."patientProfileId" = ${pair.patientProfileId}::uuid
       AND c."doctorProfileId" = ${pair.doctorProfileId}::uuid
       AND m."attachmentName" IS NOT NULL
-      AND ${visibleSql(input.side)}
+      AND ${visibleSql(pair.seat)}
   `;
   const row = rows[0];
   if (!row?.name || !row.mime) return null;

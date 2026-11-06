@@ -25,6 +25,7 @@ export default async function PatientMessageThreadPage({ params }: { params: Pro
       <CareChat
         listHref="/patient/messages"
         side="patient"
+        userId={user.id}
         people={people}
         active={{
           id: person.id,
@@ -36,6 +37,7 @@ export default async function PatientMessageThreadPage({ params }: { params: Pro
           messages: thread.messages,
           online: thread.online,
           seenAt: thread.seenAt,
+          canReply: person.canReply,
         }}
       />
     );

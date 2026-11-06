@@ -5,6 +5,7 @@ import "./admin.css";
 import { ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { AdminShell } from "@/components/admin/admin-shell";
+import { ChatUnreadProvider } from "@/components/care-chat/unread";
 import { getSystemName } from "@/lib/brand/system-name";
 import { rememberFor } from "@/lib/db/remember";
 import { isRecordsOffline } from "@/lib/db/offline";
@@ -46,16 +47,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const { email, imageVersion } = account;
   const unreadNotifications = notices.unread;
   return (
-    <AdminShell
-      userId={user.id}
-      email={email}
-      systemName={systemName}
-      imageVersion={imageVersion}
-      roleLabel={user.roleCodes.includes(SUPER_ADMIN_ROLE_CODE) ? "Super administrator" : "Administrator"}
-      unreadNotifications={unreadNotifications}
-      notices={notices.items}
-    >
-      {children}
-    </AdminShell>
+    <ChatUnreadProvider side="admin">
+      <AdminShell
+        userId={user.id}
+        email={email}
+        systemName={systemName}
+        imageVersion={imageVersion}
+        roleLabel={user.roleCodes.includes(SUPER_ADMIN_ROLE_CODE) ? "Super administrator" : "Administrator"}
+        unreadNotifications={unreadNotifications}
+        notices={notices.items}
+      >
+        {children}
+      </AdminShell>
+    </ChatUnreadProvider>
   );
 }

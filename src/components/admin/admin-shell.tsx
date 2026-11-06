@@ -10,6 +10,8 @@ import { LiveSearchInput } from "@/components/live-query";
 import { NotificationBell, type BellItem } from "@/components/notifications/bell";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { signOutAction } from "@/app/admin/account-actions";
+import { claimChatDevice, forgetChatDevice } from "@/lib/care-chat/device-copy";
+import { ChatCount, useChatUnread } from "@/components/care-chat/unread";
 import { AdminNoticesContext } from "./admin-notices";
 import { AdminIcon, type AdminIconName } from "./admin-icons";
 
@@ -23,6 +25,7 @@ const groups: Array<{ label: string; items: Item[] }> = [
     label: "People and access",
     items: [
       { href: "/admin/users", label: "All users", icon: "users" },
+      { href: "/admin/messages", label: "Messages", icon: "messages" },
       { href: "/admin/patients", label: "Patients", icon: "patient" },
       { href: "/admin/doctors", label: "Doctors", icon: "doctor" },
       { href: "/admin/roles", label: "Administrators and roles", icon: "shield" },
@@ -64,6 +67,7 @@ const groups: Array<{ label: string; items: Item[] }> = [
 const titles: Array<{ href: string; title: string; exact?: boolean }> = [
   { href: "/admin", title: "Dashboard", exact: true },
   { href: "/admin/users", title: "All users" },
+  { href: "/admin/messages", title: "Messages" },
   { href: "/admin/patients", title: "Patients" },
   { href: "/admin/doctors/new", title: "Add doctor" },
   { href: "/admin/doctors/pending", title: "Doctor verification" },
@@ -156,6 +160,7 @@ export function AdminShell({
 }) {
   const pathname = usePathname();
   const active = currentHref(pathname);
+  const chatUnread = useChatUnread();
   const [openPath, setOpenPath] = useState<string | null>(null);
   const [accountPath, setAccountPath] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -174,6 +179,10 @@ export function AdminShell({
   useEffect(() => {
     setSearchOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    void claimChatDevice(userId);
+  }, [userId]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -370,7 +379,7 @@ export function AdminShell({
                   <AdminIcon name="settings" />
                   Platform settings
                 </Link>
-                <form action={signOutAction}>
+                <form action={signOutAction} onSubmit={() => { void forgetChatDevice(userId); }}>
                   <button type="submit" role="menuitem">
                     <AdminIcon name="signOut" />
                     Sign out
@@ -405,6 +414,7 @@ export function AdminShell({
                         >
                           <AdminIcon name={item.icon} />
                           <span className="admin-nav-text">{item.label}</span>
+                          {item.href === "/admin/messages" ? <ChatCount count={chatUnread.total} /> : null}
                         </Link>
                       </li>
                     );

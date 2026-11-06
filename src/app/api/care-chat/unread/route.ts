@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { isPortalAdministrator } from "@/lib/admin/rules";
 import { PATIENT_ROLE_CODE } from "@/lib/auth/constants";
 import { readApiSession } from "@/lib/auth/current-user";
 import { SESSION_COOKIE } from "@/lib/auth/session";
@@ -14,7 +15,7 @@ const noStore = { "Cache-Control": "private, no-store" };
 
 export async function GET(request: Request) {
   const side = new URL(request.url).searchParams.get("side");
-  if (side !== "patient" && side !== "doctor") {
+  if (side !== "patient" && side !== "doctor" && side !== "admin") {
     return NextResponse.json({ message: "That conversation is not available." }, { status: 400, headers: noStore });
   }
   const cookieStore = await cookies();
@@ -22,7 +23,11 @@ export async function GET(request: Request) {
   if (session.offline) return NextResponse.json({ message: "Records are offline." }, { status: 503, headers: noStore });
   const user = session.user;
   if (!user || user.status !== "ACTIVE") return NextResponse.json({ message: "Sign in to continue." }, { status: 401, headers: noStore });
-  const allowed = side === "patient" ? user.roleCodes.includes(PATIENT_ROLE_CODE) : DOCTOR_PORTAL_ROLES.some((code) => user.roleCodes.includes(code));
+  const allowed = side === "patient"
+    ? user.roleCodes.includes(PATIENT_ROLE_CODE)
+    : side === "admin"
+      ? isPortalAdministrator(user.roleCodes)
+      : DOCTOR_PORTAL_ROLES.some((code) => user.roleCodes.includes(code));
   if (!allowed) return NextResponse.json({ message: "Sign in to continue." }, { status: 403, headers: noStore });
   try {
     const unread = await unreadCareChats(prisma, user.id, side);

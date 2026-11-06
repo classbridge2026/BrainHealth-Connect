@@ -420,6 +420,16 @@
   cursor: pointer;
 }
 
+.care-chat-locked,
+.care-chat-offline {
+  margin: 0;
+  padding: 0.45rem 0.9rem;
+  background: #e7f4f2;
+  color: #0c2b45;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
 .care-chat-clear-bar {
   display: flex;
   flex-wrap: wrap;

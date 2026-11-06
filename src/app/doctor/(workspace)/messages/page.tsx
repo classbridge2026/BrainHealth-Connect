@@ -14,7 +14,7 @@ export default async function DoctorMessagesPage() {
   const user = await requireStoredRoles(DOCTOR_PORTAL_ROLES);
   try {
     const people = await listDoctorChats(prisma, user.id);
-    return <CareChat listHref="/doctor/messages" side="doctor" people={people} active={null} />;
+    return <CareChat listHref="/doctor/messages" side="doctor" userId={user.id} people={people} active={null} />;
   } catch (error) {
     if (isSchemaMismatch(error)) return <RecordsUnavailable code="SCHEMA" />;
     throw error;
