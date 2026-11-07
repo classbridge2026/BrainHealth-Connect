@@ -49,7 +49,7 @@ export function ChatUnreadProvider({
       }
     }
     void pull();
-    const timer = window.setInterval(() => void pull(), 20000);
+    const timer = window.setInterval(() => void pull(), 3000);
     const onVisible = () => {
       if (document.visibilityState === "visible") void pull();
     };

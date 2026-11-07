@@ -126,9 +126,24 @@ describe("care chat", () => {
     expect(result).toEqual({ ok: false, message: "You can message only a doctor you have booked." });
   });
 
-  it("refuses an administrator even when the patient booked that doctor", async () => {
+  it("uses the same chat when the booked doctor is also the administrator", async () => {
     const db = {
       ...database(true),
+      doctorProfile: { findUnique: async () => ({ id: doctorId, userId: "staff-user" }) },
+      user: { findFirst: async () => ({ id: "staff-user" }) },
+    } as unknown as PrismaClient;
+    const result = await sendCareMessage(db, {
+      actorUserId: "patient-user",
+      side: "patient",
+      partnerProfileId: doctorId,
+      body: "Hello doctor",
+    });
+    expect(result).toMatchObject({ ok: true, conversationId: "thread", message: { body: "Hello doctor", mine: true } });
+  });
+
+  it("still refuses an administrator the patient has not booked", async () => {
+    const db = {
+      ...database(false),
       doctorProfile: { findUnique: async () => ({ id: doctorId, userId: "staff-user" }) },
       user: { findFirst: async () => ({ id: "staff-user" }) },
     } as unknown as PrismaClient;

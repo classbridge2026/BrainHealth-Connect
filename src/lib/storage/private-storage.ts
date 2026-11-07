@@ -202,6 +202,7 @@ async function s3Request(
     method,
     headers,
     body: body ? Buffer.from(body) : undefined,
+    signal: AbortSignal.timeout(8_000),
   });
 }
 

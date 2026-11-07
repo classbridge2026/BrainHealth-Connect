@@ -84,7 +84,7 @@ describe("availability ownership", () => {
         },
       },
       location: {
-        findFirst: async () => ({ id: "22222222-2222-4222-8222-222222222222" }),
+        findFirst: async () => ({ id: "22222222-2222-4222-8222-222222222222", isActive: true }),
         findUnique: async () => ({ isActive: true }),
       },
     };
@@ -101,6 +101,67 @@ describe("availability ownership", () => {
     );
     expect(result.ok).toBe(true);
     expect(saved).toEqual([{ mode: null, locationId: "22222222-2222-4222-8222-222222222222", offeringId: null }]);
+  });
+
+  it("reuses a clinic that is already saved under the same name and city", async () => {
+    const store = database();
+    let created = false;
+    const db = {
+      ...store.db,
+      location: {
+        findFirst: async ({ where }: { where: { name: { equals: string }; locality: { equals: string } } }) => {
+          if (where.name.equals === "34 Wilkinson Road" && where.locality.equals === "Freetown") {
+            return { id: "22222222-2222-4222-8222-222222222222", isActive: true };
+          }
+          return null;
+        },
+        findUnique: async () => ({ isActive: true }),
+        create: async () => {
+          created = true;
+          return { id: "new" };
+        },
+      },
+    };
+    const result = await saveAvailabilityRule(
+      {
+        actor: { userId: "user-1", roleCodes: ["DOCTOR"] },
+        dayOfWeek: 4,
+        start: "09:00",
+        end: "12:00",
+        mode: "IN_PERSON",
+        clinic: "34 Wilkinson Road, Freetown",
+      },
+      { db: db as never },
+    );
+    expect(result.ok).toBe(true);
+    expect(created).toBe(false);
+    expect(store.created).toEqual(["own-doctor"]);
+  });
+
+  it("tells the doctor when the matching clinic is turned off", async () => {
+    const store = database();
+    const db = {
+      ...store.db,
+      location: {
+        findFirst: async () => ({ id: "22222222-2222-4222-8222-222222222222", isActive: false }),
+      },
+    };
+    const result = await saveAvailabilityRule(
+      {
+        actor: { userId: "user-1", roleCodes: ["DOCTOR"] },
+        dayOfWeek: 4,
+        start: "09:00",
+        end: "12:00",
+        mode: "IN_PERSON",
+        clinic: "34 Wilkinson Road, Freetown",
+      },
+      { db: db as never },
+    );
+    expect(result).toEqual({
+      ok: false,
+      message: "That clinic is already on file but is not active. Ask an administrator to turn it on.",
+    });
+    expect(store.created).toEqual([]);
   });
 
   it("rejects a doctor editing another doctor's schedule", async () => {

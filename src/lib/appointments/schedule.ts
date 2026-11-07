@@ -32,30 +32,53 @@ async function ownedDoctor(db: PrismaClient, actor: Actor, requestedId: string |
   return target?.id ?? null;
 }
 
+function clinicPlace(clinic: string) {
+  const parts = clinic.split(",").map((part) => part.trim()).filter((part) => part.length >= 2);
+  const locality = (parts.length > 1 ? parts[parts.length - 1] : clinic).slice(0, 80);
+  const rawName = (parts.length > 1 ? parts.slice(0, -1).join(", ") : clinic).slice(0, 120);
+  return { name: rawName.length >= 2 ? rawName : clinic.slice(0, 120), locality };
+}
+
+async function findClinic(db: PrismaClient, name: string, locality: string) {
+  return db.location.findFirst({
+    where: {
+      countryCode: "SL",
+      name: { equals: name, mode: "insensitive" },
+      locality: { equals: locality, mode: "insensitive" },
+    },
+    select: { id: true, isActive: true },
+  });
+}
+
 async function resolveTypedClinic(db: PrismaClient, clinic: string): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
   if (clinic.length < 3 || clinic.length > 160) {
     return { ok: false, message: "Enter the clinic location, using 3 to 160 characters." };
   }
-  const existing = await db.location.findFirst({
-    where: { isActive: true, name: { equals: clinic, mode: "insensitive" } },
-    select: { id: true },
-  });
-  if (existing) return { ok: true, id: existing.id };
-  const parts = clinic.split(",").map((part) => part.trim()).filter((part) => part.length >= 2);
-  const place = (parts.length > 1 ? parts[parts.length - 1] : clinic).slice(0, 80);
-  const name = (parts.length > 1 ? parts.slice(0, -1).join(", ") : clinic).slice(0, 120);
-  const created = await db.location.create({
-    data: {
-      name: name.length >= 2 ? name : clinic.slice(0, 120),
-      addressLine1: clinic.slice(0, 200),
-      locality: place,
-      district: place,
-      countryCode: "SL",
-      isActive: true,
-    },
-    select: { id: true },
-  });
-  return { ok: true, id: created.id };
+  const place = clinicPlace(clinic);
+  const existing = await findClinic(db, place.name, place.locality);
+  if (existing?.isActive) return { ok: true, id: existing.id };
+  if (existing) return { ok: false, message: "That clinic is already on file but is not active. Ask an administrator to turn it on." };
+  try {
+    const created = await db.location.create({
+      data: {
+        name: place.name,
+        addressLine1: clinic.slice(0, 200),
+        locality: place.locality,
+        district: place.locality,
+        countryCode: "SL",
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    return { ok: true, id: created.id };
+  } catch (error) {
+    const duplicate = error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "P2002";
+    if (!duplicate) throw error;
+    const again = await findClinic(db, place.name, place.locality);
+    if (again?.isActive) return { ok: true, id: again.id };
+    if (again) return { ok: false, message: "That clinic is already on file but is not active. Ask an administrator to turn it on." };
+    return { ok: false, message: "That clinic is already on file. Choose it again and save the hours." };
+  }
 }
 
 function dateOrNull(value: string | null | undefined): Date | null | "invalid" {

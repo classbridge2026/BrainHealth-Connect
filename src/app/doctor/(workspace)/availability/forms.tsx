@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { primaryButtonClass, secondaryButtonClass, textInputClass } from "@/components/form-classes";
 import type { ScheduleResult } from "@/lib/appointments/schedule";
+import { showOutcome } from "@/lib/ui/sweet-alert";
 import { addTimeOffAction, deactivateRuleAction, removeTimeOffAction, saveRuleAction } from "./actions";
 
 const initial: ScheduleResult = { ok: true, message: "" };
@@ -17,6 +18,7 @@ function useSavedClose(state: ScheduleResult, pending: boolean, onSaved?: () => 
   const router = useRouter();
   useEffect(() => {
     if (wasPending.current && !pending && state.ok && state.message) {
+      void showOutcome({ title: "Saved", text: state.message, tone: "ok" });
       onSaved?.();
       router.refresh();
     }

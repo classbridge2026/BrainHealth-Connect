@@ -912,6 +912,7 @@ export function CareChat({
       if (stop || document.visibilityState === "hidden" || chatPolls.has(key)) return;
       chatPolls.add(key);
       const confirmed = [...linesRef.current].reverse().find((line) => line.state === "sent" || line.state === "read");
+      const incremental = Boolean(confirmed?.at);
       const query = new URLSearchParams({ side, partner: partnerId, after: confirmed?.at ?? "" });
       try {
         const response = await fetch(`/api/care-chat?${query}`, { cache: "no-store" });
@@ -930,7 +931,7 @@ export function CareChat({
         setSeenAt(payload.seenAt ?? null);
         const fresh = (payload.messages ?? []).filter((line) => !seen.current.has(line.id));
         const reads = new Map((payload.reads ?? []).map((row) => [row.id, row.readAt]));
-        const ids = Array.isArray(payload.ids) ? payload.ids.filter((id) => typeof id === "string") : null;
+        const ids = incremental ? null : Array.isArray(payload.ids) ? payload.ids.filter((id) => typeof id === "string") : null;
         if (fresh.length === 0 && reads.size === 0 && !ids) return;
         for (const line of fresh) seen.current.add(line.id);
         setLines((current) => {
@@ -992,11 +993,16 @@ export function CareChat({
     void (async () => {
       while (!stop) {
         await pull();
-        await new Promise((resolve) => window.setTimeout(resolve, 4000));
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
       }
     })();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void pull();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       stop = true;
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [active?.id, side, userId]);
 

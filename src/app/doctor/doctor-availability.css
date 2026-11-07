@@ -100,6 +100,23 @@
   padding: 0;
 }
 
+.avail-week .avail-card-head > div {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.avail-week .avail-card-head .avail-open {
+  margin-left: auto;
+  flex: none;
+  align-self: flex-start;
+  border: 2px solid #0f766e;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.5rem 0.95rem;
+  line-height: 1.2;
+  box-shadow: 0 0 0 1px #0f766e;
+}
+
 .avail-backdrop {
   position: fixed;
   inset: 0;
@@ -176,6 +193,11 @@
 .avail-card-head a:hover,
 .avail-card-head .avail-open:hover {
   text-decoration: underline;
+}
+
+.avail-week .avail-card-head .avail-open:hover {
+  text-decoration: none;
+  background: #f0fdfa;
 }
 
 .avail-stats,

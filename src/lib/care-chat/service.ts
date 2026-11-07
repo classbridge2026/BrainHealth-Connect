@@ -200,19 +200,25 @@ async function isStaffUser(db: ChatDb, userId: string | null | undefined) {
   return Boolean(row);
 }
 
-async function staffUserIds(db: ChatDb, userIds: string[]) {
-  const ids = [...new Set(userIds.filter(Boolean))];
-  if (ids.length === 0) return new Set<string>();
-  const rows = await db.user.findMany({
-    where: { id: { in: ids }, roles: { some: { role: { code: { in: [...STAFF_ROLE_CODES] } } } } },
-    select: { id: true },
-  });
-  return new Set(rows.map((row) => row.id));
-}
-
 async function partnerIsStaffDoctor(db: ChatDb, doctorProfileId: string) {
   const doctor = await db.doctorProfile.findUnique({ where: { id: doctorProfileId }, select: { userId: true } });
   return isStaffUser(db, doctor?.userId);
+}
+
+async function clinicianDoctor(db: ChatDb, doctorProfileId: string) {
+  const doctor = await db.doctorProfile.findUnique({
+    where: { id: doctorProfileId },
+    select: { user: { select: { roles: { select: { role: { select: { code: true } } } } } } },
+  });
+  return Boolean(doctor?.user?.roles.some((row) => row.role.code === "DOCTOR"));
+}
+
+async function staffClinicOnly(db: ChatDb, actorUserId: string, doctorProfileId: string) {
+  if (await clinicianDoctor(db, doctorProfileId)) return false;
+  if (!(await partnerIsStaffDoctor(db, doctorProfileId))) return false;
+  const patientProfileId = await patientIdFor(db, actorUserId);
+  if (!patientProfileId) return true;
+  return !(await bookedPair(db, patientProfileId, doctorProfileId));
 }
 
 async function ensureStaffDoctor(db: ChatDb, userId: string) {
@@ -295,17 +301,18 @@ async function lookupChatPair(
   if (input.side === "patient") {
     const patientProfileId = await patientIdFor(db, input.actorUserId);
     if (!patientProfileId) return null;
-    if (await partnerIsStaffDoctor(db, input.partnerProfileId)) {
-      if (purpose === "send") return null;
+    const allowed = await bookedPair(db, patientProfileId, input.partnerProfileId);
+    if (allowed) return { patientProfileId, doctorProfileId: input.partnerProfileId, seat: "patient" };
+    if (await partnerIsStaffDoctor(db, input.partnerProfileId) || await clinicianDoctor(db, input.partnerProfileId)) {
       const existing = await db.careConversation.findUnique({
         where: { patientProfileId_doctorProfileId: { patientProfileId, doctorProfileId: input.partnerProfileId } },
         select: { id: true },
       });
-      return existing ? { patientProfileId, doctorProfileId: input.partnerProfileId, seat: "patient" } : null;
+      if (!existing) return null;
+      if (purpose === "send" && !(await clinicianDoctor(db, input.partnerProfileId))) return null;
+      return { patientProfileId, doctorProfileId: input.partnerProfileId, seat: "patient" };
     }
-    const allowed = await bookedPair(db, patientProfileId, input.partnerProfileId);
-    if (!allowed) return null;
-    return { patientProfileId, doctorProfileId: input.partnerProfileId, seat: "patient" };
+    return null;
   }
   const doctorProfileId = await doctorIdFor(db, input.actorUserId);
   if (!doctorProfileId) return null;
@@ -351,18 +358,27 @@ async function listPatientChatsFast(db: SqlClient, userId: string, now: Date): P
       WHERE a.status::text IN (${statuses})
       GROUP BY a."doctorProfileId"
     ),
+    clinicians AS (
+      SELECT DISTINCT d.id
+      FROM "DoctorProfile" d
+      JOIN "UserRole" ur ON ur."userId" = d."userId"
+      JOIN "Role" r ON r.id = ur."roleId"
+      JOIN "CareConversation" c ON c."doctorProfileId" = d.id
+      JOIN me ON me.id = c."patientProfileId"
+      WHERE r.code = 'DOCTOR'
+        AND d.id NOT IN (SELECT id FROM visits)
+    ),
     staff AS (
       SELECT DISTINCT d.id
       FROM "DoctorProfile" d
       JOIN "UserRole" ur ON ur."userId" = d."userId"
       JOIN "Role" r ON r.id = ur."roleId"
       WHERE r.code IN ('ADMIN', 'SUPER_ADMIN')
-        AND (
-          d.id IN (SELECT id FROM visits)
-          OR d.id IN (
-            SELECT c."doctorProfileId" FROM "CareConversation" c
-            JOIN me ON me.id = c."patientProfileId"
-          )
+        AND d.id NOT IN (SELECT id FROM visits)
+        AND d.id NOT IN (SELECT id FROM clinicians)
+        AND d.id IN (
+          SELECT c."doctorProfileId" FROM "CareConversation" c
+          JOIN me ON me.id = c."patientProfileId"
         )
     ),
     people AS (
@@ -382,7 +398,23 @@ async function listPatientChatsFast(db: SqlClient, userId: string, now: Date): P
       FROM visits v
       JOIN "DoctorProfile" d ON d.id = v.id
       JOIN "User" u ON u.id = d."userId"
-      WHERE NOT EXISTS (SELECT 1 FROM staff WHERE staff.id = v.id)
+      UNION ALL
+      SELECT d.id,
+             d."displayName",
+             COALESCE((
+               SELECT s.name FROM "DoctorSpecialty" ds
+               JOIN "Specialty" s ON s.id = ds."specialtyId"
+               WHERE ds."doctorProfileId" = d.id AND ds."isPrimary" = true
+               LIMIT 1
+             ), 'Clinician'),
+             'doctor',
+             NULL::timestamptz,
+             d."userId",
+             u."profileImageUpdatedAt",
+             TRUE
+      FROM clinicians
+      JOIN "DoctorProfile" d ON d.id = clinicians.id
+      JOIN "User" u ON u.id = d."userId"
       UNION ALL
       SELECT d.id,
              d."displayName",
@@ -435,7 +467,9 @@ async function listPatientChatsFast(db: SqlClient, userId: string, now: Date): P
       const when = row.previewAt ?? row.lastMessageAt;
       const detail = row.detailKind === "clinic"
         ? "Messages from the clinic"
-        : visitDetail(row.visitAt ?? now, now);
+        : row.detailKind === "doctor"
+          ? "Your messages with this doctor"
+          : visitDetail(row.visitAt ?? now, now);
       return {
         id: row.id,
         name: row.name,
@@ -494,42 +528,47 @@ export async function listPatientChats(db: ChatDb, userId: string, now = new Dat
       canReply: true,
     });
   }
-  const staff = await staffUserIds(db, [...doctors.values()].map((doctor) => doctor.imageUserId));
-  for (const [id, doctor] of doctors) {
-    if (staff.has(doctor.imageUserId)) doctors.delete(id);
-  }
-  const fromStaff = await db.careConversation.findMany({
-    where: {
-      patientProfileId,
-      doctor: { user: { roles: { some: { role: { code: { in: [...STAFF_ROLE_CODES] } } } } } },
-    },
+  const fromThreads = await db.careConversation.findMany({
+    where: { patientProfileId },
     select: {
       doctorProfileId: true,
       doctor: {
         select: {
           displayName: true,
           userId: true,
-          user: { select: { profileImageUpdatedAt: true } },
+          user: {
+            select: {
+              profileImageUpdatedAt: true,
+              roles: { select: { role: { select: { code: true } } } },
+            },
+          },
+          specialties: { where: { isPrimary: true }, take: 1, select: { specialty: { select: { name: true } } } },
         },
       },
     },
   });
-  for (const thread of fromStaff) {
+  for (const thread of fromThreads) {
     if (doctors.has(thread.doctorProfileId)) continue;
+    const roles = thread.doctor.user.roles.map((row) => row.role.code);
+    const clinician = roles.includes("DOCTOR");
     doctors.set(thread.doctorProfileId, {
       name: thread.doctor.displayName,
-      specialty: "Administrator",
+      specialty: clinician ? thread.doctor.specialties[0]?.specialty.name ?? "Clinician" : "Administrator",
       imageUserId: thread.doctor.userId,
       imageVersion: thread.doctor.user.profileImageUpdatedAt?.toISOString() ?? null,
       next: null,
-      last: now,
-      canReply: false,
+      last: null,
+      canReply: clinician,
     });
   }
   return decorate(db, userId, patientProfileId, [...doctors.entries()].map(([id, doctor]) => ({
     id,
     name: doctor.name,
-    detail: doctor.canReply ? visitDetail(doctor.next ?? doctor.last ?? now, now) : "Messages from the clinic",
+    detail: doctor.canReply
+      ? doctor.next || doctor.last
+        ? visitDetail(doctor.next ?? doctor.last ?? now, now)
+        : "Your messages with this doctor"
+      : "Messages from the clinic",
     specialty: doctor.specialty,
     imageUserId: doctor.imageUserId,
     imageVersion: doctor.imageVersion,
@@ -581,10 +620,7 @@ async function listDoctorChatsFast(db: SqlClient, userId: string, now: Date): Pr
       JOIN me ON me.id = c."doctorProfileId"
       JOIN "PatientProfile" p ON p.id = c."patientProfileId"
       JOIN "User" u ON u.id = p."userId"
-      JOIN "UserRole" ur ON ur."userId" = p."userId"
-      JOIN "Role" r ON r.id = ur."roleId"
-      WHERE r.code IN ('ADMIN', 'SUPER_ADMIN')
-        AND NOT EXISTS (SELECT 1 FROM visits WHERE visits.id = p.id)
+      WHERE NOT EXISTS (SELECT 1 FROM visits WHERE visits.id = p.id)
     )
     SELECT p.id,
            p.name,
@@ -621,7 +657,7 @@ async function listDoctorChatsFast(db: SqlClient, userId: string, now: Date): Pr
       return {
         id: row.id,
         name: row.name,
-        detail: `Patient · ${visitDetail(row.visitAt ?? now, now)}`,
+        detail: row.visitAt ? `Patient · ${visitDetail(row.visitAt, now)}` : "Patient · Messages",
         preview: row.preview,
         when: when ? new Date(when).toISOString() : null,
         unread: Number(row.unread) || 0,
@@ -666,30 +702,27 @@ export async function listDoctorChats(db: ChatDb, userId: string, now = new Date
       last,
     });
   }
-  const fromStaff = await db.careConversation.findMany({
-    where: {
-      doctorProfileId,
-      patient: { user: { roles: { some: { role: { code: { in: [...STAFF_ROLE_CODES] } } } } } },
-    },
+  const fromThreads = await db.careConversation.findMany({
+    where: { doctorProfileId },
     select: {
       patientProfileId: true,
       patient: { select: { fullName: true, userId: true, user: { select: { profileImageUpdatedAt: true } } } },
     },
   });
-  for (const thread of fromStaff) {
+  for (const thread of fromThreads) {
     if (patients.has(thread.patientProfileId)) continue;
     patients.set(thread.patientProfileId, {
       name: thread.patient.fullName,
       imageUserId: thread.patient.userId,
       imageVersion: thread.patient.user.profileImageUpdatedAt?.toISOString() ?? null,
       next: null,
-      last: now,
+      last: null,
     });
   }
   return decorate(db, userId, doctorProfileId, [...patients.entries()].map(([id, patient]) => ({
     id,
     name: patient.name,
-    detail: visitDetail(patient.next ?? patient.last ?? now, now),
+    detail: patient.next || patient.last ? visitDetail(patient.next ?? patient.last ?? now, now) : "Messages",
     specialty: "Patient",
     imageUserId: patient.imageUserId,
     imageVersion: patient.imageVersion,
@@ -811,6 +844,11 @@ export type ChatUnread = {
 };
 
 const unreadMemo = new Map<string, { until: number; value: ChatUnread }>();
+const presenceNext = new Map<string, number>();
+
+function noteChatChanged() {
+  unreadMemo.clear();
+}
 
 export async function unreadCareChats(
   db: ChatDb,
@@ -850,7 +888,7 @@ export async function unreadCareChats(
           `);
       const byPartner = rows.filter((row) => row.unread > 0).map((row) => ({ id: row.id, unread: row.unread }));
       const value = { total: byPartner.reduce((sum, row) => sum + row.unread, 0), byPartner };
-      unreadMemo.set(memoKey, { until: Date.now() + 30_000, value });
+      unreadMemo.set(memoKey, { until: Date.now() + 3_000, value });
       return value;
     } catch {
       // The Prisma path still works on an older schema.
@@ -868,7 +906,7 @@ export async function unreadCareChats(
     return [{ id: side === "patient" ? conversation.doctorProfileId : conversation.patientProfileId, unread }];
   });
   const value = { total: byPartner.reduce((sum, row) => sum + row.unread, 0), byPartner };
-  unreadMemo.set(memoKey, { until: Date.now() + 30_000, value });
+  unreadMemo.set(memoKey, { until: Date.now() + 3_000, value });
   return value;
 }
 
@@ -1120,18 +1158,22 @@ async function sendCareMessageFast(
         SELECT p.id AS "patientProfileId", ${input.partnerProfileId}::uuid AS "doctorProfileId"
         FROM "PatientProfile" p
         WHERE p."userId" = ${input.actorUserId}::uuid
-          AND EXISTS (
-            SELECT 1 FROM "Appointment" a
-            WHERE a."patientProfileId" = p.id
-              AND a."doctorProfileId" = ${input.partnerProfileId}::uuid
-              AND a.status::text IN (${statuses})
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM "DoctorProfile" d
-            JOIN "UserRole" ur ON ur."userId" = d."userId"
-            JOIN "Role" r ON r.id = ur."roleId"
-            WHERE d.id = ${input.partnerProfileId}::uuid
-              AND r.code IN ('ADMIN', 'SUPER_ADMIN')
+          AND (
+            EXISTS (
+              SELECT 1 FROM "Appointment" a
+              WHERE a."patientProfileId" = p.id
+                AND a."doctorProfileId" = ${input.partnerProfileId}::uuid
+                AND a.status::text IN (${statuses})
+            )
+            OR EXISTS (
+              SELECT 1 FROM "CareConversation" c
+              JOIN "DoctorProfile" d ON d.id = c."doctorProfileId"
+              JOIN "UserRole" ur ON ur."userId" = d."userId"
+              JOIN "Role" r ON r.id = ur."roleId"
+              WHERE c."patientProfileId" = p.id
+                AND c."doctorProfileId" = ${input.partnerProfileId}::uuid
+                AND r.code = 'DOCTOR'
+            )
           )`
     : Prisma.sql`
         SELECT ${input.partnerProfileId}::uuid AS "patientProfileId", d.id AS "doctorProfileId"
@@ -1193,13 +1235,14 @@ export async function sendCareMessage(
   const textError = careMessageError(input.body);
   if (textError) return { ok: false, message: textError };
   const body = input.body.trim();
-  if (input.side === "patient" && await partnerIsStaffDoctor(db, input.partnerProfileId)) {
+  if (input.side === "patient" && await staffClinicOnly(db, input.actorUserId, input.partnerProfileId)) {
     return { ok: false, message: "You can't message an administrator." };
   }
   const client = sqlClient(db);
   if (client && (input.side === "patient" || input.side === "doctor")) {
     try {
       const fast = await sendCareMessageFast(client, { ...input, body, side: input.side });
+      if (fast?.ok) noteChatChanged();
       if (fast) return fast;
     } catch {
       // The query path can fail on an older database. The regular write still sends.
@@ -1219,6 +1262,7 @@ export async function sendCareMessage(
     data: { conversationId: conversation.id, senderUserId: input.actorUserId, body },
     select: { id: true, body: true, createdAt: true },
   });
+  noteChatChanged();
   return {
     ok: true,
     conversationId: conversation.id,
@@ -1379,11 +1423,107 @@ async function readChatSinceFast(
   };
 }
 
+async function readChatSinceRecent(
+  db: SqlClient,
+  input: { actorUserId: string; side: "patient" | "doctor"; partnerProfileId: string; after: Date },
+) {
+  const due = presenceNext.get(input.actorUserId) ?? 0;
+  if (Date.now() >= due) {
+    presenceNext.set(input.actorUserId, Date.now() + 15_000);
+    await db.$executeRaw`UPDATE "User" SET "chatSeenAt" = NOW() WHERE id = ${input.actorUserId}::uuid`;
+  }
+  const thread = input.side === "patient"
+    ? Prisma.sql`
+        SELECT c.id FROM "CareConversation" c
+        JOIN "PatientProfile" p ON p.id = c."patientProfileId"
+        WHERE p."userId" = ${input.actorUserId}::uuid AND c."doctorProfileId" = ${input.partnerProfileId}::uuid
+        LIMIT 1`
+    : Prisma.sql`
+        SELECT c.id FROM "CareConversation" c
+        JOIN "DoctorProfile" d ON d.id = c."doctorProfileId"
+        WHERE d."userId" = ${input.actorUserId}::uuid AND c."patientProfileId" = ${input.partnerProfileId}::uuid
+        LIMIT 1`;
+  const partner = input.side === "patient"
+    ? Prisma.sql`
+        SELECT u."chatSeenAt" AS "seenAt"
+        FROM "DoctorProfile" d JOIN "User" u ON u.id = d."userId"
+        WHERE d.id = ${input.partnerProfileId}::uuid`
+    : Prisma.sql`
+        SELECT u."chatSeenAt" AS "seenAt"
+        FROM "PatientProfile" p JOIN "User" u ON u.id = p."userId"
+        WHERE p.id = ${input.partnerProfileId}::uuid`;
+  const rows = await db.$queryRaw<Array<{ conversationId: string | null; messages: unknown; reads: unknown; seenAt: Date | string | null }>>(Prisma.sql`
+    WITH thread AS (${thread}),
+    marked AS (
+      UPDATE "CareMessage" m SET "readAt" = NOW()
+      FROM thread t
+      JOIN "CareConversation" c ON c.id = t.id
+      WHERE m."conversationId" = t.id
+        AND m."senderUserId" <> ${input.actorUserId}::uuid
+        AND m."readAt" IS NULL
+        AND m."createdAt" > ${input.after}::timestamptz
+        AND ${visibleSql(input.side)}
+      RETURNING m.id
+    )
+    SELECT
+      (SELECT id FROM thread) AS "conversationId",
+      COALESCE((
+        SELECT json_agg(json_build_object(
+          'id', m.id, 'body', m.body, 'at', m."createdAt", 'mine', (m."senderUserId" = ${input.actorUserId}::uuid), 'readAt', m."readAt",
+          'fileName', m."attachmentName", 'fileMime', m."attachmentMime", 'fileSize', m."attachmentSize"
+        ) ORDER BY m."createdAt")
+        FROM "CareMessage" m
+        JOIN thread t ON t.id = m."conversationId"
+        JOIN "CareConversation" c ON c.id = t.id
+        WHERE m."createdAt" > ${input.after}::timestamptz
+          AND ${visibleSql(input.side)}
+      ), '[]'::json) AS messages,
+      COALESCE((
+        SELECT json_agg(json_build_object('id', m.id, 'readAt', m."readAt"))
+        FROM "CareMessage" m
+        JOIN thread t ON t.id = m."conversationId"
+        WHERE m."senderUserId" = ${input.actorUserId}::uuid
+          AND m."readAt" IS NOT NULL
+          AND m."readAt" > ${input.after}::timestamptz
+      ), '[]'::json) AS reads,
+      (SELECT "seenAt" FROM (${partner}) partner) AS "seenAt",
+      (SELECT count(*) FROM marked) AS marked
+  `);
+  const row = rows[0];
+  const seenAt = iso(row?.seenAt ?? null);
+  const messages = asRows<{ id: string; body: string; at: string; mine: boolean; readAt: string | null; fileName?: string | null; fileMime?: string | null; fileSize?: number | null }>(row?.messages).flatMap((message) => {
+    const at = iso(message.at);
+    if (!at) return [];
+    return [{ id: message.id, body: message.body, at, mine: Boolean(message.mine), readAt: iso(message.readAt), file: fileFrom(message) }];
+  });
+  const reads = asRows<{ id: string; readAt: string | null }>(row?.reads).flatMap((item) => {
+    const readAt = iso(item.readAt);
+    return readAt ? [{ id: item.id, readAt }] : [];
+  });
+  return {
+    ok: true as const,
+    conversationId: row?.conversationId ?? null,
+    messages,
+    reads,
+    ids: [] as string[],
+    online: Boolean(seenAt && Date.now() - new Date(seenAt).getTime() < 70_000),
+    seenAt,
+  };
+}
+
 export async function readChatSince(
   db: ChatDb,
   input: { actorUserId: string; side: ChatSide; partnerProfileId: string; after: string | null },
 ): Promise<{ ok: true; conversationId: string | null; messages: ChatLine[]; reads: Array<{ id: string; readAt: string }>; ids: string[]; online: boolean; seenAt: string | null } | { ok: false }> {
   const client = sqlClient(db);
+  const afterDate = input.after ? new Date(input.after) : null;
+  if (client && afterDate && !Number.isNaN(afterDate.getTime()) && (input.side === "patient" || input.side === "doctor")) {
+    try {
+      return await readChatSinceRecent(client, { ...input, side: input.side, after: afterDate });
+    } catch (error) {
+      console.error("chat_sync_failed", error instanceof Error ? error.message : "unknown");
+    }
+  }
   if (client && (input.side === "patient" || input.side === "doctor")) {
     try {
       return await readChatSinceFast(client, { ...input, side: input.side });
@@ -1459,7 +1599,7 @@ export async function sendCareFile(
   if (fileError) return { ok: false, message: fileError };
   const caption = input.body.trim();
   if (caption.length > CARE_MESSAGE_MAX) return { ok: false, message: "Use 2000 characters or fewer." };
-  if (input.side === "patient" && await partnerIsStaffDoctor(db, input.partnerProfileId)) {
+  if (input.side === "patient" && await staffClinicOnly(db, input.actorUserId, input.partnerProfileId)) {
     return { ok: false, message: "You can't message an administrator." };
   }
   const client = sqlClient(db);
@@ -1510,6 +1650,7 @@ export async function sendCareFile(
       if (key) await storage.remove(key);
       return { ok: false, message: "The file could not be sent." };
     }
+    noteChatChanged();
     return {
       ok: true,
       conversationId: conversation.id,

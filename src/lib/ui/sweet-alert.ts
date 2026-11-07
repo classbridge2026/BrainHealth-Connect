@@ -39,6 +39,20 @@ export async function confirmAction(options: {
   return result.isConfirmed;
 }
 
+export function showVisitReminder(patientName: string, when: string) {
+  return Swal.fire({
+    title: "Get ready",
+    text: `Get ready for the appointment for ${patientName}. It starts at ${when}.`,
+    icon: "info",
+    iconColor: "#0f766e",
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    buttonsStyling: false,
+    confirmButtonText: "OK",
+    customClass: classes(false),
+  });
+}
+
 export function showOutcome(options: { title?: string; text: string; tone: Tone }) {
   const ok = options.tone === "ok";
   return Swal.fire({

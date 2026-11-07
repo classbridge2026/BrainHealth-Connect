@@ -37,6 +37,7 @@ import { ProfilePhoto } from "@/components/profile-photo";
 import { DoctorGuide } from "@/components/guide/doctor-guide";
 import { openMessagesList } from "@/components/care-chat/list-nav";
 import { ChatCount, ChatUnreadProvider, useChatUnread } from "@/components/care-chat/unread";
+import { DoctorVisitReminder } from "@/components/doctor/visit-reminder";
 import { claimChatDevice, forgetChatDevice } from "@/lib/care-chat/device-copy";
 import "../patient/patient-shell.css";
 
@@ -160,6 +161,7 @@ function DoctorShellView({
 
   return (
     <div className={`doctor-app fixed inset-0 flex overflow-hidden bg-[#F3F8FC] text-[#10233c] ${chat ? "is-chat" : ""}`}>
+      <DoctorVisitReminder />
       {open ? (
         <button aria-label="Close navigation" className="fixed inset-0 z-30 bg-[#0C2B45]/40 lg:hidden" type="button" onClick={() => setOpenPath(null)} />
       ) : null}
