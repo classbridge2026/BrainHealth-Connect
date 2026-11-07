@@ -1,4 +1,4 @@
-const CHAT_PAGES = "carecircle-chat-pages";
+const PAGE_CACHE = "carecircle-pages-v1";
 const STATIC_ASSETS = "carecircle-static-v1";
 
 self.addEventListener("install", (event) => {
@@ -11,17 +11,14 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("message", (event) => {
   if (event.data?.type === "chat-forget") {
-    event.waitUntil(caches.delete(CHAT_PAGES));
+    event.waitUntil(Promise.all([caches.delete(PAGE_CACHE), caches.delete("carecircle-chat-pages")]));
   }
 });
 
-function isChatPage(pathname) {
-  return pathname === "/patient/messages"
-    || pathname.startsWith("/patient/messages/")
-    || pathname === "/doctor/messages"
-    || pathname.startsWith("/doctor/messages/")
-    || pathname === "/admin/messages"
-    || pathname.startsWith("/admin/messages/");
+function isPortalPage(pathname) {
+  return pathname === "/patient" || pathname.startsWith("/patient/")
+    || pathname === "/doctor" || pathname.startsWith("/doctor/")
+    || pathname === "/admin" || pathname.startsWith("/admin/");
 }
 
 function isPrefetch(request) {
@@ -44,18 +41,33 @@ async function fromNetworkOrCache(cacheName, request) {
   }
 }
 
-async function chatPage(request, url) {
+function offlineDocument() {
+  const html = "<!doctype html><title>Offline</title><body style=\"font-family:Segoe UI,sans-serif;padding:2rem;color:#0C2B45\"><h1>You're offline</h1><p>Pages you have already opened on this device still open. Changes you make sync when the internet returns.</p></body>";
+  return new Response(html, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
+function pageCacheKey(url, kind) {
+  const key = new URL(url.href);
+  key.searchParams.delete("_rsc");
+  key.searchParams.set("carecircle", kind);
+  return new Request(key.toString());
+}
+
+async function portalPage(request, url) {
   const kind = request.mode === "navigate" ? "doc" : "rsc";
-  const cacheKey = new Request(`${url.origin}${url.pathname}?carecircle=${kind}`);
-  const cache = await caches.open(CHAT_PAGES);
+  const cacheKey = pageCacheKey(url, kind);
+  const cache = await caches.open(PAGE_CACHE);
   const cached = await cache.match(cacheKey);
   if (!self.navigator.onLine && cached) return cached;
   try {
     const response = await fetch(request);
-    if (response.ok) await cache.put(cacheKey, response.clone());
+    const type = response.headers.get("content-type") || "";
+    const page = type.includes("text/html") || type.includes("text/x-component");
+    if (response.ok && page) await cache.put(cacheKey, response.clone());
     return response;
   } catch {
     if (cached) return cached;
+    if (request.mode === "navigate") return offlineDocument();
     throw new Error("offline");
   }
 }
@@ -71,8 +83,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  const chatDocument = request.mode === "navigate" || request.headers.get("RSC") === "1" || url.searchParams.has("_rsc");
-  if (isChatPage(url.pathname) && chatDocument) {
-    event.respondWith(chatPage(request, url));
+  const portalDocument = request.mode === "navigate" || request.headers.get("RSC") === "1" || url.searchParams.has("_rsc");
+  if (isPortalPage(url.pathname) && portalDocument) {
+    event.respondWith(portalPage(request, url));
   }
 });

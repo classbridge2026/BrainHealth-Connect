@@ -134,6 +134,30 @@ a[data-loading="true"]::before {
   }
 }
 
+.offline-sync {
+  position: fixed;
+  right: 0.75rem;
+  bottom: calc(5.2rem + env(safe-area-inset-bottom, 0px));
+  left: 0.75rem;
+  z-index: 70;
+  margin: 0 auto;
+  max-width: 36rem;
+  border-radius: 999px;
+  background: #0c2b45;
+  color: #fff;
+  padding: 0.7rem 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(12, 43, 69, 0.2);
+}
+
+@media (min-width: 1024px) {
+  .offline-sync {
+    bottom: 1rem;
+  }
+}
+
 .brand-mark {
   overflow: hidden;
   border-radius: 9999px;

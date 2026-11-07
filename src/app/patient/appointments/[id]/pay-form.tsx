@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useState } from "react";
 import { BookingGuideVideo } from "@/components/patient/booking-guide";
 import { useRefreshAfterAction } from "@/components/refresh-after-action";
@@ -29,6 +30,7 @@ export function VisitPayment({
   afriHref,
   waitingReference,
   waitingWallet,
+  doneHref,
 }: {
   appointmentId: string;
   fee: string;
@@ -50,6 +52,7 @@ export function VisitPayment({
   afriHref: string | null;
   waitingReference: string | null;
   waitingWallet: string | null;
+  doneHref?: string;
 }) {
   const [started, start, starting] = useActionState(startWalletPaymentAction, initial);
   const [checked, refresh, checking] = useActionState(refreshWalletPaymentAction, initial);
@@ -210,6 +213,10 @@ export function VisitPayment({
           ) : null}
         </div>
       )}
+
+      {doneHref && (paid || pendingApproval || Boolean(waitingReference) || reported.tone === "ok" || checked.tone === "ok") ? (
+        <Link className="pay-submit" href={doneHref}>Continue</Link>
+      ) : null}
 
       {walletApi && canPay && !paid && !waitingReference ? (
         <form action={refresh} className="pay-check">

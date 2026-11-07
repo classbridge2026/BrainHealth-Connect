@@ -1,26 +1,27 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { unstable_cache } from "next/cache";
 import { BadgeCheck, Building2, Video } from "lucide-react";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { RecordsUnavailable } from "@/components/records-unavailable";
+import { RecordsOfflineError } from "@/lib/db/offline";
+import { rememberFor } from "@/lib/db/remember";
 import { prisma } from "@/lib/db/prisma";
+import { loadPublicDoctor } from "@/lib/appointments/queries";
 import { searchVerifiedDoctors } from "@/lib/patient/portal";
 import { DoctorSearch } from "./search-box";
+import { WarmProfiles } from "./warm-profiles";
 import "./find.css";
 
 export const metadata: Metadata = { title: "Find a doctor" };
 export const dynamic = "force-dynamic";
 
-const readOpenDirectory = unstable_cache(
-  async () => {
+function readOpenDirectory() {
+  return rememberFor("patient-find-open", 60_000, async () => {
     const result = await searchVerifiedDoctors(prisma, {});
-    if (!result.ok) throw new Error(result.code);
+    if (!result.ok) throw result.code === "SCHEMA" ? new Error("SCHEMA") : new RecordsOfflineError();
     return result;
-  },
-  ["patient-find-open"],
-  { revalidate: 60 },
-);
+  });
+}
 
 type DoctorCard = {
   id: string;
@@ -41,8 +42,13 @@ export default async function FindDoctorPage({ searchParams }: { searchParams: P
   const q = typeof params.q === "string" ? params.q : "";
   const result = q
     ? await searchVerifiedDoctors(prisma, { q })
-    : await readOpenDirectory().catch(() => searchVerifiedDoctors(prisma, {}));
+    : await readOpenDirectory().catch((error: unknown) => {
+        if (error instanceof Error && error.message === "SCHEMA") return { ok: false as const, code: "SCHEMA" as const };
+        return searchVerifiedDoctors(prisma, {});
+      });
   if (!result.ok) return <RecordsUnavailable code={result.code === "NOT_FOUND" ? "NOT_FOUND" : result.code} />;
+  const profiles = await Promise.all(result.doctors.map((doctor) => loadPublicDoctor(prisma, doctor.id)));
+  const ready = profiles.flatMap((profile) => (profile.ok && profile.doctor.bookable ? [profile.doctor] : []));
   const count = result.doctors.length;
 
   return (
@@ -51,6 +57,7 @@ export default async function FindDoctorPage({ searchParams }: { searchParams: P
         <h1>Find a Doctor</h1>
       </header>
       <DoctorSearch initialQuery={q} />
+      <WarmProfiles doctors={ready} />
       <p className="find-count">
         {count} verified doctor{count === 1 ? "" : "s"}
         {q.trim() ? ` matching “${q.trim()}”` : ""}
@@ -83,7 +90,7 @@ function DoctorCard({ doctor }: { doctor: DoctorCard }) {
       <ProfilePhoto userId={doctor.userId} name={doctor.displayName} version={doctor.imageVersion} size={84} alt="" />
       <div className="doc-card-body">
         <div className="doc-name-row">
-          <h2><Link href={href}>{doctor.displayName}</Link></h2>
+          <h2><Link href={href} prefetch={true}>{doctor.displayName}</Link></h2>
           <span className="doc-verified"><BadgeCheck size={14} aria-hidden="true" /> Verified</span>
         </div>
         <div className="doc-cred">
@@ -109,8 +116,8 @@ function DoctorCard({ doctor }: { doctor: DoctorCard }) {
         </div>
       </div>
       <div className="doc-actions">
-        <Link className="doc-book" href={href}>Book appointment</Link>
-        <Link className="doc-profile" href={href}>View profile</Link>
+        <Link className="doc-book" href={href} prefetch={true}>Book appointment</Link>
+        <Link className="doc-profile" href={href} prefetch={true}>View profile</Link>
       </div>
     </li>
   );

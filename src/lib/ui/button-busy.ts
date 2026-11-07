@@ -168,15 +168,15 @@ function submitterFrom(event: SubmitEvent) {
 }
 
 /**
- * Shows the dual-ring spinner on buttons and links while the click is still working:
- * a submit, a disabled/pending control, a POST or server action, or a page navigation.
- * Clicks that only toggle something on the page do not keep the spinner.
+ * Shows the dual-ring spinner on a button while a submit, a disabled control,
+ * or a server action is still working. Opening a page does not spin: the next
+ * screen is the feedback, and a spinner that lasts for the whole request
+ * makes every click feel stuck.
  */
 export function installButtonBusy(doc: Document = document, options?: ButtonBusyOptions) {
   const timing = timingOf(options);
   const recent: Array<{ id: number; kind: RequestKind }> = [];
   const inflight = new Set<number>();
-  const failedNav = new Set<number>();
   const watches = new Map<HTMLElement, Watch>();
   let seq = 0;
   let navVersion = 0;
@@ -193,14 +193,12 @@ export function installButtonBusy(doc: Document = document, options?: ButtonBusy
     if (recent.length > 80) recent.shift();
     inflight.add(id);
     promise.then(
-      (response) => {
+      () => {
         inflight.delete(id);
-        if (kind === "navigation" && !response.ok) failedNav.add(id);
         pump();
       },
       () => {
         inflight.delete(id);
-        if (kind === "navigation") failedNav.add(id);
         pump();
       },
     );
@@ -242,15 +240,13 @@ export function installButtonBusy(doc: Document = document, options?: ButtonBusy
     const disabled = isDisabled(control);
     if (disabled) watch.sawDisabled = true;
     const navigated = navVersion > watch.baselineNav;
-    const fetchesOpen = [...watch.owned.keys()].some((id) => inflight.has(id));
-    const navIds = [...watch.owned.entries()].filter(([, kind]) => kind === "navigation").map(([id]) => id);
-    const navFailed = navIds.length > 0 && navIds.every((id) => failedNav.has(id));
-    const waitingForNav = watch.plainNavigation ? !navigated : navIds.length > 0 && !navFailed && !navigated;
-    const worked = watch.owned.size > 0 || watch.sawDisabled || navigated || watch.plainNavigation;
+    const actionIds = [...watch.owned.entries()].filter(([, kind]) => kind === "action").map(([id]) => id);
+    const actionOpen = actionIds.some((id) => inflight.has(id));
+    const worked = actionIds.length > 0 || watch.sawDisabled || navigated;
     const graceOver = now - watch.startedAt > timing.signalGraceMs;
 
     if (!watch.shownAt) {
-      const signal = disabled || watch.owned.size > 0 || navigated || watch.plainNavigation || (watch.confirmed && !graceOver);
+      const signal = disabled || actionIds.length > 0 || (watch.confirmed && !graceOver);
       if (!signal) return graceOver ? "stop" : "continue";
       show(control);
       watch.shownAt = now;
@@ -260,7 +256,7 @@ export function installButtonBusy(doc: Document = document, options?: ButtonBusy
 
     if (now - watch.shownAt >= timing.maxVisibleMs) return "stop";
     if (!worked && graceOver) return "stop";
-    const busy = disabled || fetchesOpen || waitingForNav;
+    const busy = disabled || actionOpen;
     if (!busy && now - watch.shownAt >= timing.minVisibleMs) return "stop";
     return "continue";
   }
@@ -322,8 +318,8 @@ export function installButtonBusy(doc: Document = document, options?: ButtonBusy
     const control = findControl(event.target);
     if (!control || control.getAttribute("data-loading") === "true" || control.getAttribute("aria-disabled") === "true") return;
     if (control instanceof HTMLAnchorElement && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)) return;
-    const plainNavigation = control instanceof HTMLAnchorElement && !event.defaultPrevented;
-    watchControl(control, baseline, { plainNavigation });
+    if (control instanceof HTMLAnchorElement) return;
+    watchControl(control, baseline);
   }
 
   function onSubmit(event: SubmitEvent) {

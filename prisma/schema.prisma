@@ -388,7 +388,7 @@ model ConsentRecord {
 
 /// Launch and operational flags. Minor registration/treatment must stay disabled
 /// until an explicit policy is approved and application checks enforce it.
-/// APPOINTMENT_PAYMENT_HOLD_MINUTES defaults to 10 (JSON number).
+/// APPOINTMENT_PAYMENT_HOLD_MINUTES defaults to 15 (JSON number).
 model PlatformSetting {
   id        String   @id @default(uuid()) @db.Uuid
   key       String   @unique

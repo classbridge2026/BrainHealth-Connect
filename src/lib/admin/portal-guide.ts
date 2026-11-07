@@ -251,7 +251,7 @@ const TOPICS: GuideTopic[] = [
     keywords: ["appointment", "appointments", "booking", "bookings", "visit", "visits", "cancel", "slot"],
     summary: "Appointments lists booked visits. Filter by patient, status, online or in person, and date. You can open a visit and cancel it. Patients create the booking.",
     canDo: ["Search appointments.", "Filter pending payment holds and expired unpaid bookings.", "Open a visit.", "Cancel a booking.", "Jump here from the dashboard's today card."],
-    how: ["A doctor cannot have two occupying appointments in the same time range. Occupying statuses are pending payment, confirmed, checked in, and in progress. The database enforces that rule.", "A new booking can sit in a payment hold. The hold length is set under Platform settings, from 5 to 120 minutes, and defaults to 10.", "When the hold expires unpaid, the slot is released. Operational issues can process those expired holds.", "Cancelling writes the appointment change. It does not send a refund. Patients pay an approved visit by Orange Money transfer to the number saved under Platform settings."],
+    how: ["A doctor cannot have two occupying appointments in the same time range. Occupying statuses are pending payment, confirmed, checked in, and in progress. The database enforces that rule.", "A new booking can sit in a payment hold. The hold length is set under Platform settings, from 5 to 120 minutes, and defaults to 15.", "When the hold expires unpaid, the slot is released. Operational issues can process those expired holds.", "Cancelling writes the appointment change. It does not send a refund. Patients pay an approved visit by Orange Money transfer to the number saved under Platform settings."],
     limits: ["This page does not create a booking for a patient and does not mark a payment successful."],
     actions: [
       { verbs: ["cancel"], text: "Open the appointment and cancel it. The stored visit is updated. A refund is not sent because no payment provider is connected." },
@@ -352,7 +352,7 @@ const TOPICS: GuideTopic[] = [
     actions: [
       { verbs: ["rename", "name"], text: "Save the system name on Platform settings. It replaces the name in the administration header." },
       { verbs: ["currency"], text: "Save the default currency. It applies to new catalog prices. Booked appointments keep their stored fee." },
-      { verbs: ["hold"], text: "Save a payment hold from 5 to 120 minutes. Until a value is stored, new bookings use 10 minutes." },
+      { verbs: ["hold"], text: "Save a payment hold from 5 to 120 minutes. Until a value is stored, new bookings use 15 minutes." },
     ],
     prompts: ["How do I rename the system?", "What settings are locked?"],
   },

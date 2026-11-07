@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db/prisma";
 import { OpenTimes } from "@/components/appointments/open-times";
 import { VisitIcon } from "@/app/patient/appointments/[id]/visit-icons";
 import { ConfirmBookingForm } from "./confirm-form";
+import { MobileBooking } from "./mobile-book";
 import "../../appointments/[id]/appointment-visit.css";
 import "../book.css";
 
@@ -53,10 +54,13 @@ export default async function BookOfferingPage({
   const locationId = typeof query.location === "string" ? query.location : "";
   const start = typeof query.start === "string" ? query.start : "";
   const requestedChannel = parseVisitChannel(typeof query.channel === "string" ? query.channel : "");
+  const step = query.step === "payment" || query.step === "confirmation" ? query.step : "details";
+  const appointmentId = typeof query.appointment === "string" ? query.appointment : "";
   const result = await loadOfferingSlots(prisma, { offeringId, day: requested, locationId: locationId || null });
   if (!result.ok) {
     if (result.code === "NOT_FOUND") notFound();
     return <RecordsUnavailable code={result.code} />;
+
   }
   const { offering, locations, slots, schedule } = result;
   const days = Array.from({ length: 14 }, (_, index) => addDays(parseCalendarDate(today)!, index).toISOString().slice(0, 10));
@@ -70,6 +74,7 @@ export default async function BookOfferingPage({
 
   return (
     <div className="book-page">
+      <div className="book-desk">
       <Link className="visit-back" href={`/patient/doctors/${offering.doctorId}`}>
         <VisitIcon name="back" />
         Doctor profile
@@ -191,6 +196,21 @@ export default async function BookOfferingPage({
           </OpenTimes>
         </section>
       )}
+      </div>
+      <MobileBooking
+        offering={offering}
+        days={days}
+        today={today}
+        requested={requested}
+        locationId={locationId}
+        locations={locations}
+        channel={channel}
+        channelQuery={channelQuery}
+        start={start}
+        slots={slots}
+        step={step}
+        appointmentId={appointmentId}
+      />
     </div>
   );
 }

@@ -14,7 +14,7 @@ import { saveChannelNotice } from "@/lib/notifications/delivery";
 import { decidePaymentConfirmation } from "@/lib/payments/verification";
 import { notifyAppointmentParties } from "./email-notice";
 
-export const DEFAULT_PAYMENT_HOLD_MINUTES = 10;
+export const DEFAULT_PAYMENT_HOLD_MINUTES = 15;
 export const HOLD_MINUTES_SETTING_KEY = "APPOINTMENT_PAYMENT_HOLD_MINUTES";
 const OVERLAP_SQLSTATE = "23P01";
 

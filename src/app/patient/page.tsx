@@ -8,7 +8,8 @@ import { RecordsUnavailable } from "@/components/records-unavailable";
 import { PATIENT_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { appointmentStatusLabel } from "@/lib/admin/labels";
-import { listPatientAppointments } from "@/lib/appointments/queries";
+import { ReleaseWhenHoldEnds } from "@/components/patient/release-hold";
+import { listPatientAppointments, resumePaymentHref } from "@/lib/appointments/queries";
 import { prisma } from "@/lib/db/prisma";
 import { listPatientFollowUpHome, listPatientPayments, loadPatientAccount } from "@/lib/patient/portal";
 import "./patient-home.css";
@@ -28,6 +29,7 @@ export default async function PatientPage() {
   const first = name.split(" ")[0] ?? name;
   const photoSrc = account.ok && account.profile?.imageVersion ? profileImageSrc(user.id, account.profile.imageVersion) : "/default-avatar.svg";
   const upcoming = appointments.ok ? [...appointments.upcoming].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime()) : [];
+  const unpaid = appointments.ok ? appointments.pending.filter((row) => row.status === "PENDING_PAYMENT") : [];
   const next = upcoming[0] ?? null;
   const dueFollows = (follows.ok ? [...follows.today, ...follows.overdue, ...follows.upcoming] : []).sort(
     (a, b) => a.startsAt.getTime() - b.startsAt.getTime(),
@@ -82,7 +84,9 @@ export default async function PatientPage() {
           {!appointments.ok ? (
             <RecordsUnavailable code={appointments.code} />
           ) : !next ? (
-            appointments.pending.length > 0 ? (
+            unpaid[0] ? (
+              <OpenPayment doctor={unpaid[0].doctor} href={resumePaymentHref(unpaid[0])} expiresAt={unpaid[0].paymentHoldExpiresAt?.toISOString() ?? null} />
+            ) : appointments.pending.length > 0 ? (
               <p className="pat-empty">You have a booking waiting for the doctor. <Link href="/patient/appointments?view=pending">Open Pending</Link></p>
             ) : (
               <div className="pat-empty-guide">
@@ -108,7 +112,9 @@ export default async function PatientPage() {
               </div>
             </div>
           )}
-          {appointments.ok && next && appointments.pending.length > 0 ? (
+          {next && unpaid[0] ? (
+            <OpenPayment doctor={unpaid[0].doctor} href={resumePaymentHref(unpaid[0])} expiresAt={unpaid[0].paymentHoldExpiresAt?.toISOString() ?? null} />
+          ) : appointments.ok && next && appointments.pending.length > 0 ? (
             <p className="pat-empty"><Link href="/patient/appointments?view=pending">A booking is still waiting for the doctor under Pending.</Link></p>
           ) : null}
         </article>
@@ -158,6 +164,16 @@ function Stat({
       </span>
       <span className="pat-stat-all">View all</span>
     </Link>
+  );
+}
+
+function OpenPayment({ doctor, href, expiresAt }: { doctor: string; href: string; expiresAt: string | null }) {
+  return (
+    <div className="pat-pay-note">
+      <p className="pat-empty">Payment is still open for {doctor}.</p>
+      <Link className="pat-continue" href={href}>Continue payment</Link>
+      {expiresAt ? <ReleaseWhenHoldEnds expiresAt={expiresAt} /> : null}
+    </div>
   );
 }
 

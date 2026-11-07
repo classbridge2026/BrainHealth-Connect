@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ButtonBusy } from "@/components/button-busy";
+import { InstantOpen } from "@/components/instant-open";
 import { InstallRegistrar } from "@/components/install-registrar";
+import { OfflineSync } from "@/components/offline-sync";
 import { RememberPath } from "@/components/return-path";
 import { metadataBase } from "@/lib/brand/metadata-base";
 import { publicDescription } from "@/lib/brand/seo";
@@ -52,7 +54,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className="h-full antialiased"
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        <OfflineSync />
         <ButtonBusy />
+        <InstantOpen />
         <InstallRegistrar />
         <RememberPath />
         {children}

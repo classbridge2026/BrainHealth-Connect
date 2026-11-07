@@ -72,6 +72,10 @@ export async function listBookableDoctors(db: PrismaClient, specialtyId: string)
 
 export async function loadPublicDoctor(db: PrismaClient, doctorId: string) {
   if (!parseUuid(doctorId)) return { ok: false as const, code: "NOT_FOUND" as const };
+  return rememberFor(`public-doctor:${doctorId}`, 30_000, () => readPublicDoctor(db, doctorId), (result) => result.ok);
+}
+
+async function readPublicDoctor(db: PrismaClient, doctorId: string) {
   try {
     const doctor = await db.doctorProfile.findUnique({
       where: { id: doctorId },
@@ -287,10 +291,24 @@ export async function loadOfferingSlots(
   }
 }
 
+export function resumePaymentHref(row: { id: string; offeringId: string | null }) {
+  return row.offeringId
+    ? `/patient/book/${row.offeringId}?step=payment&appointment=${row.id}`
+    : `/patient/appointments/${row.id}#payment`;
+}
+
 export async function listPatientAppointments(db: PrismaClient, userId: string, now = new Date()) {
   try {
     const patient = await db.patientProfile.findUnique({ where: { userId }, select: { id: true } });
     if (!patient) return { ok: true as const, upcoming: [], pending: [], history: [] };
+    const dueDoctors = await db.appointment.findMany({
+      where: { patientProfileId: patient.id, status: "PENDING_PAYMENT", paymentHoldExpiresAt: { lte: now } },
+      select: { doctorProfileId: true },
+      distinct: ["doctorProfileId"],
+    });
+    if (dueDoctors.length > 0) {
+      await Promise.all(dueDoctors.map((row) => expireOverdueHolds(db, row.doctorProfileId)));
+    }
     const [, rows] = await Promise.all([
       completeEndedConsultations(db, { now, patientProfileId: patient.id }),
       db.appointment.findMany({
@@ -299,7 +317,9 @@ export async function listPatientAppointments(db: PrismaClient, userId: string, 
       take: 100,
       select: {
         id: true,
+        offeringId: true,
         status: true,
+        paymentHoldExpiresAt: true,
         mode: true,
         startsAt: true,
         feeAmount: true,
@@ -323,6 +343,8 @@ export async function listPatientAppointments(db: PrismaClient, userId: string, 
     ]);
     const mapped = rows.map((row) => ({
       id: row.id,
+      offeringId: row.offeringId,
+      paymentHoldExpiresAt: row.paymentHoldExpiresAt,
       status: shownAppointmentStatus(row.status, row.endsAt, now),
       mode: row.mode,
       when: formatBookingWhen(row.startsAt),

@@ -71,7 +71,7 @@ export default async function SettingsPage() {
         <Snapshot label="Currency" value={settings.currency} note="New catalog prices" icon="fee" tone="#0369a1" />
         <Snapshot label="Orange Money" value={orangeDial || "Not saved"} note={orangeApi ? "API connected" : "Patients dial this number"} icon="payment" tone={orangeDial ? "#0f766e" : "#d97706"} />
         <Snapshot label="Afrimoney" value={afriDial || "Not saved"} note={afriApi ? "API connected" : "Patients dial *161*1*1*"} icon="payment" tone={afriDial ? "#15803d" : "#d97706"} />
-        <Snapshot label="Payment hold" value={settings.holdMinutes === null ? "10 min" : `${settings.holdMinutes} min`} note={settings.holdMinutes === null ? "Default until you save" : "Unpaid bookings expire"} icon="clock" tone="#12304a" />
+        <Snapshot label="Payment hold" value={settings.holdMinutes === null ? "15 min" : `${settings.holdMinutes} min`} note={settings.holdMinutes === null ? "Default until you save" : "Unpaid bookings expire"} icon="clock" tone="#12304a" />
       </section>
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <div className="grid gap-4">

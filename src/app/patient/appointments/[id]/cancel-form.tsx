@@ -7,8 +7,9 @@ import { cancelPatientAppointmentAction, type AppointmentActionState } from "../
 
 const initial: AppointmentActionState = {};
 
-export function CancelAppointmentForm({ appointmentId }: { appointmentId: string }) {
+export function CancelAppointmentForm({ appointmentId, returnTo }: { appointmentId: string; returnTo?: string }) {
   const [state, action, pending] = useActionState(cancelPatientAppointmentAction, initial);
+  const booking = Boolean(returnTo);
   const onSubmit = useConfirmedSubmit({
     title: "Cancel this appointment?",
     text: "The visit will be cancelled. You can book another time afterward.",
@@ -17,14 +18,15 @@ export function CancelAppointmentForm({ appointmentId }: { appointmentId: string
   });
   useOutcomeAlert(state.message, pending, "error");
   return (
-    <form action={action} className="grid gap-3 rounded-2xl border border-brand-line bg-white p-5" onSubmit={onSubmit}>
-      <h2 className="text-lg font-semibold text-brand-navy">Cancel appointment</h2>
+    <form action={action} className={booking ? "mbk-cancel" : "grid gap-3 rounded-2xl border border-brand-line bg-white p-5"} onSubmit={onSubmit}>
+      <h2 className={booking ? undefined : "text-lg font-semibold text-brand-navy"}>Cancel appointment</h2>
       <input type="hidden" name="appointmentId" value={appointmentId} />
-      <label className="text-sm font-medium">
+      {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
+      <label className={booking ? undefined : "text-sm font-medium"}>
         Reason
-        <textarea name="reason" required minLength={10} maxLength={500} className={`${textAreaClass} mt-1`} />
+        <textarea name="reason" required minLength={10} maxLength={500} className={booking ? undefined : `${textAreaClass} mt-1`} placeholder={booking ? "Tell us why you are cancelling." : undefined} />
       </label>
-      <button className={dangerButtonClass} disabled={pending} type="submit">
+      <button className={booking ? "mbk-cancel-btn" : dangerButtonClass} disabled={pending} type="submit">
         {pending ? "Cancelling…" : "Cancel this appointment"}
       </button>
       {state.message ? <p role="alert">{state.message}</p> : null}

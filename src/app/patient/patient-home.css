@@ -245,6 +245,34 @@
   line-height: 1.55;
 }
 
+.pat-pay-note {
+  display: grid;
+  justify-items: start;
+  gap: 0.7rem;
+}
+
+.pat-continue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0 1.15rem;
+  border: 2px solid #0f766e;
+  border-radius: 0.75rem;
+  background: #fff;
+  color: #0f766e;
+  font-size: 0.92rem;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 0 0 1px #0f766e;
+}
+
+.pat-continue:hover {
+  background: #e7f6f2;
+  border-color: #0b5f59;
+  box-shadow: 0 0 0 1px #0b5f59;
+}
+
 .pat-empty-guide {
   display: grid;
   justify-items: start;

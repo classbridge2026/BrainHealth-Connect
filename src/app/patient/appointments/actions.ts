@@ -22,7 +22,16 @@ export async function cancelPatientAppointmentAction(_previous: AppointmentActio
   );
   if (!result.ok) return { message: bookingMessage(result.code) };
   await closeOnlineRoom(prisma, { appointmentId: result.appointmentId, actorUserId: user.id, reason: "cancelled" });
-  redirect(`/patient/appointments/${result.appointmentId}`);
+  redirect(bookingPaymentReturn(formData.get("returnTo"), result.appointmentId) ?? `/patient/appointments/${result.appointmentId}`);
+}
+
+function bookingPaymentReturn(value: FormDataEntryValue | null, appointmentId: string) {
+  const path = String(value ?? "");
+  if (!path.startsWith("/patient/book/") || path.includes("://") || path.includes("\\") || path.includes("//")) return null;
+  const query = path.split("?")[1] ?? "";
+  const params = new URLSearchParams(query);
+  if (params.get("step") !== "payment" || params.get("appointment") !== appointmentId) return null;
+  return path;
 }
 
 export async function reschedulePatientAppointmentAction(_previous: AppointmentActionState, formData: FormData): Promise<AppointmentActionState> {

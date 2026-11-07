@@ -91,9 +91,9 @@ describe("payment confirmation rules", () => {
 describe("payment hold and confirmation service", () => {
   it("ignores a stored hold outside the 5 to 120 minute range", async () => {
     const setting = (valueJson: unknown) => ({ platformSetting: { findUnique: async () => ({ valueJson }) } });
-    expect(await getPaymentHoldMinutes(setting(4) as never)).toBe(10);
-    expect(await getPaymentHoldMinutes(setting(200) as never)).toBe(10);
-    expect(await getPaymentHoldMinutes(setting(15.5) as never)).toBe(10);
+    expect(await getPaymentHoldMinutes(setting(4) as never)).toBe(15);
+    expect(await getPaymentHoldMinutes(setting(200) as never)).toBe(15);
+    expect(await getPaymentHoldMinutes(setting(15.5) as never)).toBe(15);
     expect(await getPaymentHoldMinutes(setting(15) as never)).toBe(15);
   });
 

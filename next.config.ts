@@ -39,6 +39,12 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "16mb",
     },
     proxyClientMaxBodySize: "16mb",
+    // A page the user already opened is shown again immediately. Dynamic
+    // routes otherwise refetch on every click and sit on the loading spinner.
+    staleTimes: {
+      dynamic: 30,
+      static: 300,
+    },
   },
   async headers() {
     return [

@@ -135,10 +135,10 @@ export function HoldSettingForm({ minutes }: { minutes: number | null }) {
   const [state, action, pending] = useActionState(updateHoldSettingAction, initial);
   return (
     <SettingForm action={action} title="Payment hold" icon="clock" pending={pending} submitLabel="Save hold" state={state} intro="New unpaid bookings expire after this many minutes. Allowed range is 5 to 120. Existing holds are not rewritten.">
-      {minutes === null ? <Notice>No payment-hold setting is stored. New bookings use 10 minutes until an administrator saves a value between 5 and 120.</Notice> : null}
+      {minutes === null ? <Notice>No payment-hold setting is stored. New bookings use 15 minutes until an administrator saves a value between 5 and 120.</Notice> : null}
       <label className="text-sm font-medium text-brand-navy">
         Minutes
-        <input name="minutes" required inputMode="numeric" min={5} max={120} defaultValue={minutes ?? 10} className={`${textInputClass} mt-1`} />
+        <input name="minutes" required inputMode="numeric" min={5} max={120} defaultValue={minutes ?? 15} className={`${textInputClass} mt-1`} />
       </label>
     </SettingForm>
   );

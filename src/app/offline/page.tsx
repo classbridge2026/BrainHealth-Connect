@@ -15,7 +15,7 @@ export default async function OfflinePage({ searchParams }: { searchParams: Prom
       <p className="text-sm font-semibold tracking-wide text-[#0F766E] uppercase">Care records</p>
       <h1 className="text-3xl font-semibold tracking-tight text-[#0C2B45]">We can&apos;t load records right now</h1>
       <p role="alert" className="text-base leading-7 text-[#3a4a60]">
-        {RECORDS_OFFLINE_MESSAGE}
+        {RECORDS_OFFLINE_MESSAGE} Pages you already opened on this device can still open. Changes saved on this device sync when the connection returns.
       </p>
       <TryAgain href={back} />
     </main>

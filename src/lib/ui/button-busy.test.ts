@@ -1,6 +1,6 @@
 /** @vitest-environment happy-dom */
 import { afterEach, describe, expect, it } from "vitest";
-import { installButtonBusy, notifyButtonBusyNavigation } from "@/lib/ui/button-busy";
+import { installButtonBusy } from "@/lib/ui/button-busy";
 
 const fast = { signalGraceMs: 40, minVisibleMs: 20, maxVisibleMs: 500, pollMs: 10 };
 
@@ -110,11 +110,8 @@ describe("button busy spinner", () => {
     expect(save.hasAttribute("data-loading")).toBe(false);
   });
 
-  it("keeps a navigation spinner until the address changes and ignores prefetches", async () => {
-    let release = (_value: Response) => {};
-    window.fetch = ((_input: RequestInfo | URL, _init?: RequestInit) => new Promise<Response>((resolve) => {
-      release = resolve;
-    })) as typeof fetch;
+  it("does not spin a link or a button that only opens a page, and ignores prefetches", async () => {
+    window.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
     uninstall = installButtonBusy(document, fast);
 
     const prefetch = document.createElement("button");
@@ -133,19 +130,23 @@ describe("button busy spinner", () => {
     link.textContent = "Patient portal";
     link.addEventListener("click", (event) => {
       event.preventDefault();
-      void window.fetch("/patient", { headers: { rsc: "1" } });
+      void window.fetch("/patient", { headers: { rsc: "1", accept: "text/x-component" } });
     });
     document.body.append(link);
     link.click();
-    expect(link.getAttribute("data-loading")).toBe("true");
-
-    release(new Response("ok"));
-    await delay(40);
-    expect(link.getAttribute("data-loading")).toBe("true");
-
-    notifyButtonBusyNavigation();
-    await delay(40);
+    await delay(70);
     expect(link.hasAttribute("data-loading")).toBe(false);
+
+    const open = document.createElement("button");
+    open.type = "button";
+    open.textContent = "Open record";
+    open.addEventListener("click", () => {
+      void window.fetch("/patient/appointments", { headers: { rsc: "1", accept: "text/x-component" } });
+    });
+    document.body.append(open);
+    open.click();
+    await delay(70);
+    expect(open.hasAttribute("data-loading")).toBe(false);
   });
 
   it("shows the spinner when a server action prevents the browser submit", () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { RecordsOfflineError } from "./offline";
 import { forgetRemembered, rememberFor } from "./remember";
 
 describe("rememberFor", () => {
@@ -29,6 +30,21 @@ describe("rememberFor", () => {
     };
     expect(await rememberFor("sample:drop", 5_000, load, () => false)).toBe(1);
     expect(await rememberFor("sample:drop", 5_000, load, () => false)).toBe(2);
+    forgetRemembered("sample:");
+  });
+
+  it("keeps the last result when the database cannot be reached", async () => {
+    forgetRemembered("sample:");
+    let calls = 0;
+    const load = async () => {
+      calls += 1;
+      if (calls > 1) throw new RecordsOfflineError();
+      return "listed";
+    };
+    expect(await rememberFor("sample:stale", 1, load)).toBe("listed");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(await rememberFor("sample:stale", 1, load)).toBe("listed");
+    expect(calls).toBe(2);
     forgetRemembered("sample:");
   });
 });

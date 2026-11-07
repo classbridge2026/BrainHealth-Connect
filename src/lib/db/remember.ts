@@ -1,3 +1,5 @@
+import { isRecordsOffline } from "./offline";
+
 type Slot = { until: number; value: unknown };
 
 const slots = new Map<string, Slot>();
@@ -18,6 +20,12 @@ export async function rememberFor<T>(
     .then((value) => {
       if (keep(value)) slots.set(key, { until: Date.now() + ttlMs, value });
       return value;
+    })
+    .catch((error: unknown) => {
+      const stale = slots.get(key);
+      if (!stale || !isRecordsOffline(error)) throw error;
+      stale.until = Date.now() + ttlMs;
+      return stale.value as T;
     })
     .finally(() => {
       flights.delete(key);

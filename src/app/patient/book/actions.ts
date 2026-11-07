@@ -27,5 +27,10 @@ export async function bookSlotAction(_previous: BookState, formData: FormData): 
     { db: prisma },
   );
   if (!result.ok) return { message: bookingMessage(result.code as BookingCode) };
+  const offeringId = String(formData.get("offeringId") ?? "");
+  if (String(formData.get("wizard") ?? "") === "mobile" && offeringId) {
+    const step = result.paymentHoldExpiresAt ? "payment" : "confirmation";
+    redirect(`/patient/book/${offeringId}?step=${step}&appointment=${result.appointmentId}`);
+  }
   redirect(`/patient/appointments/${result.appointmentId}`);
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { config } from "@fortawesome/fontawesome-svg-core";
 import "@fortawesome/fontawesome-svg-core/styles.css";
 import {
@@ -37,6 +37,8 @@ import { openMessagesList } from "@/components/care-chat/list-nav";
 import { ChatCount, ChatUnreadProvider, useChatUnread } from "@/components/care-chat/unread";
 import { claimChatDevice, forgetChatDevice } from "@/lib/care-chat/device-copy";
 import { ProfilePhoto } from "@/components/profile-photo";
+import { InstantBook } from "./instant-book";
+import { InstantDoctor } from "./instant-doctor";
 import "./patient-shell.css";
 
 config.autoAddCss = false;
@@ -307,6 +309,10 @@ function PatientShellView({
           <div ref={scrollRef} className={`patient-scroll min-h-0 flex-1 ${chat ? "is-chat overflow-hidden" : "overflow-y-auto"}`}>
             <main className={chat ? "h-full min-h-0" : "px-4 py-6 lg:px-8 lg:py-7"}>{children}</main>
           </div>
+          <InstantDoctor />
+          <Suspense fallback={null}>
+            <InstantBook />
+          </Suspense>
           <div ref={scrollThumbRef} className="patient-scroll-thumb" aria-hidden="true" />
         </div>
         <nav className="patient-tabbar" aria-label="Patient" data-no-busy="">

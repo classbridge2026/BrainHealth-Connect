@@ -891,7 +891,7 @@ export function CareChat({
     setError("");
     try {
       let response: Response;
-      if (file) {
+      if (file && navigator.onLine !== false) {
         const form = new FormData();
         form.set("side", side);
         form.set("partner", active.id);
@@ -909,6 +909,13 @@ export function CareChat({
           xhr.onerror = () => reject(new Error("network"));
           xhr.send(form);
         });
+      } else if (file) {
+        const form = new FormData();
+        form.set("side", side);
+        form.set("partner", active.id);
+        form.set("body", body);
+        form.set("file", file);
+        response = await fetch("/api/care-chat", { method: "POST", body: form });
       } else {
         response = await fetch("/api/care-chat", {
           method: "POST",
@@ -1138,7 +1145,7 @@ export function CareChat({
           <h1>Messages</h1>
           <p>{side === "patient" ? "Only doctors you have booked." : side === "admin" ? "Every patient and doctor." : "Only patients who booked you."}</p>
         </header>
-            {!connected ? <p className="care-chat-offline">You are offline. Chats and files you already opened stay on this device.</p> : null}
+            {!connected ? <p className="care-chat-offline">You are offline. Chats you already opened stay on this device, and new messages sync when the internet returns.</p> : null}
             {roster.length === 0 ? (
           <p className="care-chat-empty">{side === "patient" ? "Book a visit to start a conversation. Other doctors stay hidden." : "Patients show up here after they book a visit with you."}</p>
         ) : (
@@ -1215,7 +1222,7 @@ export function CareChat({
                 ) : null}
               </span>
             </header>
-            {!connected ? <p className="care-chat-offline">You are offline. Messages and files already on this device still open.</p> : null}
+            {!connected ? <p className="care-chat-offline">You are offline. Messages already on this device still open, and what you send now syncs when the internet returns.</p> : null}
             {confirmClear ? (
               <div className="care-chat-clear-bar">
                 <p>This clears messages from your chat only. {active.name} will still have them.</p>
@@ -1257,7 +1264,7 @@ export function CareChat({
                       {line.body && line.body !== line.file?.name && shownPreview(line.body) ? <p>{line.body}</p> : null}
                       <time dateTime={line.at} suppressHydrationWarning>
                         <span>{stamp(line.at)}</span>
-                        {line.mine ? <span className={`care-chat-tick is-${line.state}`}>{deliveryLabel(line.state)}</span> : null}
+                        {line.mine ? <span className={`care-chat-tick is-${line.state}`}>{line.state === "sending" && !connected ? "Waiting to sync" : deliveryLabel(line.state)}</span> : null}
                       </time>
                       {line.state === "failed" ? (
                         <button type="button" className="care-chat-retry" onClick={() => void deliver(line.id, line.file && line.body === line.file.name ? "" : line.body, line.pendingFile)}>Tap to retry</button>
