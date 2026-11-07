@@ -97,16 +97,20 @@ export function VisitPayment({
           <dd>{when}</dd>
         </div>
       </dl>
-      {canPay && !paid && !pendingApproval && !waitingReference ? <BookingGuideVideo label="Watch how to pay" /> : null}
+      {canPay && !paid && !pendingApproval && !waitingWallet ? <BookingGuideVideo label="Watch how to pay" /> : null}
 
       {paid ? (
         <p className="pay-note" role="status">This fee is paid. The consultation can open when the visit time arrives.</p>
       ) : pendingApproval ? (
         <p className="pay-note">This booking is waiting for the doctor to approve or decline it.</p>
-      ) : waitingReference ? (
+      ) : waitingWallet ? (
         <div className="pay-wait" role="status">
           <p className="pay-wait-title">Waiting for confirmation</p>
-          <p>{waitingWallet ?? "Orange Money"} transaction <strong>{waitingReference}</strong> is with the clinic. The consultation opens after it is confirmed.</p>
+          <p>
+            {waitingReference
+              ? <>{waitingWallet} transaction <strong>{waitingReference}</strong> is with the clinic. The consultation opens after it is confirmed.</>
+              : "Your payment screenshot is with the clinic. The visit opens after the clinic confirms it."}
+          </p>
         </div>
       ) : !canPay ? (
         <p className="pay-note">The clinic has not collected this fee yet.</p>
@@ -186,25 +190,14 @@ export function VisitPayment({
               <input type="hidden" name="appointmentId" value={appointmentId} />
               <input type="hidden" name="provider" value={method === "afri" ? "AFRIMONEY" : "ORANGE_MONEY"} />
               <label className="pay-field">
-                {method === "afri" ? "Transaction code" : "Transaction ID"}
-                <input
-                  name="reference"
-                  required
-                  autoComplete="off"
-                  spellCheck={false}
-                  inputMode="text"
-                  placeholder={method === "afri" ? "From the Afrimoney SMS" : "PP250502.1502.B91020"}
-                />
+                Payment screenshot
+                <span className="pay-hint">
+                  {method === "afri"
+                    ? "Upload a photo of the Afrimoney receipt so the clinic can check that this visit was paid."
+                    : "Upload a photo of the Orange Money receipt so the clinic can check that this visit was paid."}
+                </span>
+                <input name="receipt" type="file" accept="image/jpeg,image/png,image/webp" required />
               </label>
-              {method === "orange" ? (
-                <>
-                  <p className="pay-note">Use the transaction ID from the Orange Money SMS or receipt. It looks like PP250502.1502.B91020.</p>
-                  <label className="pay-field">
-                    Screenshot of the transaction details
-                    <input name="receipt" type="file" accept="image/jpeg,image/png,image/webp" required />
-                  </label>
-                </>
-              ) : null}
               <button className="pay-submit" disabled={reporting} type="submit">
                 {reporting ? "Submitting…" : "Confirm payment"}
               </button>
@@ -214,11 +207,11 @@ export function VisitPayment({
         </div>
       )}
 
-      {doneHref && (paid || pendingApproval || Boolean(waitingReference) || reported.tone === "ok" || checked.tone === "ok") ? (
+      {doneHref && (paid || pendingApproval || Boolean(waitingWallet) || reported.tone === "ok" || checked.tone === "ok") ? (
         <Link className="pay-submit" href={doneHref}>Continue</Link>
       ) : null}
 
-      {walletApi && canPay && !paid && !waitingReference ? (
+      {walletApi && canPay && !paid && !waitingWallet ? (
         <form action={refresh} className="pay-check">
           <input type="hidden" name="appointmentId" value={appointmentId} />
           <button disabled={checking} type="submit">{checking ? "Checking…" : "I have paid — check now"}</button>

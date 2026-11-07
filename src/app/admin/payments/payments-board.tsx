@@ -14,6 +14,7 @@ export type PaymentRecord = {
   amount: string;
   providerCode: string;
   providerReference: string | null;
+  hasReceipt: boolean;
   createdLabel: string;
   payer: string;
   patient: string;
@@ -80,7 +81,7 @@ export function PaymentsBoard({ payments }: { payments: PaymentRecord[] }) {
                   <td data-label="Provider">
                     <span className="users-cell">
                       {walletLabel(row.providerCode)}
-                      <span className="users-sub">{row.providerReference ?? "No reference"}</span>
+                      <span className="users-sub">{row.providerReference ?? (row.hasReceipt ? "Screenshot" : "No reference")}</span>
                     </span>
                   </td>
                   <td data-label="Status">
@@ -122,8 +123,8 @@ function ViewDialog({ payment, onClose }: { payment: PaymentRecord; onClose: () 
             <dd><StatusBadge tone={payment.statusTone}>{payment.statusLabel}</StatusBadge></dd>
           </div>
           <div>
-            <dt>Transaction code</dt>
-            <dd>{payment.providerReference ?? "None recorded"}</dd>
+            <dt>Transaction ID</dt>
+            <dd>{payment.providerReference ?? (payment.hasReceipt ? "Not entered. Open the record to see the screenshot." : "None recorded")}</dd>
           </div>
           <div>
             <dt>Payer</dt>

@@ -268,8 +268,8 @@ const TOPICS: GuideTopic[] = [
     keywords: ["payment", "payments", "paid", "payer", "refund"],
     summary: "Payments lists Orange Money and Afrimoney transfers patients have reported. Open a transfer and confirm it only after the amount is on the matching clinic number.",
     canDo: ["Search by patient, payer, reference, or appointment.", "Filter by status and date.", "Open a reported transfer and confirm or reject it."],
-    how: ["Patients dial #144*2*1*the clinic number*amount*PIN# on their own phones. The PIN is never entered in CareCircle.", "The clinic number is saved under Platform settings.", "Confirm the transfer on its payment page after you see the money. Reject it if it did not arrive. This page does not send a refund."],
-    limits: ["You cannot confirm a payment that has no Orange Money transaction code.", "You cannot type a patient's PIN or send a refund from the portal."],
+    how: ["Patients dial the clinic number from their own phones, then upload a screenshot of the Orange Money or Afrimoney receipt. They do not type a transaction ID. The PIN is never entered in CareCircle.", "The clinic number is saved under Platform settings.", "Open the payment, look at the screenshot, and confirm it after you see the money. Reject it if it did not arrive. This page does not send a refund."],
+    limits: ["You confirm from the screenshot and the clinic wallet. A transaction ID is not required.", "You cannot type a patient's PIN or send a refund from the portal."],
     actions: [
       { verbs: ["refund", "capture", "mark"], text: "Open the payment. Confirm it when the Orange Money transfer has arrived, or reject it if it has not. A refund is not sent." },
     ],

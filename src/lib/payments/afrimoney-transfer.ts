@@ -63,13 +63,15 @@ export async function saveAfrimoneyReceiveNumber(input: string, db: Db, actorUse
 }
 
 export async function reportAfrimoneyTransfer(
-  input: { actorUserId: string; appointmentId: string; reference: string },
+  input: { actorUserId: string; appointmentId: string; reference: string; receipt: { bytes: Uint8Array; mimeType: string } },
   db: Db,
 ): Promise<{ message: string; tone?: "ok" | "error" }> {
   const appointmentId = parseUuid(input.appointmentId);
   const reference = parseAfrimoneyTransactionId(input.reference);
   if (!appointmentId) return { message: "This visit could not be found.", tone: "error" };
-  if (!reference) return { message: "Enter the transaction code from the Afrimoney SMS. Do not enter your PIN.", tone: "error" };
+  if (input.receipt.bytes.byteLength === 0 || !input.receipt.mimeType.startsWith("image/")) {
+    return { message: "Upload a screenshot of the Afrimoney transaction details.", tone: "error" };
+  }
   const dial = await loadAfrimoneyDialNumber(db);
   if (!dial) return { message: "The clinic has not saved an Afrimoney number yet.", tone: "error" };
 
@@ -102,10 +104,12 @@ export async function reportAfrimoneyTransfer(
         providerCode: AFRIMONEY,
         providerReference: reference,
         providerAccountId: `232${dial.slice(1)}`,
+        receiptBytes: Buffer.from(input.receipt.bytes),
+        receiptMime: input.receipt.mimeType,
         events: {
           create: {
             providerCode: AFRIMONEY,
-            providerEventId: `reported:${reference}`,
+            providerEventId: reference ? `reported:${reference}` : `reported:receipt:${appointmentId}:${crypto.randomUUID()}`,
             status: PaymentStatus.REQUIRES_ACTION,
             payloadSummary: { source: "afrimoney_ussd", reference },
           },
@@ -113,7 +117,7 @@ export async function reportAfrimoneyTransfer(
       },
       select: { id: true },
     });
-    await notifyAdminsToVerifyPayment(db, { paymentId: payment.id, wallet: "Afrimoney", reference });
+    await notifyAdminsToVerifyPayment(db, { paymentId: payment.id, wallet: "Afrimoney", reference: reference ?? "screenshot" });
   } catch (error) {
     if (isUniqueConflict(error)) return { message: "That Afrimoney transaction code is already recorded.", tone: "error" };
     throw error;

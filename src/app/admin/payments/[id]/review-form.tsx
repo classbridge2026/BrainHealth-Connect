@@ -15,7 +15,9 @@ export function OrangeReviewForm({ paymentId, reference, wallet }: { paymentId: 
     <form action={action} className="grid gap-3 rounded-2xl border border-brand-line bg-white p-5">
       <h2 className="text-lg font-semibold text-brand-navy">Confirm the {wallet} transfer</h2>
       <p className="text-sm leading-6 text-brand-muted">
-        The patient reported transaction <strong>{reference}</strong>. Check that this amount arrived on the clinic {wallet} number, then confirm it. The PIN is never stored.
+        {reference
+          ? <>The patient reported transaction <strong>{reference}</strong>. Check that this amount arrived on the clinic {wallet} number, then confirm it. The PIN is never stored.</>
+          : <>The patient uploaded a screenshot of the transfer. Check that this amount arrived on the clinic {wallet} number, then confirm it. The PIN is never stored.</>}
       </p>
       <input type="hidden" name="paymentId" value={paymentId} />
       <div className="flex flex-wrap gap-2">

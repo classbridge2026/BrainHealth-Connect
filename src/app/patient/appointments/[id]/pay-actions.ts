@@ -50,18 +50,10 @@ export async function reportOrangeTransferAction(_previous: PayState, formData: 
   const appointmentId = String(formData.get("appointmentId") ?? "");
   const reference = String(formData.get("reference") ?? "");
   const provider = String(formData.get("provider") ?? "");
-  if (provider === "AFRIMONEY") {
-    const result = await reportAfrimoneyTransfer({ actorUserId: user.id, appointmentId, reference }, prisma);
-    revalidatePath(`/patient/appointments/${appointmentId}`);
-    revalidatePath("/patient/payments");
-    revalidatePath("/patient", "layout");
-    revalidatePath("/admin/payments");
-    revalidatePath("/admin", "layout");
-    return result;
-  }
+  const wallet = provider === "AFRIMONEY" ? "Afrimoney" : "Orange Money";
   const file = formData.get("receipt");
   if (!(file instanceof File) || file.size === 0) {
-    return { message: "Upload a screenshot of the Orange Money transaction details.", tone: "error" };
+    return { message: `Upload a screenshot of the ${wallet} transaction details.`, tone: "error" };
   }
   const filename = /\.(jpe?g|png|webp)$/i.test(file.name)
     ? file.name
@@ -73,10 +65,10 @@ export async function reportOrangeTransferAction(_previous: PayState, formData: 
   const bytes = new Uint8Array(await file.arrayBuffer());
   const checked = inspectProfileImage({ filename, declaredMime: file.type, bytes });
   if (!checked.ok) return { message: "Upload a JPEG, PNG, or WebP screenshot of the transaction, up to 2 MB.", tone: "error" };
-  const result = await reportOrangeTransfer(
-    { actorUserId: user.id, appointmentId, reference, receipt: { bytes, mimeType: checked.mimeType } },
-    prisma,
-  );
+  const receipt = { bytes, mimeType: checked.mimeType };
+  const result = provider === "AFRIMONEY"
+    ? await reportAfrimoneyTransfer({ actorUserId: user.id, appointmentId, reference, receipt }, prisma)
+    : await reportOrangeTransfer({ actorUserId: user.id, appointmentId, reference, receipt }, prisma);
   revalidatePath(`/patient/appointments/${appointmentId}`);
   revalidatePath("/patient/payments");
   revalidatePath("/patient", "layout");

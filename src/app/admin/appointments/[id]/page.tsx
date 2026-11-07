@@ -100,7 +100,7 @@ export default async function AppointmentDetailPage({ params }: { params: Promis
                 <Link href={`/admin/payments/${payment.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand-line bg-white px-4 py-3 text-sm">
                   <span>
                     {payment.amount} · {payment.providerCode}
-                    {payment.providerReference ? ` · ${payment.providerReference}` : ""}
+                    {payment.providerReference ? ` · ${payment.providerReference}` : payment.hasReceipt ? " · Screenshot" : ""}
                   </span>
                   <StatusBadge tone={paymentStatusTone(payment.status)}>{paymentStatusLabel(payment.status)}</StatusBadge>
                 </Link>

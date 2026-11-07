@@ -88,7 +88,6 @@ export async function reportOrangeTransfer(
   const appointmentId = parseUuid(input.appointmentId);
   const reference = parseOrangeTransactionId(input.reference);
   if (!appointmentId) return { message: "This visit could not be found.", tone: "error" };
-  if (!reference) return { message: "Enter the Orange Money transaction ID from the SMS, such as PP250502.1502.B91020. Do not enter your PIN.", tone: "error" };
   if (input.receipt.bytes.byteLength === 0 || !input.receipt.mimeType.startsWith("image/")) {
     return { message: "Upload a screenshot of the Orange Money transaction details.", tone: "error" };
   }
@@ -128,7 +127,7 @@ export async function reportOrangeTransfer(
         events: {
           create: {
             providerCode: ORANGE_MONEY,
-            providerEventId: `reported:${reference}`,
+            providerEventId: reference ? `reported:${reference}` : `reported:receipt:${appointmentId}:${crypto.randomUUID()}`,
             status: PaymentStatus.REQUIRES_ACTION,
             payloadSummary: { source: "orange_ussd", reference },
           },
@@ -136,7 +135,7 @@ export async function reportOrangeTransfer(
       },
       select: { id: true },
     });
-    await notifyAdminsToVerifyPayment(db, { paymentId: payment.id, wallet: "Orange Money", reference });
+    await notifyAdminsToVerifyPayment(db, { paymentId: payment.id, wallet: "Orange Money", reference: reference ?? "screenshot" });
   } catch (error) {
     if (isUniqueConflict(error)) return { message: "That Orange Money transaction code is already recorded.", tone: "error" };
     throw error;
@@ -146,7 +145,7 @@ export async function reportOrangeTransfer(
     channel: "IN_APP",
     type: "payment.orange_reported",
     title: "Orange Money transfer sent",
-    preview: `Transaction ${reference} is with the clinic.`,
+    preview: reference ? `Transaction ${reference} is with the clinic.` : "Your payment screenshot is with the clinic.",
     entityType: "Appointment",
     entityId: appointmentId,
     status: "SENT",
@@ -188,7 +187,7 @@ export async function reviewOrangeTransfer(
     },
   });
   const phoneTransfer = payment?.providerCode === ORANGE_MONEY || payment?.providerCode === AFRIMONEY;
-  if (!payment || !phoneTransfer || !payment.providerReference) {
+  if (!payment || !phoneTransfer) {
     return { message: "That phone transfer was not found.", tone: "error" };
   }
   const wallet = payment.providerCode === AFRIMONEY ? "Afrimoney" : "Orange Money";

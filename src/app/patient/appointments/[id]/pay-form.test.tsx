@@ -56,6 +56,8 @@ describe("visit payment methods", () => {
     expect(screen.queryByRole("button", { name: /Orange Money/ })).toBeNull();
     expect(screen.getByText("*161*1*1*077604922*100*PIN#")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open phone dialer" }).getAttribute("href")).toBe(checkout.afriHref);
+    expect(screen.queryByRole("textbox", { name: /Transaction code/ })).toBeNull();
+    expect(screen.getByText("Upload a photo of the Afrimoney receipt so the clinic can check that this visit was paid.")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Change payment method" }));
     expect(screen.getByRole("button", { name: /Orange Money/ })).toBeTruthy();

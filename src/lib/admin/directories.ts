@@ -375,7 +375,7 @@ export async function loadAppointmentDetail(db: PrismaClient, id: string) {
         },
         payments: {
           orderBy: { createdAt: "desc" },
-          select: { id: true, status: true, amountMinor: true, currency: true, providerCode: true, providerReference: true, createdAt: true },
+          select: { id: true, status: true, amountMinor: true, currency: true, providerCode: true, providerReference: true, receiptMime: true, createdAt: true },
         },
       },
     });
@@ -429,6 +429,7 @@ export async function loadAppointmentDetail(db: PrismaClient, id: string) {
           amount: formatMinorMoney(payment.amountMinor, payment.currency),
           providerCode: payment.providerCode,
           providerReference: payment.providerReference,
+          hasReceipt: Boolean(payment.receiptMime),
           createdAt: payment.createdAt.toISOString(),
         })),
         overlaps: overlaps.map((row) => ({ id: row.id, status: row.status, startsAt: row.startsAt.toISOString() })),
@@ -474,6 +475,7 @@ export async function loadPayments(db: PrismaClient, filters: { q?: string; stat
           currency: true,
           providerCode: true,
           providerReference: true,
+          receiptMime: true,
           createdAt: true,
           payer: { select: { email: true } },
           appointment: { select: { id: true, patient: { select: { fullName: true } } } },
@@ -491,6 +493,7 @@ export async function loadPayments(db: PrismaClient, filters: { q?: string; stat
         amount: formatMinorMoney(row.amountMinor, row.currency),
         providerCode: row.providerCode,
         providerReference: row.providerReference,
+        hasReceipt: Boolean(row.receiptMime),
         createdAt: row.createdAt.toISOString(),
         payer: row.payer.email,
         patient: row.appointment.patient.fullName,

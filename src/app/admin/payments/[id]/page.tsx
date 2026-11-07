@@ -28,7 +28,7 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
     return <RecordsUnavailable code={result.code} />;
   }
   const payment = result.payment;
-  const waiting = payment.status === "REQUIRES_ACTION" && (payment.providerCode === "ORANGE_MONEY" || payment.providerCode === "AFRIMONEY") && payment.providerReference;
+  const waiting = payment.status === "REQUIRES_ACTION" && (payment.providerCode === "ORANGE_MONEY" || payment.providerCode === "AFRIMONEY") && Boolean(payment.providerReference || payment.receiptMime);
   const canVerify = actorMayVerifyPayment({ roleCodes: user.roleCodes, userId: user.id, verifierIds });
   const holdClosed = payment.appointment.paymentHoldExpiresAt !== null && new Date(payment.appointment.paymentHoldExpiresAt).getTime() <= Date.now();
   const released = payment.appointment.status === "EXPIRED_UNPAID" || (payment.appointment.status === "PENDING_PAYMENT" && holdClosed);
@@ -51,7 +51,7 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
       ) : waiting ? (
         <Notice>This transfer is waiting for a selected administrator to verify it. A doctor cannot verify a payment.</Notice>
       ) : (
-        <Notice>Confirm a phone transfer only after the patient has submitted the SMS transaction code and the amount is on the clinic number.</Notice>
+        <Notice>Confirm a phone transfer after the patient uploads a payment screenshot and the amount is on the clinic number.</Notice>
       )}
       {payment.flags.length > 0 ? (
         <Notice>
@@ -67,8 +67,8 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
           <StatusBadge tone={paymentStatusTone(payment.status)}>{paymentStatusLabel(payment.status)}</StatusBadge>
         </p>
         <p>
-          <span className="block text-sm text-brand-muted">Provider reference</span>
-          <span className="font-semibold text-brand-navy">{payment.providerReference ?? "None recorded"}</span>
+          <span className="block text-sm text-brand-muted">Transaction ID</span>
+          <span className="font-semibold text-brand-navy">{payment.providerReference ?? (payment.receiptMime ? "Not entered. Check the screenshot." : "None recorded")}</span>
         </p>
         <p>
           <span className="block text-sm text-brand-muted">Provider account</span>
