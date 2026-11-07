@@ -68,6 +68,10 @@ describe("appointment email notices", () => {
         },
       },
     };
+    const previousBase = process.env.APP_BASE_URL;
+    const previousHost = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    process.env.APP_BASE_URL = "http://localhost:3000";
+    delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
     await notifyAppointmentParties(
       db as unknown as PrismaClient,
       { appointmentId: "22222222-2222-4222-8222-222222222222", event: "cancelled", appBaseUrl: "http://localhost:3000" },
@@ -78,6 +82,12 @@ describe("appointment email notices", () => {
     );
     expect(sent).toHaveLength(2);
     expect(sent.join("\n")).toContain("was cancelled");
+    expect(sent.join("\n")).toContain("https://brain-health-connect.vercel.app/patient/appointments/22222222-2222-4222-8222-222222222222");
+    expect(sent.join("\n")).not.toContain("localhost");
+    if (previousBase === undefined) delete process.env.APP_BASE_URL;
+    else process.env.APP_BASE_URL = previousBase;
+    if (previousHost === undefined) delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    else process.env.VERCEL_PROJECT_PRODUCTION_URL = previousHost;
     expect(sent.join("\n")).not.toContain("+23276111222");
     expect(notes.some((row) => row.channel === "SMS")).toBe(false);
     expect(notes.filter((row) => row.channel === "EMAIL").every((row) => row.status === "FAILED" && row.errorCode === "not_configured")).toBe(true);

@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { sendCareCircleEmail, type DeliveryResult } from "@/lib/auth/delivery";
 import { nextRetryAt, reminderChannelAllowed, saveChannelNotice } from "@/lib/notifications/delivery";
+import { publicAppOrigin } from "@/lib/brand/metadata-base";
 import { loadSystemName } from "@/lib/brand/system-name";
 import { ensureConsultationNotice } from "@/lib/consultations/notices";
 import { formatBookingWhen } from "./time";
@@ -100,7 +101,7 @@ export async function notifyAppointmentParties(
     if (!appointment?.patient?.user || !appointment.doctor?.user) return;
     if (REMINDER.has(input.event) && appointment.status !== "CONFIRMED" && appointment.status !== "CHECKED_IN") return;
 
-    const base = (input.appBaseUrl ?? process.env.APP_BASE_URL)?.trim().replace(/\/$/, "") ?? "";
+    const base = publicAppOrigin(input.appBaseUrl);
     const when = formatBookingWhen(appointment.startsAt);
     const systemName = await loadSystemName(db);
     const notice = copy[input.event];

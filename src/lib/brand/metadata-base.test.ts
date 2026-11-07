@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { metadataBase } from "./metadata-base";
+import { metadataBase, publicAppOrigin } from "./metadata-base";
 
 const original = process.env.APP_BASE_URL;
 
@@ -34,6 +34,18 @@ describe("metadataBase", () => {
     process.env.VERCEL_PROJECT_PRODUCTION_URL = "brain-health-connect.vercel.app";
     expect(metadataBase()?.origin).toBe("https://brain-health-connect.vercel.app");
     delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  });
+
+  it("sends email links to the live site when the configured address is local", () => {
+    process.env.APP_BASE_URL = "http://localhost:3000";
+    delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    expect(publicAppOrigin("http://localhost:3000")).toBe("https://brain-health-connect.vercel.app");
+    expect(publicAppOrigin()).toBe("https://brain-health-connect.vercel.app");
+  });
+
+  it("keeps a public site address in email links", () => {
+    delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    expect(publicAppOrigin("https://care.example")).toBe("https://care.example");
   });
 
   it("prefers the current Vercel production host over an older vercel.app address", () => {

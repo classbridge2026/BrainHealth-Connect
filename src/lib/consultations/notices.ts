@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { publicAppOrigin } from "@/lib/brand/metadata-base";
 import { loadSystemName } from "@/lib/brand/system-name";
 import { sendCareCircleEmail, type DeliveryResult } from "@/lib/auth/delivery";
 import { formatBookingWhen } from "@/lib/appointments/time";
@@ -72,7 +73,7 @@ export async function notifyConsultationEvent(
     ? [appointment.patient]
     : [appointment.patient, appointment.doctor];
   const systemName = await loadSystemName(db);
-  const base = process.env.APP_BASE_URL?.trim().replace(/\/$/, "") ?? "";
+  const base = publicAppOrigin();
   for (const party of recipients) {
     if (!party.user || party.user.deletedAt || party.user.status === "DISABLED") continue;
     await ensureConsultationNotice(db, { recipientId: party.userId, appointmentId: appointment.id, type });

@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { sendCareCircleEmail } from "@/lib/auth/delivery";
+import { publicAppOrigin } from "@/lib/brand/metadata-base";
 import { loadSystemName } from "@/lib/brand/system-name";
 import { nextRetryAt, saveChannelNotice } from "@/lib/notifications/delivery";
 
@@ -51,7 +52,7 @@ export async function notifyAdministratorsOfDoctorReview(
       },
       select: { id: true, email: true },
     });
-    const base = process.env.APP_BASE_URL?.trim().replace(/\/$/, "") ?? "";
+    const base = publicAppOrigin();
     const path = `/admin/doctors/${input.doctorProfileId}`;
     const reviewUrl = base ? `${base}${path}` : path;
     const systemName = await loadSystemName(db);
