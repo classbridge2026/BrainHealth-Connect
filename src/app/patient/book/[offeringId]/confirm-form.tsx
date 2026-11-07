@@ -7,6 +7,16 @@ import "../book.css";
 
 const initial: BookState = {};
 
+function revealContinue(field: HTMLElement) {
+  const scroller = field.closest(".book-instant") ?? field.closest(".patient-scroll");
+  const button = field.parentElement?.querySelector(".mbk-continue");
+  const tab = document.querySelector(".patient-tabbar");
+  if (!(scroller instanceof HTMLElement) || !(button instanceof HTMLElement)) return;
+  const limit = tab instanceof HTMLElement ? tab.getBoundingClientRect().top - 16 : scroller.getBoundingClientRect().bottom - 16;
+  const overflow = button.getBoundingClientRect().bottom - limit;
+  if (overflow > 8) scroller.scrollTo({ top: scroller.scrollTop + overflow, behavior: "smooth" });
+}
+
 export function ConfirmBookingForm({
   offeringId,
   startsAt,
@@ -29,18 +39,13 @@ export function ConfirmBookingForm({
   useEffect(() => {
     const field = concernRef.current;
     if (!field) return;
+    if (wizard) {
+      revealContinue(field);
+      return;
+    }
     const scroller = field.closest(".patient-scroll");
     if (!(scroller instanceof HTMLElement)) {
       field.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      return;
-    }
-    if (wizard) {
-      const button = field.parentElement?.querySelector(".mbk-continue");
-      const tab = document.querySelector(".patient-tabbar");
-      const limit = tab instanceof HTMLElement ? tab.getBoundingClientRect().top - 16 : scroller.getBoundingClientRect().bottom - 16;
-      const target = button instanceof HTMLElement ? button : field;
-      const overflow = target.getBoundingClientRect().bottom - limit;
-      if (overflow > 8) scroller.scrollTo({ top: scroller.scrollTop + overflow, behavior: "smooth" });
       return;
     }
     const top = field.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 12;
@@ -57,7 +62,18 @@ export function ConfirmBookingForm({
       <label className="book-concern" id={wizard ? "what-is-wrong-mobile" : "what-is-wrong"} ref={concernRef}>
         What is wrong?
         <span>Tell the doctor what is wrong. This is the reason for the visit.</span>
-        <textarea name="concern" required minLength={10} maxLength={500} rows={4} placeholder="Describe the problem in your own words." />
+        <textarea
+          name="concern"
+          required
+          minLength={10}
+          maxLength={500}
+          rows={4}
+          placeholder="Describe the problem in your own words."
+          onFocus={() => {
+            const field = concernRef.current;
+            if (wizard && field) revealContinue(field);
+          }}
+        />
       </label>
       <button className={wizard ? "mbk-continue" : "book-confirm"} type="submit" disabled={pending}>
         {pending ? "Saving…" : wizard ? "Continue" : payable ? "Confirm and pay" : "Confirm appointment"}

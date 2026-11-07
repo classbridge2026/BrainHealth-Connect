@@ -961,11 +961,15 @@
   inset: 0;
   z-index: 7;
   overflow: auto;
-  padding: 0.85rem 1rem 1.25rem;
+  padding: 0.85rem 1rem calc(6.5rem + env(safe-area-inset-bottom, 0px));
   background:
     radial-gradient(circle at 12% 0%, rgba(210, 240, 224, 0.55), transparent 16rem),
     #f4f7f8;
 }
+
+  .book-mobile .book-concern textarea {
+    scroll-margin-bottom: calc(8.75rem + env(safe-area-inset-bottom, 0px));
+  }
 
   .patient-app:has(.book-page) .portal-navbar,
   .patient-app:has(.book-page) .guide {
@@ -973,7 +977,7 @@
   }
 
   .patient-app:has(.book-page) .patient-scroll {
-    padding-bottom: calc(6.75rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
   }
 
   .patient-app:has(.book-page) main {

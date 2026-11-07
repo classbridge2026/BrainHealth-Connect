@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { ProfilePhoto } from "@/components/profile-photo";
 import type { ChatLine, ChatPerson } from "@/lib/care-chat/service";
 import {
@@ -445,6 +445,121 @@ function ChatFileView({
   );
 }
 
+function FittedImage({ src, alt }: { src: string; alt: string }) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [natural, setNatural] = useState({ w: 0, h: 0 });
+  const scaleRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ distance: number; scale: number; panX: number; panY: number } | null>(null);
+  const dragRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+
+  function limitPan(x: number, y: number, nextScale: number) {
+    const frame = frameRef.current;
+    if (!frame || natural.w === 0 || nextScale <= 1) return { x: 0, y: 0 };
+    const fit = Math.min(frame.clientWidth / natural.w, frame.clientHeight / natural.h);
+    const maxX = Math.max(0, (natural.w * fit * nextScale - frame.clientWidth) / 2);
+    const maxY = Math.max(0, (natural.h * fit * nextScale - frame.clientHeight) / 2);
+    return {
+      x: Math.min(maxX, Math.max(-maxX, x)),
+      y: Math.min(maxY, Math.max(-maxY, y)),
+    };
+  }
+
+  function commit(nextScale: number, nextPan = panRef.current) {
+    const clamped = Math.min(4, Math.max(1, Math.round(nextScale * 100) / 100));
+    const moved = limitPan(nextPan.x, nextPan.y, clamped);
+    scaleRef.current = clamped;
+    panRef.current = moved;
+    setScale(clamped);
+    setPan(moved);
+  }
+
+  useEffect(() => {
+    scaleRef.current = 1;
+    panRef.current = { x: 0, y: 0 };
+    setScale(1);
+    setPan({ x: 0, y: 0 });
+  }, [src]);
+
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    function onWheel(event: WheelEvent) {
+      event.preventDefault();
+      commit(scaleRef.current + (event.deltaY < 0 ? 0.25 : -0.25));
+    }
+    frame.addEventListener("wheel", onWheel, { passive: false });
+    return () => frame.removeEventListener("wheel", onWheel);
+  }, [natural.w, natural.h]);
+
+  function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).closest(".care-chat-zoom-bar")) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.current.size >= 2) {
+      const [first, second] = [...pointers.current.values()];
+      pinchRef.current = {
+        distance: Math.max(1, Math.hypot(first.x - second.x, first.y - second.y)),
+        scale: scaleRef.current,
+        panX: panRef.current.x,
+        panY: panRef.current.y,
+      };
+      dragRef.current = null;
+      return;
+    }
+    dragRef.current = { x: event.clientX, y: event.clientY, panX: panRef.current.x, panY: panRef.current.y };
+    pinchRef.current = null;
+  }
+
+  function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!pointers.current.has(event.pointerId)) return;
+    pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const pinch = pinchRef.current;
+    if (pointers.current.size >= 2 && pinch) {
+      const [first, second] = [...pointers.current.values()];
+      const distance = Math.max(1, Math.hypot(first.x - second.x, first.y - second.y));
+      commit(pinch.scale * (distance / pinch.distance), { x: pinch.panX, y: pinch.panY });
+      return;
+    }
+    const drag = dragRef.current;
+    if (!drag || scaleRef.current <= 1) return;
+    commit(scaleRef.current, { x: drag.panX + event.clientX - drag.x, y: drag.panY + event.clientY - drag.y });
+  }
+
+  function onPointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    pointers.current.delete(event.pointerId);
+    pinchRef.current = null;
+    dragRef.current = null;
+  }
+
+  return (
+    <div
+      ref={frameRef}
+      className="care-chat-zoom"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+    >
+      <img
+        src={src}
+        alt={alt}
+        draggable={false}
+        onLoad={(event) => setNatural({ w: event.currentTarget.naturalWidth, h: event.currentTarget.naturalHeight })}
+        style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})` }}
+      />
+      <div className="care-chat-zoom-bar" data-no-busy="">
+        <button type="button" aria-label="Zoom out" disabled={scale <= 1} onClick={() => commit(scale - 0.5)}>−</button>
+        <span aria-live="polite">{Math.round(scale * 100)}%</span>
+        <button type="button" aria-label="Zoom in" disabled={scale >= 4} onClick={() => commit(scale + 0.5)}>+</button>
+      </div>
+    </div>
+  );
+}
+
 function FileViewer({ look, userId, connected, onClose }: { look: FileLook; userId: string; connected: boolean; onClose: () => void }) {
   const local = look.href.startsWith("blob:");
   const blob = useChatBlob(local ? undefined : look.href, look.size ?? 0, userId, local ? look.href : undefined, true);
@@ -481,7 +596,7 @@ function FileViewer({ look, userId, connected, onClose }: { look: FileLook; user
         ) : blob.status !== "ready" ? (
           <LoadRing progress={blob.progress} caption={`Downloading ${blob.progress}%`} />
         ) : null}
-        {kind === "image" && src ? <img src={src} alt={look.name} /> : null}
+        {kind === "image" && src ? <FittedImage src={src} alt={look.name} /> : null}
         {kind === "video" && src ? <video src={src} controls autoPlay playsInline /> : null}
         {kind === "pdf" && src ? <iframe className="care-chat-viewer-frame" title={look.name} src={src} /> : null}
         {kind === "text" ? <pre className="care-chat-viewer-text">{text || (blob.status === "ready" ? "" : "Opening…")}</pre> : null}

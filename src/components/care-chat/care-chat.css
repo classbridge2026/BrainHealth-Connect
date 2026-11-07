@@ -723,6 +723,7 @@
   inset: 0;
   z-index: 80;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   width: 100vw;
   width: 100dvw;
@@ -731,6 +732,7 @@
   height: 100svh;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   box-sizing: border-box;
+  overflow: hidden;
   background: #07131f;
   color: #fff;
 }
@@ -739,6 +741,8 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  min-width: 0;
+  max-width: 100%;
   padding: 0.75rem 1rem;
   border: 0;
   background: rgba(7, 19, 31, 0.92);
@@ -770,6 +774,8 @@
   position: relative;
   display: grid;
   place-items: center;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -777,15 +783,77 @@
   background: #000;
 }
 
-.care-chat-viewer-stage img,
 .care-chat-viewer-stage video {
+  position: absolute;
+  inset: 0;
   display: block;
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
   object-fit: contain;
   background: #000;
+}
+
+.care-chat-zoom {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.care-chat-zoom img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  transform-origin: center center;
+  background: #000;
+}
+
+.care-chat-zoom-bar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(0.85rem + env(safe-area-inset-bottom, 0px));
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  border-radius: 999px;
+  background: rgba(7, 19, 31, 0.82);
+  transform: translateX(-50%);
+}
+
+.care-chat-zoom-bar button {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #07131f;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.care-chat-zoom-bar button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.care-chat-zoom-bar span {
+  min-width: 3rem;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: center;
 }
 
 .care-chat-viewer-frame,
