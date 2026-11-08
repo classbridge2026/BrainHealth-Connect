@@ -305,8 +305,8 @@ export async function loadOfferingWorkspace(
         defaultFee: formatMoneyAmount(row.consultationService.defaultFee),
         mode: row.mode,
         durationMinutes: row.durationMinutes,
-        fee: formatMoneyAmount(row.price),
-        currency: row.currency.trim(),
+        fee: formatMoneyAmount(row.consultationService.defaultFee),
+        currency: row.consultationService.currency.trim(),
         serviceCurrency: row.consultationService.currency.trim(),
         sameAsDefault:
           row.currency.trim() === row.consultationService.currency.trim() && sameMoney(row.price, row.consultationService.defaultFee),
@@ -396,13 +396,7 @@ export async function loadPricing(db: PrismaClient, filters: { q?: string; statu
         orderBy: { name: "asc" },
         skip: (page - 1) * CATALOG_PAGE_SIZE,
         take: CATALOG_PAGE_SIZE,
-        include: {
-          offerings: {
-            orderBy: { doctor: { fullName: "asc" } },
-            take: 20,
-            include: { doctor: { select: { fullName: true, verificationStatus: true } } },
-          },
-        },
+        select: { id: true, name: true, isActive: true, mode: true, defaultFee: true, currency: true },
       }),
     ]);
     return {
@@ -418,16 +412,6 @@ export async function loadPricing(db: PrismaClient, filters: { q?: string; statu
         mode: service.mode,
         defaultFee: formatMoneyAmount(service.defaultFee),
         currency: service.currency.trim(),
-        offerings: service.offerings.map((offering) => ({
-          id: offering.id,
-          doctorName: offering.doctor.fullName,
-          verificationStatus: offering.doctor.verificationStatus,
-          fee: formatMoneyAmount(offering.price),
-          currency: offering.currency.trim(),
-          isActive: offering.isActive,
-          mode: offering.mode,
-          sameAsDefault: offering.currency.trim() === service.currency.trim() && sameMoney(offering.price, service.defaultFee),
-        })),
       })),
     };
   } catch (error) {

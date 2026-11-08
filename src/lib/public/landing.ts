@@ -238,24 +238,16 @@ export function publicSessionFee(rows: { price: { toString(): string }; currency
   return `${varies ? "From " : ""}${currency} ${shown} / session`;
 }
 
-/** Offering price first, then the service default when a doctor fee was not stored. */
+/** The service fee set on Fees and pricing. */
 export function publishedServiceFee(input: {
   offerings: Array<{ price: { toString(): string }; priceAmountMinor?: number | null; currency: string }>;
   defaultFee?: { toString(): string } | null;
   currency?: string | null;
 }): string | null {
-  const offeringFee = publicSessionFee(input.offerings);
-  if (offeringFee) return offeringFee;
-  const fromMinor = publicSessionFee(
-    input.offerings.flatMap((row) => {
-      const minor = row.priceAmountMinor;
-      if (typeof minor !== "number" || !Number.isSafeInteger(minor) || minor <= 0) return [];
-      return [{ price: { toString: () => new Prisma.Decimal(minor).div(100).toFixed(2) }, currency: row.currency }];
-    }),
-  );
-  if (fromMinor) return fromMinor;
-  if (!input.defaultFee || !input.currency) return null;
-  return publicSessionFee([{ price: input.defaultFee, currency: input.currency }]);
+  if (input.defaultFee && input.currency) {
+    return publicSessionFee([{ price: input.defaultFee, currency: input.currency }]);
+  }
+  return publicSessionFee(input.offerings);
 }
 
 export function excerpt(value: string, max = 220): string {
@@ -322,7 +314,7 @@ async function readPublicLanding(db: PrismaClient, now: Date): Promise<PublicLan
           price: true,
           currency: true,
           specialty: { select: { id: true, name: true } },
-          consultationService: { select: { name: true } },
+          consultationService: { select: { name: true, defaultFee: true, currency: true } },
           doctor: { select: { id: true, displayName: true, fullName: true } },
         },
       }),
@@ -354,7 +346,7 @@ async function readPublicLanding(db: PrismaClient, now: Date): Promise<PublicLan
               consultationService: { isActive: true },
               specialty: { isActive: true },
             },
-            select: { mode: true, price: true, currency: true, consultationService: { select: { name: true } } },
+            select: { mode: true, price: true, currency: true, consultationService: { select: { name: true, defaultFee: true, currency: true } } },
           },
         },
       }),
@@ -418,7 +410,7 @@ async function readPublicLanding(db: PrismaClient, now: Date): Promise<PublicLan
           languages: publicLanguages(doctor.languages),
           consultationTypes: uniqueConsultationModes(doctor.offerings.map((offering) => offering.mode)),
           services,
-          sessionFee: publicSessionFee(doctor.offerings),
+          sessionFee: publicSessionFee(doctor.offerings.map((offering) => ({ price: offering.consultationService.defaultFee, currency: offering.consultationService.currency }))),
           photo: doctor.user.profileImageUpdatedAt
             ? { userId: doctor.user.id, version: doctor.user.profileImageUpdatedAt.toISOString() }
             : null,
@@ -442,7 +434,7 @@ async function readPublicLanding(db: PrismaClient, now: Date): Promise<PublicLan
           specialtyName,
           mode: offering.mode,
           durationMinutes: offering.durationMinutes,
-          fee: publicSessionFee([{ price: offering.price, currency: offering.currency }]),
+          fee: publicSessionFee([{ price: offering.consultationService.defaultFee, currency: offering.consultationService.currency }]),
         },
       ];
     });

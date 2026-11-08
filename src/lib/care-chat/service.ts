@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Prisma, type AppointmentStatus, type PrismaClient } from "@prisma/client";
+import { forgetRemembered, rememberFor } from "@/lib/db/remember";
 import { createPrivateStorage, type PrivateObjectStorage } from "@/lib/storage/private-storage";
 
 /** Visits that mean the patient has booked this doctor. Unpaid holds and cancellations do not. */
@@ -843,11 +844,11 @@ export type ChatUnread = {
   byPartner: Array<{ id: string; unread: number }>;
 };
 
-const unreadMemo = new Map<string, { until: number; value: ChatUnread }>();
 const presenceNext = new Map<string, number>();
+const UNREAD_TTL_MS = 12_000;
 
 function noteChatChanged() {
-  unreadMemo.clear();
+  forgetRemembered("chat-unread:");
 }
 
 export async function unreadCareChats(
@@ -856,12 +857,12 @@ export async function unreadCareChats(
   side: ChatSide,
 ): Promise<ChatUnread> {
   if (side === "admin") return unreadAdminChats(db, userId);
+  if (process.env.NODE_ENV === "test") return readUnreadCareChats(db, userId, side);
+  return rememberFor(`chat-unread:${side}:${userId}`, UNREAD_TTL_MS, () => readUnreadCareChats(db, userId, side));
+}
+
+async function readUnreadCareChats(db: ChatDb, userId: string, side: Exclude<ChatSide, "admin">): Promise<ChatUnread> {
   const empty: ChatUnread = { total: 0, byPartner: [] };
-  const memoKey = `${side}:${userId}`;
-  const memo = unreadMemo.get(memoKey);
-  if (memo && memo.until > Date.now()) return memo.value;
-  const profileId = side === "patient" ? await patientIdFor(db, userId) : await doctorIdFor(db, userId);
-  if (!profileId) return empty;
   const client = sqlClient(db);
   if (client) {
     try {
@@ -869,8 +870,9 @@ export async function unreadCareChats(
         ? Prisma.sql`
             SELECT c."doctorProfileId" AS id, COUNT(*)::int AS unread
             FROM "CareConversation" c
+            JOIN "PatientProfile" p ON p.id = c."patientProfileId"
             JOIN "CareMessage" m ON m."conversationId" = c.id
-            WHERE c."patientProfileId" = ${profileId}::uuid
+            WHERE p."userId" = ${userId}::uuid
               AND m."senderUserId" <> ${userId}::uuid
               AND m."readAt" IS NULL
               AND (c."patientClearedAt" IS NULL OR m."createdAt" > c."patientClearedAt")
@@ -879,21 +881,22 @@ export async function unreadCareChats(
         : Prisma.sql`
             SELECT c."patientProfileId" AS id, COUNT(*)::int AS unread
             FROM "CareConversation" c
+            JOIN "DoctorProfile" d ON d.id = c."doctorProfileId"
             JOIN "CareMessage" m ON m."conversationId" = c.id
-            WHERE c."doctorProfileId" = ${profileId}::uuid
+            WHERE d."userId" = ${userId}::uuid
               AND m."senderUserId" <> ${userId}::uuid
               AND m."readAt" IS NULL
               AND (c."doctorClearedAt" IS NULL OR m."createdAt" > c."doctorClearedAt")
             GROUP BY c."patientProfileId"
           `);
       const byPartner = rows.filter((row) => row.unread > 0).map((row) => ({ id: row.id, unread: row.unread }));
-      const value = { total: byPartner.reduce((sum, row) => sum + row.unread, 0), byPartner };
-      unreadMemo.set(memoKey, { until: Date.now() + 3_000, value });
-      return value;
+      return { total: byPartner.reduce((sum, row) => sum + row.unread, 0), byPartner };
     } catch {
       // The Prisma path still works on an older schema.
     }
   }
+  const profileId = side === "patient" ? await patientIdFor(db, userId) : await doctorIdFor(db, userId);
+  if (!profileId) return empty;
   const conversations = await db.careConversation.findMany({
     where: side === "patient" ? { patientProfileId: profileId } : { doctorProfileId: profileId },
     select: { id: true, patientProfileId: true, doctorProfileId: true },
@@ -905,9 +908,7 @@ export async function unreadCareChats(
     if (unread < 1) return [];
     return [{ id: side === "patient" ? conversation.doctorProfileId : conversation.patientProfileId, unread }];
   });
-  const value = { total: byPartner.reduce((sum, row) => sum + row.unread, 0), byPartner };
-  unreadMemo.set(memoKey, { until: Date.now() + 3_000, value });
-  return value;
+  return { total: byPartner.reduce((sum, row) => sum + row.unread, 0), byPartner };
 }
 
 type SqlClient = {
@@ -1095,7 +1096,7 @@ export async function readChatThread(
     try {
       const fast = await readChatSinceFast(client, { ...input, side: input.side, after: null });
       if (fast.ok) {
-        unreadMemo.delete(`${input.side}:${input.actorUserId}`);
+        forgetRemembered(`chat-unread:${input.side}:${input.actorUserId}`);
         return {
           conversationId: fast.conversationId,
           messages: fast.messages,

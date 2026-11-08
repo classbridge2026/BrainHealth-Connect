@@ -3,7 +3,7 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { ADMIN_ROLE_CODE, SUPER_ADMIN_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
-import { createDoctorOffering, deleteDoctorOffering, updateDoctorOffering } from "@/lib/catalog/offerings";
+import { assignDoctorOfferings, deleteDoctorOffering, updateDoctorOffering } from "@/lib/catalog/offerings";
 import { prepareSelfDoctor } from "@/lib/catalog/self-doctor";
 import { prisma } from "@/lib/db/prisma";
 
@@ -44,15 +44,13 @@ export async function createOfferingAction(_previous: OfferingActionState, formD
     doctorProfileId = prepared.doctorProfileId;
     updateTag("doctor-chrome");
   }
-  const result = await createDoctorOffering(
+  const result = await assignDoctorOfferings(
     {
       doctorProfileId,
       specialtyId: String(formData.get("specialtyId") ?? ""),
-      consultationServiceId: String(formData.get("consultationServiceId") ?? ""),
+      consultationServiceIds: formData.getAll("consultationServiceId").map((value) => String(value)),
       mode: String(formData.get("mode") ?? ""),
       durationMinutes: String(formData.get("durationMinutes") ?? ""),
-      fee: String(formData.get("fee") ?? ""),
-      currency: String(formData.get("currency") ?? ""),
       notes: String(formData.get("notes") ?? ""),
       isActive: formData.get("isActive") === "on",
     },
@@ -61,7 +59,7 @@ export async function createOfferingAction(_previous: OfferingActionState, formD
   if (result.ok && selfAssign) {
     return finish({
       ok: true,
-      message: "The service is assigned to you. Publish weekly hours on Availability so patients can choose a time.",
+      message: `${result.message} Publish weekly hours on Availability so patients can choose a time.`,
     });
   }
   return finish(result);

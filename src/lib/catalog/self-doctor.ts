@@ -74,8 +74,9 @@ export async function prepareSelfDoctor(
   }
   const specialtyId = parseUuid(input.specialtyId);
   if (!specialtyId) return { ok: false, message: "Choose a specialty." };
-  const mode = parseRequiredMode(input.mode);
-  if (!mode) return { ok: false, message: "Choose online or in person." };
+  const requested = input.mode.trim().toUpperCase();
+  const chosen: ConsultationMode[] = requested === "ANY" ? ["ONLINE", "IN_PERSON"] : parseRequiredMode(requested) ? [parseRequiredMode(requested)!] : [];
+  if (chosen.length === 0) return { ok: false, message: "Choose online, in person, or online or in person." };
 
   try {
     const doctorProfileId = await deps.db.$transaction(async (tx) => {
@@ -113,7 +114,7 @@ export async function prepareSelfDoctor(
 
       const name = existing ? existing.fullName : parseClinicianName(input.fullName);
       if (!name) throw new Error("NAME");
-      const modes = withMode(existing?.consultationModes ?? [], mode);
+      const modes = chosen.reduce((current, mode) => withMode(current, mode), existing?.consultationModes ?? []);
       let profileId = existing?.id ?? "";
       let fromStatus = existing?.verificationStatus ?? null;
       if (!existing) {
@@ -178,7 +179,7 @@ export async function prepareSelfDoctor(
           action: "doctor.self_opened",
           entityType: "DoctorProfile",
           entityId: profileId,
-          metadata: { specialtyId, mode },
+          metadata: { specialtyId, mode: requested },
         },
       });
       return profileId;

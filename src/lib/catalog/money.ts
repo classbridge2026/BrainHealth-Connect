@@ -53,7 +53,7 @@ export function feeSnapshotFromMinor(
   };
 }
 
-/** Patient bookings use a saved doctor fee. A zero doctor fee uses the service price an administrator set. */
+/** Bookings use the service fee set on Fees and pricing. */
 export function visitCharge(input: {
   price: Prisma.Decimal;
   priceAmountMinor: number;
@@ -65,8 +65,6 @@ export function visitCharge(input: {
     offering: { price: input.price, priceAmountMinor: input.priceAmountMinor, currency: input.currency },
     fallbackMinor: 0,
   });
-  if (!saved) return null;
-  if (saved.feeAmountMinor > 0) return saved;
   if (input.defaultFee == null || input.defaultFee === "") return saved;
   let fee: Prisma.Decimal;
   try {
@@ -74,7 +72,7 @@ export function visitCharge(input: {
   } catch {
     return saved;
   }
-  if (!fee.gt(0)) return saved;
+  if (fee.isNegative()) return saved;
   const minor = decimalToMinorUnits(fee);
   const currency = parseCurrency(input.defaultCurrency ?? input.currency);
   if (minor === null || !currency) return saved;

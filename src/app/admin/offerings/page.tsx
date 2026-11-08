@@ -41,21 +41,23 @@ export default async function OfferingsPage({
   }));
   return (
     <main className="users-page">
-      <LiveQueryForm
-        pathname="/admin/offerings"
-        className="users-filters offerings-filters"
-        fields={[
-          { name: "q", label: "Search", kind: "text", value: q, placeholder: "Doctor, specialty, or service", inputClassName: textInputClass },
-          { name: "doctorId", label: "Doctor", kind: "select", value: doctorId, inputClassName: textInputClass, options: [{ value: "", label: "All doctors" }, ...result.doctors.map((doctor) => ({ value: doctor.id, label: doctor.fullName }))] },
-          { name: "specialtyId", label: "Specialty", kind: "select", value: specialtyId, inputClassName: textInputClass, options: [{ value: "", label: "All specialties" }, ...result.specialties.map((specialty) => ({ value: specialty.id, label: specialty.name }))] },
-          { name: "serviceId", label: "Service", kind: "select", value: serviceId, inputClassName: textInputClass, options: [{ value: "", label: "All services" }, ...result.services.map((service) => ({ value: service.id, label: service.name }))] },
-          { name: "status", label: "Status", kind: "select", value: status || "ALL", inputClassName: textInputClass, options: [
-            { value: "ALL", label: "All statuses" },
-            { value: "ACTIVE", label: "Active" },
-            { value: "INACTIVE", label: "Inactive" },
-          ] },
-        ]}
-      />
+      <div className="users-desk">
+        <LiveQueryForm
+          pathname="/admin/offerings"
+          className="users-filters offerings-filters"
+          fields={[
+            { name: "q", label: "Search", kind: "text", value: q, placeholder: "Doctor, specialty, or service", inputClassName: textInputClass },
+            { name: "doctorId", label: "Doctor", kind: "select", value: doctorId, inputClassName: textInputClass, options: [{ value: "", label: "All doctors" }, ...result.doctors.map((doctor) => ({ value: doctor.id, label: doctor.fullName }))] },
+            { name: "specialtyId", label: "Specialty", kind: "select", value: specialtyId, inputClassName: textInputClass, options: [{ value: "", label: "All specialties" }, ...result.specialties.map((specialty) => ({ value: specialty.id, label: specialty.name }))] },
+            { name: "serviceId", label: "Service", kind: "select", value: serviceId, inputClassName: textInputClass, options: [{ value: "", label: "All services" }, ...result.services.map((service) => ({ value: service.id, label: service.name }))] },
+            { name: "status", label: "Status", kind: "select", value: status || "ALL", inputClassName: textInputClass, options: [
+              { value: "ALL", label: "All statuses" },
+              { value: "ACTIVE", label: "Active" },
+              { value: "INACTIVE", label: "Inactive" },
+            ] },
+          ]}
+        />
+      </div>
       <OfferingsBoard
         offerings={offerings}
         doctors={result.eligibleDoctors}
@@ -63,9 +65,23 @@ export default async function OfferingsPage({
         specialties={result.specialties}
         self={self}
         selfRole={user.roleCodes.includes(SUPER_ADMIN_ROLE_CODE) ? "Super administrator" : "Administrator"}
-        currency={result.currency}
+        list={{
+          q,
+          doctorId,
+          specialtyId,
+          serviceId,
+          status,
+          page: result.page,
+          pageSize: result.pageSize,
+          total: result.total,
+          doctors: result.doctors,
+          specialties: result.specialties,
+          services: result.services.map((service) => ({ id: service.id, name: service.name })),
+        }}
       />
-      <CatalogPager page={result.page} pageSize={result.pageSize} total={result.total} query={query} label="doctor" />
+      <div className="users-desk">
+        <CatalogPager page={result.page} pageSize={result.pageSize} total={result.total} query={query} label="doctor" />
+      </div>
     </main>
   );
 }

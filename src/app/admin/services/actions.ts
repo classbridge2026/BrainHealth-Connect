@@ -46,8 +46,6 @@ export async function updateServiceAction(_previous: ServiceActionState, formDat
       description: String(formData.get("description") ?? ""),
       mode: String(formData.get("mode") ?? ""),
       durationMinutes: String(formData.get("durationMinutes") ?? ""),
-      defaultFee: String(formData.get("defaultFee") ?? ""),
-      currency: String(formData.get("currency") ?? ""),
       preparationInstructions: String(formData.get("preparationInstructions") ?? ""),
       isActive: formData.get("isActive") === "on",
     },

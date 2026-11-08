@@ -32,26 +32,33 @@ export function PatientCallAlert() {
     if (onConsultation) return;
     let stop = false;
     async function look() {
-      if (document.visibilityState === "hidden") return;
+      if (document.visibilityState === "hidden") return false;
+      const started = Date.now();
       try {
         const response = await fetch("/api/patient/consultation-calls", { cache: "no-store" });
-        if (!response.ok) return;
+        const slow = !response.ok || Date.now() - started > 2_000;
+        if (!response.ok) return slow;
         const payload = (await response.json()) as { calls?: IncomingCall[] };
-        if (stop) return;
+        if (stop) return slow;
         setCalls(Array.isArray(payload.calls) ? payload.calls : []);
         setDeclined(declinedCallIds());
+        return slow;
       } catch {
-        // The next check tries again.
+        return true;
       }
     }
     let timer = 0;
-    function schedule() {
+    function schedule(delay: number) {
       if (stop) return;
       timer = window.setTimeout(() => {
-        void look().finally(schedule);
-      }, 15000);
+        void look().then((slow) => {
+          if (!stop) schedule(slow ? 30_000 : 15_000);
+        });
+      }, delay);
     }
-    void look().finally(schedule);
+    void look().then((slow) => {
+      if (!stop) schedule(slow ? 30_000 : 15_000);
+    });
     return () => {
       stop = true;
       window.clearTimeout(timer);

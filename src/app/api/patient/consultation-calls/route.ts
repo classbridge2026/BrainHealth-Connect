@@ -6,6 +6,7 @@ import { accessStatus } from "@/lib/consultations/access";
 import { listIncomingCalls } from "@/lib/consultations/incoming";
 import { prisma } from "@/lib/db/prisma";
 import { isRecordsOffline } from "@/lib/db/offline";
+import { rememberFor } from "@/lib/db/remember";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +17,11 @@ export async function GET() {
     const cookieStore = await cookies();
     const user = await readSessionUser(prisma, cookieStore.get(SESSION_COOKIE)?.value, new Date());
     if (!user) return NextResponse.json({ error: "Sign in to continue." }, { status: 401, headers: noStore });
-    const result = await listIncomingCalls(prisma, {
+    const result = await rememberFor(`incoming-calls:${user.id}`, 8_000, () => listIncomingCalls(prisma, {
       actorUserId: user.id,
       actorStatus: user.status,
       roleCodes: user.roleCodes,
-    });
+    }));
     if (!result.ok) {
       const error = result.code === "RATE_LIMITED" ? "Please wait a moment and try again." : "That consultation could not be found.";
       return NextResponse.json({ error }, { status: accessStatus(result.code), headers: noStore });

@@ -1,21 +1,10 @@
 "use client";
 
-import { Fragment, useActionState } from "react";
-import { StatusBadge, verificationBadge } from "@/components/status-badge";
-import { updateOfferingFeeAction, updateServiceFeeAction, type PricingActionState } from "./actions";
+import { useActionState } from "react";
+import { StatusBadge } from "@/components/status-badge";
+import { updateServiceFeeAction, type PricingActionState } from "./actions";
 
 const initial: PricingActionState = {};
-
-export type PricingOffering = {
-  id: string;
-  doctorName: string;
-  fee: string;
-  currency: string;
-  isActive: boolean;
-  mode: "ONLINE" | "IN_PERSON";
-  sameAsDefault: boolean;
-  verificationStatus: string;
-};
 
 export type PricingService = {
   id: string;
@@ -24,7 +13,6 @@ export type PricingService = {
   currency: string;
   isActive: boolean;
   mode: string | null;
-  offerings: PricingOffering[];
 };
 
 function visitLabel(mode: string | null) {
@@ -53,7 +41,7 @@ function ServiceFeeRow({ service }: { service: PricingService }) {
         </form>
         <span className="users-cell">
           <span className="fee-name">{service.name}</span>
-          <span className="users-sub">Default fee</span>
+          <span className="users-sub">Service fee</span>
           <FeeMessage state={state} />
         </span>
       </td>
@@ -72,7 +60,7 @@ function ServiceFeeRow({ service }: { service: PricingService }) {
           required
           defaultValue={service.defaultFee}
           inputMode="decimal"
-          aria-label={`${service.name} default fee`}
+          aria-label={`${service.name} fee`}
           className="fee-field"
         />
       </td>
@@ -96,62 +84,6 @@ function ServiceFeeRow({ service }: { service: PricingService }) {
   );
 }
 
-function OfferingFeeRow({ offering }: { offering: PricingOffering }) {
-  const formId = `offering-fee-${offering.id}`;
-  const [state, action, pending] = useActionState(updateOfferingFeeAction, initial);
-  const verification = verificationBadge(offering.verificationStatus);
-  return (
-    <tr className="fee-row-doctor">
-      <td data-label="Doctor">
-        <form id={formId} action={action}>
-          <input type="hidden" name="id" value={offering.id} />
-        </form>
-        <span className="users-cell">
-          <span className="fee-doctor">{offering.doctorName}</span>
-          <span className="users-sub">{offering.sameAsDefault ? "Same as the default" : "Different from the default"}</span>
-          <FeeMessage state={state} />
-        </span>
-      </td>
-      <td data-label="Visit">
-        <span className="users-cell">{offering.mode === "ONLINE" ? "Online" : "In person"}</span>
-      </td>
-      <td data-label="Status">
-        <span className="users-cell">
-          <StatusBadge tone={offering.isActive ? "teal" : "slate"}>{offering.isActive ? "Active" : "Inactive"}</StatusBadge>
-          <span className="users-sub">{verification.label}</span>
-        </span>
-      </td>
-      <td data-label="Amount">
-        <input
-          form={formId}
-          name="fee"
-          required
-          defaultValue={offering.fee}
-          inputMode="decimal"
-          aria-label={`${offering.doctorName} fee`}
-          className="fee-field"
-        />
-      </td>
-      <td data-label="Currency">
-        <input
-          form={formId}
-          name="currency"
-          required
-          maxLength={3}
-          defaultValue={offering.currency}
-          aria-label={`${offering.doctorName} currency`}
-          className="fee-field fee-currency"
-        />
-      </td>
-      <td data-label="Save">
-        <button form={formId} className="fee-save" disabled={pending} type="submit" aria-label={`Save ${offering.doctorName} fee`}>
-          {pending ? "Saving…" : "Save"}
-        </button>
-      </td>
-    </tr>
-  );
-}
-
 export function FeeSchedule({ services, currency }: { services: PricingService[]; currency: string }) {
   return (
     <section className="users-card">
@@ -160,7 +92,7 @@ export function FeeSchedule({ services, currency }: { services: PricingService[]
         <span className="fee-currency-chip">Default {currency}</span>
       </header>
       <p className="fee-schedule-note">
-        Set the default fee for a service, then a doctor’s own price underneath it. Amounts already stored on appointments stay as they are.
+        Set one fee for each consultation service. Every doctor who offers that service uses this amount. Appointments already booked keep the fee stored when they were booked.
       </p>
       {services.length === 0 ? (
         <p className="users-empty">No services match these filters.</p>
@@ -188,18 +120,7 @@ export function FeeSchedule({ services, currency }: { services: PricingService[]
             </thead>
             <tbody>
               {services.map((service) => (
-                <Fragment key={service.id}>
-                  <ServiceFeeRow service={service} />
-                  {service.offerings.length === 0 ? (
-                    <tr className="fee-row-doctor">
-                      <td colSpan={6} data-label="Doctors">
-                        <span className="users-sub">No doctor has a price for this service yet.</span>
-                      </td>
-                    </tr>
-                  ) : (
-                    service.offerings.map((offering) => <OfferingFeeRow key={offering.id} offering={offering} />)
-                  )}
-                </Fragment>
+                <ServiceFeeRow key={service.id} service={service} />
               ))}
             </tbody>
           </table>

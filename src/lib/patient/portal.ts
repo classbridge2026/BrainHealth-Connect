@@ -22,7 +22,7 @@ function currencyCode(value: string): string | null {
   return /^[A-Z]{3}$/.test(currency) ? currency : null;
 }
 
-/** The fee an administrator saved. A blank doctor fee uses the service price. */
+/** The fee set for these services on Fees and pricing. */
 export function directoryFee(
   offerings: Array<{
     priceAmountMinor: number;
@@ -31,10 +31,6 @@ export function directoryFee(
   }>,
 ): string | null {
   const priced = offerings.flatMap((row) => {
-    const offeringCurrency = currencyCode(row.currency);
-    if (offeringCurrency && Number.isSafeInteger(row.priceAmountMinor) && row.priceAmountMinor > 0) {
-      return [{ minor: row.priceAmountMinor, currency: offeringCurrency }];
-    }
     const serviceCurrency = currencyCode(row.consultationService.currency);
     if (!serviceCurrency) return [];
     let fee: Prisma.Decimal;

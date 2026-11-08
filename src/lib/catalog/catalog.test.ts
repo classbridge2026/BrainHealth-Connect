@@ -6,7 +6,7 @@ import { updateDefaultCurrency } from "./configuration";
 import { placesFromNominatim } from "./geocode";
 import { createLocation, updateLocation } from "./locations";
 import { decimalToMinorUnits, formatMoneyAmount, parseMoney, sameMoney, snapshotAppointmentFee, visitCharge } from "./money";
-import { createDoctorOffering, updateDoctorOffering, updateOfferingFee } from "./offerings";
+import { createDoctorOffering, offeringModesFor, updateDoctorOffering, updateOfferingFee } from "./offerings";
 import { activeOfferingBlocker, bookingCatalogDecision, referencedDeleteDecision } from "./rules";
 import { createConsultationService, updateServiceFee } from "./services";
 
@@ -95,7 +95,7 @@ describe("catalog money", () => {
     expect(snapshot?.currency).toBe("SLL");
   });
 
-  it("uses the administrator service price when a doctor fee was left at zero", () => {
+  it("uses the service fee from Fees and pricing", () => {
     const charge = visitCharge({
       price: new Prisma.Decimal("0"),
       priceAmountMinor: 0,
@@ -112,7 +112,15 @@ describe("catalog money", () => {
       defaultFee: "100.00",
       defaultCurrency: "SLL",
     });
-    expect(kept?.feeAmountMinor).toBe(1550);
+    expect(kept?.feeAmountMinor).toBe(10000);
+  });
+});
+
+describe("assigning several services", () => {
+  it("assigns both visits when the service allows either, and one visit when it does not", () => {
+    expect(offeringModesFor(null, "ANY")).toEqual(["ONLINE", "IN_PERSON"]);
+    expect(offeringModesFor("ONLINE", "ANY")).toEqual(["ONLINE"]);
+    expect(offeringModesFor("IN_PERSON", "IN_PERSON")).toEqual(["IN_PERSON"]);
   });
 });
 
@@ -267,7 +275,7 @@ describe("offerings, locations, and historical prices", () => {
     const appointment = { id: "appt", feeAmount: "25.00", feeAmountMinor: 2500 };
     const tx = {
       doctorProfile: { findUnique: async () => doctor },
-      consultationService: { findUnique: async () => ({ isActive: true, mode: null }) },
+      consultationService: { findUnique: async () => ({ isActive: true, mode: null, name: "Initial consultation", defaultFee: new Prisma.Decimal("25.50"), currency: "SLL" }) },
       doctorOffering: {
         findFirst: async () => null,
         findUnique: async () => ({ id: offeringId, doctorProfileId: doctorId, specialtyId, consultationServiceId: serviceId }),
@@ -329,7 +337,7 @@ describe("offerings, locations, and historical prices", () => {
     }
   });
 
-  it("stores a decimal doctor fee and can deactivate a doctor who is no longer approved", async () => {
+  it("stores the service fee from Fees and pricing and can deactivate a doctor who is no longer approved", async () => {
     const store = offeringDb();
     const created = await createDoctorOffering(
       {
@@ -338,8 +346,8 @@ describe("offerings, locations, and historical prices", () => {
         consultationServiceId: serviceId,
         mode: "IN_PERSON",
         durationMinutes: "45",
-        fee: "25.50",
-        currency: "SLL",
+        fee: "99.00",
+        currency: "USD",
         notes: "Bring previous notes.",
         isActive: true,
       },
@@ -385,6 +393,7 @@ describe("offerings, locations, and historical prices", () => {
         update: async () => {
           serviceWrites.push("offering");
         },
+        updateMany: async () => ({ count: 1 }),
       },
       appointment: {
         update: async () => {

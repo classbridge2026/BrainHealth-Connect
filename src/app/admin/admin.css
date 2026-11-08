@@ -1869,6 +1869,26 @@ button.users-email {
   gap: 0.75rem;
 }
 
+.offering-service-picks {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  max-height: 14rem;
+  overflow: auto;
+  border: 1px solid #d7e3ea;
+  border-radius: 0.85rem;
+  padding: 0.75rem;
+}
+
+.offering-service-picks legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  font-weight: 700;
+}
+
 .user-form label.service-check {
   display: flex;
   align-items: center;
@@ -4403,4 +4423,286 @@ button.users-email {
     align-items: center;
     font-size: 0.9rem;
   }
+}
+
+.offerings-phone .users-app-search,
+.offerings-phone .users-app-chips,
+.offerings-phone .users-app-load {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.offerings-phone .users-app-search {
+  border: 1px solid #d7e0ea;
+  background: #fff;
+  box-shadow: none;
+}
+
+.offerings-phone .users-app-search svg {
+  color: #5d7088;
+}
+
+.offerings-phone .users-app-chips {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.offerings-phone .users-app-chip {
+  border-color: #d7e0ea;
+  background: #fff;
+  color: #31475f;
+}
+
+.offerings-phone .users-app-chip.is-current {
+  border-color: #12304a;
+  background: #12304a;
+  color: #fff;
+}
+
+.offerings-phone-tools {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.15rem 0 0.75rem;
+}
+
+.offerings-phone-assign,
+.offerings-phone-filter,
+.offerings-phone-clear {
+  min-height: 2.75rem;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.offerings-phone-assign {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 0;
+  background: #12304a;
+  color: #fff;
+}
+
+.offerings-phone-assign svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.offerings-phone-filter,
+.offerings-phone-clear {
+  border: 1px solid #d7e0ea;
+  background: #fff;
+  color: #12304a;
+}
+
+.offerings-phone-filter {
+  padding: 0 0.95rem;
+}
+
+.offerings-phone-filter.is-on {
+  border-color: #12304a;
+  background: #eef2f7;
+  color: #12304a;
+}
+
+.offerings-phone-filters {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0 0 0.75rem;
+  padding: 0.8rem;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 0.2rem 0.9rem rgba(12, 43, 69, 0.06);
+}
+
+.offerings-phone-filters label {
+  display: grid;
+  gap: 0.3rem;
+  color: #6b7c93;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.offerings-phone-filters select {
+  width: 100%;
+  height: 2.75rem;
+  padding: 0 0.75rem;
+  border: 1px solid #d7e0ea;
+  border-radius: 0.8rem;
+  background: #f8fafc;
+  color: #10233c;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.offerings-phone-clear {
+  justify-self: start;
+  padding: 0 0.95rem;
+}
+
+.offerings-phone-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+}
+
+.offerings-phone-picks button {
+  max-width: 100%;
+  min-height: 2.15rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid #d7e0ea;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #12304a;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.offerings-phone-picks button::after {
+  content: " ×";
+}
+
+.offerings-phone-list,
+.offerings-phone-items {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.offerings-phone-list {
+  gap: 0.8rem;
+}
+
+.offerings-phone-doctor {
+  overflow: hidden;
+  border: 1px solid #e3eaf1;
+  border-radius: 1.1rem;
+  background: #fff;
+  box-shadow: none;
+}
+
+.offerings-phone-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding: 0.85rem 0.85rem 0.75rem;
+  border-bottom: 1px solid #e6edf4;
+  background: #f7f9fc;
+}
+
+.offerings-phone-head button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #10233c;
+  font-size: 1rem;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.offerings-phone-head p {
+  margin: 0.15rem 0 0;
+  color: #6b7c93;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.offerings-phone-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: start;
+  padding: 0.8rem 0.85rem;
+  border-top: 1px solid #eef2f6;
+}
+
+.offerings-phone-main {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.offerings-phone-main strong {
+  color: #10233c;
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
+.offerings-phone-main span {
+  color: #6b7c93;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.offerings-phone-fee {
+  color: #0f766e;
+  font-weight: 800;
+}
+
+.offerings-phone-side {
+  display: grid;
+  justify-items: end;
+  gap: 0.45rem;
+}
+
+.offerings-phone-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.offerings-phone-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid #d7e0ea;
+  border-radius: 0.8rem;
+  background: #f7f9fc;
+  color: #12304a;
+  cursor: pointer;
+}
+
+.offerings-phone-icon svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.offerings-phone-icon.is-danger {
+  border-color: #f3d5d8;
+  background: #fdf6f7;
+  color: #9b2330;
+}
+
+.offerings-phone-count {
+  margin: 0.85rem 0 0;
+  color: #6b7c93;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.offerings-phone-assign:focus-visible,
+.offerings-phone-filter:focus-visible,
+.offerings-phone-clear:focus-visible,
+.offerings-phone-picks button:focus-visible,
+.offerings-phone-head button:focus-visible,
+.offerings-phone-main:focus-visible,
+.offerings-phone-icon:focus-visible {
+  outline: 2px solid #12304a;
+  outline-offset: 2px;
 }

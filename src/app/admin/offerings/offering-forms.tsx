@@ -1,7 +1,11 @@
 "use client";
 
 import { Fragment, useActionState, useCallback, useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AdminIcon } from "@/components/admin/admin-icons";
+import { catalogQuery } from "@/components/admin/catalog-ui";
+import { LiveSearchInput } from "@/components/live-query";
 import { StatusBadge, verificationBadge } from "@/components/status-badge";
 import { createOfferingAction, deleteOfferingAction, updateOfferingAction, type OfferingActionState } from "./actions";
 import type { SelfDoctorOption } from "@/lib/catalog/self-doctor";
@@ -77,6 +81,20 @@ function usageLabel(offering: OfferingRecord) {
   return `${appointments} · ${rules}`;
 }
 
+export type OfferingListQuery = {
+  q: string;
+  doctorId: string;
+  specialtyId: string;
+  serviceId: string;
+  status: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  doctors: Array<{ id: string; fullName: string }>;
+  specialties: Array<{ id: string; name: string }>;
+  services: Array<{ id: string; name: string }>;
+};
+
 export function OfferingsBoard({
   offerings,
   doctors,
@@ -84,7 +102,7 @@ export function OfferingsBoard({
   specialties,
   self,
   selfRole,
-  currency,
+  list,
 }: {
   offerings: OfferingRecord[];
   doctors: DoctorOption[];
@@ -92,7 +110,7 @@ export function OfferingsBoard({
   specialties: Array<{ id: string; name: string }>;
   self: SelfDoctorOption;
   selfRole: string;
-  currency: string;
+  list: OfferingListQuery;
 }) {
   const [panel, setPanel] = useState<Panel>(null);
   const close = useCallback(() => setPanel(null), []);
@@ -101,7 +119,16 @@ export function OfferingsBoard({
   const viewed = panel && panel.kind !== "create" ? offerings.filter((item) => item.doctorId === panel.offering.doctorId) : [];
 
   return (
-    <section className="users-card">
+    <>
+    <OfferingsPhone
+      groups={groups}
+      list={list}
+      onAssign={() => setPanel({ kind: "create" })}
+      onView={(offering) => setPanel({ kind: "view", offering })}
+      onEdit={(offering) => setPanel({ kind: "edit", offering })}
+      onDelete={(offering) => setPanel({ kind: "delete", offering })}
+    />
+    <section className="users-card users-desk">
       <header className="users-card-head">
         <h2>Offerings</h2>
         <button type="button" className="users-add" onClick={() => setPanel({ kind: "create" })}>
@@ -109,7 +136,7 @@ export function OfferingsBoard({
           Assign service
         </button>
       </header>
-      <p className="fee-schedule-note">Each doctor’s offerings are listed together. Edit an offering to change the visit, fee, or duration.</p>
+      <p className="fee-schedule-note">Each doctor’s offerings are listed together. The fee is the amount set for that service on Fees and pricing.</p>
       {offerings.length === 0 ? (
         <p className="users-empty">No offerings match these filters. Assign a service to an approved doctor to open it for booking.</p>
       ) : (
@@ -129,7 +156,7 @@ export function OfferingsBoard({
                 <th>Doctor</th>
                 <th>Offering</th>
                 <th>Visit</th>
-                <th>Doctor fee</th>
+                <th>Fee</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -170,12 +197,10 @@ export function OfferingsBoard({
                             <span className="users-sub">{offering.durationMinutes} min</span>
                           </span>
                         </td>
-                        <td data-label="Doctor fee">
+                        <td data-label="Fee">
                           <span className="users-cell">
                             {offering.fee} {offering.currency}
-                            <span className="users-sub">
-                              {offering.sameAsDefault ? "Same as the default fee" : `Default ${offering.defaultFee} ${offering.serviceCurrency}`}
-                            </span>
+                            <span className="users-sub">Fees and pricing</span>
                           </span>
                         </td>
                         <td data-label="Status">
@@ -204,8 +229,9 @@ export function OfferingsBoard({
           </table>
         </div>
       )}
+    </section>
       {panel?.kind === "create" ? (
-        <CreateDialog doctors={doctors} services={services} specialties={specialties} self={self} selfRole={selfRole} currency={currency} ready={ready} onClose={close} />
+        <CreateDialog doctors={doctors} services={services} specialties={specialties} self={self} selfRole={selfRole} ready={ready} onClose={close} />
       ) : null}
       {panel?.kind === "view" ? (
         <ViewDialog
@@ -218,6 +244,180 @@ export function OfferingsBoard({
       ) : null}
       {panel?.kind === "edit" ? <EditDialog offering={panel.offering} onClose={close} /> : null}
       {panel?.kind === "delete" ? <DeleteDialog offering={panel.offering} onClose={close} onEdit={(offering) => setPanel({ kind: "edit", offering })} /> : null}
+    </>
+  );
+}
+
+const statusChips = [
+  { value: "", label: "All" },
+  { value: "ACTIVE", label: "Active" },
+  { value: "INACTIVE", label: "Inactive" },
+] as const;
+
+function offeringsHref(values: { q?: string; doctorId?: string; specialtyId?: string; serviceId?: string; status?: string }) {
+  return catalogQuery("/admin/offerings", {
+    q: values.q ?? "",
+    doctorId: values.doctorId ?? "",
+    specialtyId: values.specialtyId ?? "",
+    serviceId: values.serviceId ?? "",
+    status: values.status ?? "",
+  });
+}
+
+function offeringsPageHref(base: string, page: number) {
+  if (page <= 1) return base;
+  return `${base}${base.includes("?") ? "&" : "?"}page=${page}`;
+}
+
+function OfferingsPhone({
+  groups,
+  list,
+  onAssign,
+  onView,
+  onEdit,
+  onDelete,
+}: {
+  groups: Array<{ doctorId: string; doctorName: string; verificationStatus: string; offerings: OfferingRecord[] }>;
+  list: OfferingListQuery;
+  onAssign: () => void;
+  onView: (offering: OfferingRecord) => void;
+  onEdit: (offering: OfferingRecord) => void;
+  onDelete: (offering: OfferingRecord) => void;
+}) {
+  const router = useRouter();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const narrow = [list.doctorId, list.specialtyId, list.serviceId].filter(Boolean).length;
+  const pages = Math.max(1, Math.ceil(list.total / list.pageSize));
+  const currentStatus = list.status === "ACTIVE" || list.status === "INACTIVE" ? list.status : "";
+  const doctorName = list.doctors.find((doctor) => doctor.id === list.doctorId)?.fullName;
+  const specialtyName = list.specialties.find((specialty) => specialty.id === list.specialtyId)?.name;
+  const serviceName = list.services.find((service) => service.id === list.serviceId)?.name;
+
+  function replaceQuery(patch: Record<string, string>) {
+    const next = new URLSearchParams(window.location.search);
+    next.delete("page");
+    for (const [key, value] of Object.entries(patch)) {
+      const cleaned = value.trim();
+      if (!cleaned || cleaned === "ALL") next.delete(key);
+      else next.set(key, cleaned);
+    }
+    const qs = next.toString();
+    router.replace(qs ? `/admin/offerings?${qs}` : "/admin/offerings", { scroll: false });
+  }
+
+  return (
+    <section className="users-app offerings-phone" aria-label="Doctor offerings">
+      <div className="users-app-search">
+        <AdminIcon name="search" />
+        <LiveSearchInput destination="/admin/offerings" initial={list.q} placeholder="Doctor, specialty, or service" className="users-app-search-input" />
+      </div>
+      <div className="users-app-chips" role="navigation" aria-label="Status">
+        {statusChips.map((chip) => {
+          const current = currentStatus === chip.value;
+          return (
+            <Link key={chip.value || "all"} href={offeringsHref({ ...list, status: chip.value })} className={current ? "users-app-chip is-current" : "users-app-chip"} aria-current={current ? "page" : undefined}>
+              {chip.label}
+            </Link>
+          );
+        })}
+      </div>
+      <div className="offerings-phone-tools">
+        <button type="button" className="offerings-phone-assign" onClick={onAssign}>
+          <AdminIcon name="plus" />
+          Assign service
+        </button>
+        <button type="button" className={narrow ? "offerings-phone-filter is-on" : "offerings-phone-filter"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>
+          Filters{narrow ? ` ${narrow}` : ""}
+        </button>
+      </div>
+      {filtersOpen ? (
+        <div className="offerings-phone-filters">
+          <label>
+            Doctor
+            <select value={list.doctorId} onChange={(event) => replaceQuery({ doctorId: event.target.value })}>
+              <option value="">All doctors</option>
+              {list.doctors.map((doctor) => (
+                <option key={doctor.id} value={doctor.id}>{doctor.fullName}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Specialty
+            <select value={list.specialtyId} onChange={(event) => replaceQuery({ specialtyId: event.target.value })}>
+              <option value="">All specialties</option>
+              {list.specialties.map((specialty) => (
+                <option key={specialty.id} value={specialty.id}>{specialty.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Service
+            <select value={list.serviceId} onChange={(event) => replaceQuery({ serviceId: event.target.value })}>
+              <option value="">All services</option>
+              {list.services.map((service) => (
+                <option key={service.id} value={service.id}>{service.name}</option>
+              ))}
+            </select>
+          </label>
+          {narrow ? (
+            <button type="button" className="offerings-phone-clear" onClick={() => replaceQuery({ doctorId: "", specialtyId: "", serviceId: "" })}>
+              Clear filters
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {doctorName || specialtyName || serviceName ? (
+        <div className="offerings-phone-picks">
+          {doctorName ? <button type="button" onClick={() => replaceQuery({ doctorId: "" })}>{doctorName}</button> : null}
+          {specialtyName ? <button type="button" onClick={() => replaceQuery({ specialtyId: "" })}>{specialtyName}</button> : null}
+          {serviceName ? <button type="button" onClick={() => replaceQuery({ serviceId: "" })}>{serviceName}</button> : null}
+        </div>
+      ) : null}
+      {groups.length === 0 ? (
+        <p className="users-empty">No offerings match these filters.</p>
+      ) : (
+        <ul className="offerings-phone-list">
+          {groups.map((group) => {
+            const verification = verificationBadge(group.verificationStatus);
+            return (
+              <li key={group.doctorId} className="offerings-phone-doctor">
+                <header className="offerings-phone-head">
+                  <div>
+                    <button type="button" onClick={() => onView(group.offerings[0])}>{group.doctorName}</button>
+                    <p>{group.offerings.length} offering{group.offerings.length === 1 ? "" : "s"}</p>
+                  </div>
+                  <StatusBadge tone={verification.tone}>{verification.label}</StatusBadge>
+                </header>
+                <ul className="offerings-phone-items">
+                  {group.offerings.map((offering) => (
+                    <li key={offering.id} className="offerings-phone-item">
+                      <button type="button" className="offerings-phone-main" onClick={() => onEdit(offering)}>
+                        <strong>{offering.serviceName}</strong>
+                        <span>{offering.specialtyName} · {modeLabel(offering.mode)} · {offering.durationMinutes} min</span>
+                        <span className="offerings-phone-fee">{offering.fee} {offering.currency}</span>
+                      </button>
+                      <div className="offerings-phone-side">
+                        <StatusBadge tone={offering.isActive ? "teal" : "slate"}>{offering.isActive ? "Active" : "Inactive"}</StatusBadge>
+                        <div className="offerings-phone-actions">
+                          <button type="button" className="offerings-phone-icon" aria-label={`Edit ${offering.serviceName}`} onClick={() => onEdit(offering)}>
+                            <AdminIcon name="edit" />
+                          </button>
+                          <button type="button" className="offerings-phone-icon is-danger" aria-label={`Delete ${offering.doctorName} ${offering.serviceName}`} onClick={() => onDelete(offering)}>
+                            <AdminIcon name="trash" />
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="offerings-phone-count">{list.total} doctor{list.total === 1 ? "" : "s"}</p>
+      {list.page > 1 ? <Link className="users-app-load" href={offeringsPageHref(offeringsHref(list), list.page - 1)}>Previous doctors</Link> : null}
+      {list.page < pages ? <Link className="users-app-load" href={offeringsPageHref(offeringsHref(list), list.page + 1)}>Next doctors</Link> : null}
     </section>
   );
 }
@@ -237,7 +437,6 @@ function CreateDialog({
   specialties,
   self,
   selfRole,
-  currency,
   ready,
   onClose,
 }: {
@@ -246,7 +445,6 @@ function CreateDialog({
   specialties: Array<{ id: string; name: string }>;
   self: SelfDoctorOption;
   selfRole: string;
-  currency: string;
   ready: boolean;
   onClose: () => void;
 }) {
@@ -260,14 +458,23 @@ function CreateDialog({
   const doctor = choices.find((item) => item.id === doctorId) ?? choices[0];
   const assigningYou = !self.blocked && doctorId === youId;
   const [specialtyId, setSpecialtyId] = useState((assigningYou ? specialties[0]?.id : doctor?.specialties[0]?.id) ?? "");
-  const [serviceId, setServiceId] = useState(services[0]?.id ?? "");
-  const service = services.find((item) => item.id === serviceId) ?? services[0];
-  const [mode, setMode] = useState<"ONLINE" | "IN_PERSON">(service?.mode ?? "ONLINE");
-  const [duration, setDuration] = useState(service ? String(service.durationMinutes) : "");
-  const [fee, setFee] = useState("");
-  const [currencyCode, setCurrencyCode] = useState(service?.currency || currency);
+  const [serviceIds, setServiceIds] = useState<string[]>(services[0] ? [services[0].id] : []);
+  const selected = services.filter((item) => serviceIds.includes(item.id));
+  const only = selected.length === 1 ? selected[0] : null;
+  const [mode, setMode] = useState<"ONLINE" | "IN_PERSON" | "ANY">(only?.mode ?? "ANY");
+  const [duration, setDuration] = useState(only ? String(only.durationMinutes) : "");
   const [fullName, setFullName] = useState(self.fullName);
   const specialtyChoices = assigningYou ? specialties : (doctor?.specialties ?? []);
+  function toggleService(id: string) {
+    setServiceIds((current) => {
+      const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
+      const picked = services.filter((item) => next.includes(item.id));
+      const single = picked.length === 1 ? picked[0] : null;
+      setDuration(single ? String(single.durationMinutes) : "");
+      if (single?.mode) setMode(single.mode);
+      return next;
+    });
+  }
   useEffect(() => {
     if (state.tone === "ok") onClose();
   }, [state, onClose]);
@@ -321,63 +528,69 @@ function CreateDialog({
               </select>
             </label>
             <label>
-              Service
+              Visit
               <select
-                name="consultationServiceId"
-                value={service?.id ?? ""}
+                name="mode"
+                value={mode}
                 onChange={(event) => {
-                  const next = services.find((item) => item.id === event.target.value);
-                  setServiceId(event.target.value);
-                  if (next) {
-                    setDuration(String(next.durationMinutes));
-                    setCurrencyCode(next.currency);
-                    if (next.mode) setMode(next.mode);
-                  }
+                  const value = event.target.value;
+                  setMode(value === "IN_PERSON" || value === "ONLINE" ? value : "ANY");
                 }}
               >
-                {services.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Visit
-              {service?.mode ? <input type="hidden" name="mode" value={service.mode} /> : null}
-              <select
-                name={service?.mode ? undefined : "mode"}
-                value={service?.mode ?? mode}
-                disabled={Boolean(service?.mode)}
-                onChange={(event) => setMode(event.target.value === "IN_PERSON" ? "IN_PERSON" : "ONLINE")}
-              >
+                <option value="ANY">Online or in person</option>
                 <option value="ONLINE">Online</option>
                 <option value="IN_PERSON">In person</option>
               </select>
             </label>
           </div>
-          <div className="service-fields service-fields-3">
+          <fieldset className="offering-service-picks">
+            <legend>
+              Services
+              <button
+                type="button"
+                className="services-clear"
+                onClick={() => {
+                  const next = serviceIds.length === services.length ? [] : services.map((item) => item.id);
+                  setServiceIds(next);
+                  const single = next.length === 1 ? services.find((item) => item.id === next[0]) : null;
+                  setDuration(single ? String(single.durationMinutes) : "");
+                }}
+              >
+                {serviceIds.length === services.length ? "Clear" : "Select all"}
+              </button>
+            </legend>
+            {services.map((item) => (
+              <label key={item.id} className="service-check">
+                <input
+                  type="checkbox"
+                  name="consultationServiceId"
+                  value={item.id}
+                  checked={serviceIds.includes(item.id)}
+                  onChange={() => toggleService(item.id)}
+                />
+                <span>
+                  {item.name}
+                  <span className="users-sub">
+                    {modeLabel(item.mode)} · {item.defaultFee} {item.currency}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          {only ? (
             <label>
               Duration (minutes)
               <input name="durationMinutes" required value={duration} onChange={(event) => setDuration(event.target.value)} inputMode="numeric" />
             </label>
-            <label>
-              Doctor fee
-              <input name="fee" required value={fee} onChange={(event) => setFee(event.target.value)} inputMode="decimal" placeholder="0.00" />
-            </label>
-            <label>
-              Currency
-              <input name="currency" required maxLength={3} value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value.toUpperCase())} />
-            </label>
-          </div>
-          {service ? (
-            <p className="user-form-note">
-              Default service fee: {service.defaultFee} {service.currency}. The doctor fee is stored separately.{" "}
-              <button className="services-clear" type="button" onClick={() => setFee(service.defaultFee)}>
-                Use default fee
-              </button>
-            </p>
-          ) : null}
+          ) : (
+            <p className="user-form-note">Each selected service keeps its own length.</p>
+          )}
+          <p className="user-form-note">
+            {mode === "ANY"
+              ? "Online or in person assigns both visits when the service allows either. A service limited to one visit gets only that visit."
+              : "Fees come from Fees and pricing."}{" "}
+            {selected.length === 0 ? "Choose at least one service." : `${selected.length} selected.`}
+          </p>
           <label>
             Description or preparation notes
             <textarea name="notes" />
@@ -391,8 +604,8 @@ function CreateDialog({
             <button type="button" className="users-cancel" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="users-add" disabled={pending}>
-              {pending ? "Saving…" : "Save offering"}
+            <button type="submit" className="users-add" disabled={pending || selected.length === 0}>
+              {pending ? "Saving…" : selected.length > 1 ? "Assign services" : "Save offering"}
             </button>
           </div>
         </form>
@@ -491,15 +704,10 @@ function EditDialog({ offering, onClose }: { offering: OfferingRecord; onClose: 
             Duration (minutes)
             <input name="durationMinutes" required defaultValue={offering.durationMinutes} inputMode="numeric" />
           </label>
-          <label>
-            Doctor fee
-            <input name="fee" required defaultValue={offering.fee} inputMode="decimal" />
-          </label>
-          <label>
-            Currency
-            <input name="currency" required maxLength={3} defaultValue={offering.currency} />
-          </label>
         </div>
+        <p className="user-form-note">
+          Fee: {offering.fee} {offering.currency}. Change it on Fees and pricing.
+        </p>
         <label>
           Description or preparation notes
           <textarea name="notes" defaultValue={offering.notes ?? ""} />

@@ -38,7 +38,7 @@ function offering(status = "APPROVED", fee?: { amount: string; minor: number; de
     currency: "SLL",
     validFrom: null,
     validTo: null,
-    consultationService: { isActive: true, mode: null, defaultFee: new Prisma.Decimal(fee?.defaultFee ?? "0"), currency: "SLL" },
+    consultationService: { isActive: true, mode: null, defaultFee: new Prisma.Decimal(fee?.defaultFee ?? "2500.00"), currency: "SLL" },
     specialty: { isActive: true },
     doctor: { verificationStatus: status, user: { status: "ACTIVE", deletedAt: null } },
   };
@@ -110,7 +110,7 @@ describe("scheduled booking", () => {
       feeAmountMinor: 250000,
       currency: "SLL",
       offeringId: OFFERING,
-      paymentHoldExpiresAt: new Date("2026-10-19T08:10:00.000Z"),
+      paymentHoldExpiresAt: new Date("2026-10-19T08:15:00.000Z"),
       patientConcern: CONCERN,
     });
   });

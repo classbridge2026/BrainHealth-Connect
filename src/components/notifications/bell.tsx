@@ -145,13 +145,15 @@ export function NotificationBell({
     let timer = 0;
 
     async function look() {
-      if (stop || busy || document.visibilityState === "hidden") return;
+      if (stop || busy || document.visibilityState === "hidden") return false;
       busy = true;
+      const started = Date.now();
       try {
         const response = await fetch(`/api/notices/pulse?audience=${audience}`, { cache: "no-store" });
-        if (!response.ok) return;
+        const slow = !response.ok || Date.now() - started > 2_000;
+        if (!response.ok) return slow;
         const pulse = readPulse(await response.json());
-        if (stop || !pulse) return;
+        if (stop || !pulse) return slow;
         if (heard.current == null) heard.current = readHeard(audience);
         const previous = heard.current;
         const ring = noticeShouldRing(previous, pulse.unread) && pulse.items.length > 0;
@@ -163,8 +165,9 @@ export function NotificationBell({
           void playNoticeSound();
           routerRef.current.refresh();
         }
+        return slow;
       } catch {
-        // The next check tries again.
+        return true;
       } finally {
         busy = false;
       }
@@ -172,8 +175,8 @@ export function NotificationBell({
 
     function schedule(delay: number) {
       timer = window.setTimeout(() => {
-        void look().finally(() => {
-          if (!stop) schedule(15000);
+        void look().then((slow) => {
+          if (!stop) schedule(slow ? 30_000 : 15_000);
         });
       }, delay);
     }

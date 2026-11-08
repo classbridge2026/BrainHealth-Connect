@@ -7,7 +7,7 @@ import {
 } from "@prisma/client";
 import { HOLD_MINUTES_MAX, HOLD_MINUTES_MIN } from "@/lib/admin/rules";
 import { bookingCatalogDecision } from "@/lib/catalog/rules";
-import { snapshotAppointmentFee } from "@/lib/catalog/money";
+import { snapshotAppointmentFee, visitCharge } from "@/lib/catalog/money";
 import { canReceiveNewAppointment } from "@/lib/doctors/rules";
 import { prisma } from "@/lib/db/prisma";
 import { saveChannelNotice } from "@/lib/notifications/delivery";
@@ -194,6 +194,7 @@ export async function createPaymentHold(
                 price: true,
                 priceAmountMinor: true,
                 currency: true,
+                consultationService: { select: { defaultFee: true, currency: true } },
               },
             })
           : Promise.resolve(null),
@@ -216,13 +217,19 @@ export async function createPaymentHold(
         return { ok: false as const, code: "CATALOG_UNAVAILABLE" as const };
       }
 
-      const snapshot = snapshotAppointmentFee({
-        offering: offering
-          ? { price: offering.price, priceAmountMinor: offering.priceAmountMinor, currency: offering.currency }
-          : null,
-        fallbackMinor: input.feeAmountMinor,
-        fallbackCurrency: input.currency,
-      });
+      const snapshot = offering
+        ? visitCharge({
+            price: offering.price,
+            priceAmountMinor: offering.priceAmountMinor,
+            currency: offering.currency,
+            defaultFee: offering.consultationService?.defaultFee,
+            defaultCurrency: offering.consultationService?.currency,
+          })
+        : snapshotAppointmentFee({
+            offering: null,
+            fallbackMinor: input.feeAmountMinor,
+            fallbackCurrency: input.currency,
+          });
       if (!snapshot) {
         return { ok: false as const, code: "CATALOG_UNAVAILABLE" as const };
       }

@@ -14,6 +14,14 @@ import {
 
 type Actor = { userId: string; roleCodes: string[] };
 
+type VisitMode = "ONLINE" | "IN_PERSON";
+
+/** One visit, or both when the service allows either. */
+export function offeringModesFor(serviceMode: VisitMode | null, requested: VisitMode | "ANY"): VisitMode[] {
+  if (requested === "ANY") return serviceMode ? [serviceMode] : ["ONLINE", "IN_PERSON"];
+  return [requested];
+}
+
 const writeOptions = { maxWait: 15_000, timeout: 30_000 };
 
 function denied(actor: Actor): CatalogResult | null {
@@ -42,7 +50,7 @@ async function loadEligibility(
     }),
     db.consultationService.findUnique({
       where: { id: input.consultationServiceId },
-      select: { isActive: true, mode: true, name: true },
+      select: { isActive: true, mode: true, name: true, defaultFee: true, currency: true },
     }),
   ]);
   const claim = doctor?.specialties[0];
@@ -95,12 +103,6 @@ export async function createDoctorOffering(
   if (!mode) return { ok: false, message: "Choose online or in person." };
   const duration = parseDuration(input.durationMinutes);
   if (!duration) return { ok: false, message: "Enter a duration from 1 to 480 minutes." };
-  const price = parseMoney(input.fee);
-  if (!price) return { ok: false, message: "Enter a doctor fee of zero or more, with up to two decimal places." };
-  const minor = decimalToMinorUnits(price);
-  if (minor === null) return { ok: false, message: "That fee cannot be stored." };
-  const currency = parseCurrency(input.currency);
-  if (!currency) return { ok: false, message: "Enter a three-letter currency code." };
   const notes = cleanOptionalText(input.notes, TEXT_LIMIT);
   if (!notes.ok) return notes;
 
@@ -137,6 +139,9 @@ export async function createDoctorOffering(
           throw new Error("DUPLICATE_ACTIVE");
         }
       }
+      const minor = decimalToMinorUnits(service.defaultFee);
+      const currency = parseCurrency(service.currency);
+      if (minor === null || !currency) throw new Error("FEE");
       const created = await tx.doctorOffering.create({
         data: {
           doctorProfileId,
@@ -144,7 +149,7 @@ export async function createDoctorOffering(
           consultationServiceId,
           mode,
           durationMinutes: duration,
-          price,
+          price: service.defaultFee,
           priceAmountMinor: minor,
           currency,
           notes: notes.text,
@@ -172,6 +177,7 @@ export async function createDoctorOffering(
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message === "MISSING_RECORD") return { ok: false, message: "Choose a doctor and an active service." };
+    if (message === "FEE") return { ok: false, message: "Set this service fee on Fees and pricing before assigning it." };
     if (message.startsWith("BLOCK:")) return { ok: false, message: message.slice("BLOCK:".length) };
     if (message === "DUPLICATE_ACTIVE") {
       return {
@@ -188,6 +194,66 @@ export async function createDoctorOffering(
     };
   }
   return { ok: true, message: "The doctor offering was saved. Booked appointment fees were not changed." };
+}
+
+export async function assignDoctorOfferings(
+  input: {
+    doctorProfileId: string;
+    specialtyId: string;
+    consultationServiceIds: string[];
+    mode: string;
+    durationMinutes: string;
+    notes: string;
+    isActive: boolean;
+  },
+  deps: { db: PrismaClient; actor: Actor },
+): Promise<CatalogResult> {
+  const ids = [...new Set(input.consultationServiceIds.map((id) => parseUuid(id)).filter((id): id is string => Boolean(id)))].slice(0, 30);
+  if (ids.length === 0) return { ok: false, message: "Choose at least one consultation service." };
+  const requested = input.mode.trim().toUpperCase();
+  if (requested !== "ONLINE" && requested !== "IN_PERSON" && requested !== "ANY") {
+    return { ok: false, message: "Choose online, in person, or online or in person." };
+  }
+  const services = await deps.db.consultationService.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, mode: true, defaultDurationMinutes: true },
+  });
+  const byId = new Map(services.map((service) => [service.id, service]));
+  const saved: string[] = [];
+  const skipped: string[] = [];
+  for (const id of ids) {
+    const service = byId.get(id);
+    if (!service) {
+      skipped.push("A selected service was not found.");
+      continue;
+    }
+    const modes = offeringModesFor(service.mode, requested);
+    const duration = ids.length === 1 && input.durationMinutes.trim() ? input.durationMinutes : String(service.defaultDurationMinutes);
+    for (const mode of modes) {
+      const result = await createDoctorOffering(
+        {
+          doctorProfileId: input.doctorProfileId,
+          specialtyId: input.specialtyId,
+          consultationServiceId: id,
+          mode,
+          durationMinutes: duration,
+          fee: "",
+          currency: "",
+          notes: input.notes,
+          isActive: input.isActive,
+        },
+        deps,
+      );
+      const visit = mode === "ONLINE" ? "online" : "in person";
+      if (result.ok) saved.push(`${service.name} (${visit})`);
+      else skipped.push(`${service.name} (${visit}): ${result.message}`);
+    }
+  }
+  if (saved.length === 0) {
+    return { ok: false, message: skipped[0] ?? "The services could not be assigned." };
+  }
+  const summary = saved.length === 1 ? `${saved[0]} was assigned.` : `${saved.length} offerings were assigned.`;
+  return { ok: true, message: skipped.length > 0 ? `${summary} ${skipped.join(" ")}` : summary };
 }
 
 export async function updateDoctorOffering(
@@ -210,12 +276,6 @@ export async function updateDoctorOffering(
   if (!mode) return { ok: false, message: "Choose online or in person." };
   const duration = parseDuration(input.durationMinutes);
   if (!duration) return { ok: false, message: "Enter a duration from 1 to 480 minutes." };
-  const price = parseMoney(input.fee);
-  if (!price) return { ok: false, message: "Enter a doctor fee of zero or more, with up to two decimal places." };
-  const minor = decimalToMinorUnits(price);
-  if (minor === null) return { ok: false, message: "That fee cannot be stored." };
-  const currency = parseCurrency(input.currency);
-  if (!currency) return { ok: false, message: "Enter a three-letter currency code." };
   const notes = cleanOptionalText(input.notes, TEXT_LIMIT);
   if (!notes.ok) return notes;
 
@@ -263,9 +323,6 @@ export async function updateDoctorOffering(
         data: {
           mode,
           durationMinutes: duration,
-          price,
-          priceAmountMinor: minor,
-          currency,
           notes: notes.text,
           isActive: input.isActive,
         },
@@ -276,7 +333,7 @@ export async function updateDoctorOffering(
           action: input.isActive ? "offering.updated" : "offering.deactivated",
           entityType: "DoctorOffering",
           entityId: id,
-          metadata: { currency, isActive: input.isActive },
+          metadata: { isActive: input.isActive },
         },
       });
       if (input.isActive && existing.isActive === false) {

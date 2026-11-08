@@ -104,6 +104,7 @@ export function ServicesBoard({ services, currency }: { services: ServiceRecord[
                   <td data-label="Fee">
                     <span className="users-cell">
                       {service.defaultFee} {service.currency}
+                      <span className="users-sub">Set on Fees and pricing</span>
                     </span>
                   </td>
                   <td data-label="Status">
@@ -186,21 +187,14 @@ function CreateDialog({ currency, onClose }: { currency: string; onClose: () => 
           Description
           <textarea name="description" />
         </label>
-        <div className="service-fields service-fields-4">
+        <div className="service-fields service-fields-2">
           <ModeField />
           <label>
             Duration (minutes)
             <input name="durationMinutes" required inputMode="numeric" placeholder="45" />
           </label>
-          <label>
-            Default fee
-            <input name="defaultFee" required inputMode="decimal" placeholder="0.00" />
-          </label>
-          <label>
-            Currency
-            <input name="currency" required maxLength={3} defaultValue={currency} />
-          </label>
         </div>
+        <p className="user-form-note">This service starts at 0.00 {currency}. Set its fee on Fees and pricing. That amount is the price patients see.</p>
         <label>
           Preparation instructions
           <textarea name="preparationInstructions" />
@@ -255,9 +249,10 @@ function ViewDialog({
             <dd>{service.durationMinutes} minutes</dd>
           </div>
           <div>
-            <dt>Default fee</dt>
+            <dt>Fee</dt>
             <dd>
               {service.defaultFee} {service.currency}
+              <span className="users-sub">Set on Fees and pricing</span>
             </dd>
           </div>
           <div>
@@ -311,21 +306,16 @@ function EditDialog({ service, onClose }: { service: ServiceRecord; onClose: () 
           Description
           <textarea name="description" defaultValue={service.description ?? ""} />
         </label>
-        <div className="service-fields service-fields-4">
+        <div className="service-fields service-fields-2">
           <ModeField defaultValue={service.mode ?? "ANY"} />
           <label>
             Duration (minutes)
             <input name="durationMinutes" required defaultValue={service.durationMinutes} inputMode="numeric" />
           </label>
-          <label>
-            Default fee
-            <input name="defaultFee" required defaultValue={service.defaultFee} inputMode="decimal" />
-          </label>
-          <label>
-            Currency
-            <input name="currency" required maxLength={3} defaultValue={service.currency} />
-          </label>
         </div>
+        <p className="user-form-note">
+          Fee: {service.defaultFee} {service.currency}. Change it on Fees and pricing.
+        </p>
         <label>
           Preparation instructions
           <textarea name="preparationInstructions" defaultValue={service.preparationInstructions ?? ""} />

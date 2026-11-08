@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { TEXT_LIMIT } from "./constants";
+import { DEFAULT_CURRENCY_CODE, TEXT_LIMIT } from "./constants";
 import { catalogFailure, type CatalogResult } from "./errors";
 import { matchingServiceCodes, resolveIdentity } from "./identity";
 import { decimalToMinorUnits, parseCurrency, parseMoney } from "./money";
@@ -37,8 +37,8 @@ export async function createConsultationService(
     description: string;
     mode: string;
     durationMinutes: string;
-    defaultFee: string;
-    currency: string;
+    defaultFee?: string;
+    currency?: string;
     preparationInstructions: string;
   },
   deps: { db: PrismaClient; actor: Actor },
@@ -55,7 +55,7 @@ export async function createConsultationService(
   if (!mode.ok) return { ok: false, message: "Choose online, in person, or either mode." };
   const duration = parseDuration(input.durationMinutes);
   if (!duration) return { ok: false, message: "Enter a duration from 1 to 480 minutes." };
-  const fee = feeInput(input.defaultFee, input.currency);
+  const fee = feeInput(input.defaultFee?.trim() || "0.00", input.currency?.trim() || DEFAULT_CURRENCY_CODE);
   if (!fee.ok) return fee;
 
   try {
@@ -114,8 +114,6 @@ export async function updateConsultationService(
     description: string;
     mode: string;
     durationMinutes: string;
-    defaultFee: string;
-    currency: string;
     preparationInstructions: string;
     isActive: boolean;
   },
@@ -135,8 +133,6 @@ export async function updateConsultationService(
   if (!mode.ok) return { ok: false, message: "Choose online, in person, or either mode." };
   const duration = parseDuration(input.durationMinutes);
   if (!duration) return { ok: false, message: "Enter a duration from 1 to 480 minutes." };
-  const fee = feeInput(input.defaultFee, input.currency);
-  if (!fee.ok) return fee;
 
   try {
     const existing = await deps.db.consultationService.findUnique({ where: { id } });
@@ -156,8 +152,6 @@ export async function updateConsultationService(
           description: description.text,
           mode: mode.mode,
           defaultDurationMinutes: duration,
-          defaultFee: fee.fee,
-          currency: fee.currency,
           preparationInstructions: preparation.text,
           isActive: input.isActive,
         },
@@ -168,7 +162,7 @@ export async function updateConsultationService(
           action: input.isActive ? "service.updated" : "service.deactivated",
           entityType: "ConsultationService",
           entityId: id,
-          metadata: { code: existing.code, currency: fee.currency, isActive: input.isActive },
+          metadata: { code: existing.code, currency: existing.currency, isActive: input.isActive },
         },
       });
     });
@@ -178,7 +172,7 @@ export async function updateConsultationService(
   return {
     ok: true,
     message: input.isActive
-      ? `${identity.name} was updated. Appointment prices already booked were not changed.`
+      ? `${identity.name} was updated. Its fee stays the amount set on Fees and pricing.`
       : `${identity.name} was deactivated. Existing appointments still reference it, and it cannot be chosen for a new appointment.`,
   };
 }
@@ -198,10 +192,17 @@ export async function updateServiceFee(
     const existing = await deps.db.consultationService.findUnique({ where: { id }, select: { id: true, name: true } });
     if (!existing) return { ok: false, message: "That service was not found." };
     await deps.db.$transaction(async (tx) => {
+      const minor = decimalToMinorUnits(fee.fee);
       await tx.consultationService.update({
         where: { id },
         data: { defaultFee: fee.fee, currency: fee.currency },
       });
+      if (minor !== null) {
+        await tx.doctorOffering.updateMany({
+          where: { consultationServiceId: id },
+          data: { price: fee.fee, priceAmountMinor: minor, currency: fee.currency },
+        });
+      }
       await tx.auditLog.create({
         data: {
           actorUserId: deps.actor.userId,
@@ -215,7 +216,7 @@ export async function updateServiceFee(
   } catch (error) {
     return { ok: false, message: catalogFailure(error, "The default fee could not be saved.") };
   }
-  return { ok: true, message: "The default service fee was updated. Doctor prices and booked appointment fees were left unchanged." };
+  return { ok: true, message: "The fee was saved. Every doctor who offers this service uses this amount. Appointments already booked keep their stored fee." };
 }
 
 export async function deleteConsultationService(id: string, deps: { db: PrismaClient; actor: Actor }): Promise<CatalogResult> {

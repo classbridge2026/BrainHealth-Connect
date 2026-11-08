@@ -78,7 +78,7 @@ describe("public landing data", () => {
         defaultFee: { toString: () => "25.00" },
         currency: "SLL",
       }),
-    ).toBe("SLL 100 / session");
+    ).toBe("SLL 25 / session");
     expect(
       publishedServiceFee({
         offerings: [{ price: { toString: () => "0" }, currency: "SLL" }],

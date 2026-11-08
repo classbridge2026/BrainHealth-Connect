@@ -5,7 +5,7 @@ import { clearOwnInAppNotifications, directoryFee, genderLabel, isReleasedPatien
 describe("find a doctor fees", () => {
   const service = (fee: string, currency = "SLL") => ({ defaultFee: new Prisma.Decimal(fee), currency });
 
-  it("shows the administrator service price when the doctor fee was left at zero", () => {
+  it("shows the service fee from Fees and pricing", () => {
     expect(
       directoryFee([
         { priceAmountMinor: 0, currency: "SLL", consultationService: service("100") },
@@ -14,8 +14,8 @@ describe("find a doctor fees", () => {
     ).toBe("100.00 SLL");
   });
 
-  it("keeps a doctor fee the administrator set above zero and hides a zero price", () => {
-    expect(directoryFee([{ priceAmountMinor: 15000, currency: "SLL", consultationService: service("100") }])).toBe("150.00 SLL");
+  it("uses the service fee instead of a separate doctor price and hides a zero price", () => {
+    expect(directoryFee([{ priceAmountMinor: 15000, currency: "SLL", consultationService: service("100") }])).toBe("100.00 SLL");
     expect(directoryFee([{ priceAmountMinor: 0, currency: "SLL", consultationService: service("0") }])).toBeNull();
     expect(
       directoryFee([

@@ -30,33 +30,45 @@ export function ChatUnreadProvider({
   useEffect(() => {
     let stop = false;
     let busy = false;
+    let timer = 0;
     async function pull() {
-      if (stop || busy || document.visibilityState === "hidden") return;
+      if (stop || busy || document.visibilityState === "hidden") return false;
       busy = true;
+      const started = Date.now();
       try {
         const response = await fetch(`/api/care-chat/unread?side=${side}`, { cache: "no-store" });
-        if (!response.ok || stop) return;
+        const slow = !response.ok || Date.now() - started > 2_000;
+        if (!response.ok || stop) return slow;
         const payload = (await response.json()) as { total?: number; byPartner?: Array<{ id: string; unread: number }> };
         const byPartner: Record<string, number> = {};
         for (const row of payload.byPartner ?? []) {
           if (row.id && row.unread > 0) byPartner[row.id] = row.unread;
         }
         if (!stop) setUnread({ total: Math.max(0, payload.total ?? 0), byPartner });
+        return slow;
       } catch {
-        // The next check tries again.
+        return true;
       } finally {
         busy = false;
       }
     }
-    void pull();
-    const timer = window.setInterval(() => void pull(), 3000);
+    function schedule(delay: number) {
+      timer = window.setTimeout(() => {
+        void pull().then((slow) => {
+          if (!stop) schedule(slow ? 25_000 : 10_000);
+        });
+      }, delay);
+    }
+    void pull().then((slow) => {
+      if (!stop) schedule(slow ? 25_000 : 10_000);
+    });
     const onVisible = () => {
       if (document.visibilityState === "visible") void pull();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       stop = true;
-      window.clearInterval(timer);
+      window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [side]);

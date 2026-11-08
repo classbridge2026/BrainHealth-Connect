@@ -18,6 +18,8 @@ function finish(result: { ok: boolean; message: string }): PricingActionState {
   revalidatePath("/admin/pricing");
   revalidatePath("/admin/services");
   revalidatePath("/admin/offerings");
+  revalidatePath("/");
+  revalidatePath("/patient/find");
   return { message: result.message, tone: result.ok ? "ok" : "error" };
 }
 

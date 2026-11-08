@@ -8,7 +8,7 @@ import {
 import { isPortalAdministrator, sanitizeMetadata } from "@/lib/admin/rules";
 import { createRateLimiter, type RateLimiter } from "@/lib/auth/rate-limit";
 import { bookingCatalogDecision, cleanRequiredText, parseUuid } from "@/lib/catalog/rules";
-import { snapshotAppointmentFee, visitCharge } from "@/lib/catalog/money";
+import { visitCharge } from "@/lib/catalog/money";
 import { canReceiveNewAppointment } from "@/lib/doctors/rules";
 import { isUniqueConflict } from "@/lib/doctors/errors";
 import { prisma } from "@/lib/db/prisma";
@@ -288,7 +288,7 @@ export async function scheduleAssignedFollowUp(
           currency: true,
           validFrom: true,
           validTo: true,
-          consultationService: { select: { isActive: true, mode: true } },
+          consultationService: { select: { isActive: true, mode: true, defaultFee: true, currency: true } },
           specialty: { select: { isActive: true } },
           doctor: { select: { verificationStatus: true, user: { select: { status: true, deletedAt: true } } } },
         },
@@ -334,9 +334,12 @@ export async function scheduleAssignedFollowUp(
       ) {
         return { ok: false as const, code: "CATALOG_UNAVAILABLE" as const };
       }
-      const snapshot = snapshotAppointmentFee({
-        offering: { price: offering.price, priceAmountMinor: offering.priceAmountMinor, currency: offering.currency },
-        fallbackMinor: 0,
+      const snapshot = visitCharge({
+        price: offering.price,
+        priceAmountMinor: offering.priceAmountMinor,
+        currency: offering.currency,
+        defaultFee: offering.consultationService.defaultFee,
+        defaultCurrency: offering.consultationService.currency,
       });
       if (!snapshot) return { ok: false as const, code: "CATALOG_UNAVAILABLE" as const };
       const endsAt = new Date(input.startsAt.getTime() + offering.durationMinutes * 60_000);
@@ -663,15 +666,18 @@ export async function rescheduleAppointment(
           price: true,
           priceAmountMinor: true,
           currency: true,
-          consultationService: { select: { isActive: true } },
+          consultationService: { select: { isActive: true, defaultFee: true, currency: true } },
         },
       });
       if (!offering || !offering.isActive || !offering.consultationService.isActive || offering.doctorProfileId !== appointment.doctorProfileId || offering.mode !== appointment.mode) {
         return { ok: false as const, code: "CATALOG_UNAVAILABLE" as const };
       }
-      const snapshot = snapshotAppointmentFee({
-        offering: { price: offering.price, priceAmountMinor: offering.priceAmountMinor, currency: offering.currency },
-        fallbackMinor: 0,
+      const snapshot = visitCharge({
+        price: offering.price,
+        priceAmountMinor: offering.priceAmountMinor,
+        currency: offering.currency,
+        defaultFee: offering.consultationService.defaultFee,
+        defaultCurrency: offering.consultationService.currency,
       });
       if (!snapshot) return { ok: false as const, code: "CATALOG_UNAVAILABLE" as const };
       const endsAt = new Date(input.startsAt.getTime() + offering.durationMinutes * 60_000);
