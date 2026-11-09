@@ -9,7 +9,6 @@ import {
   parseDuration,
   parseRequiredMode,
   parseUuid,
-  referencedDeleteDecision,
 } from "./rules";
 
 type Actor = { userId: string; roleCodes: string[] };
@@ -413,8 +412,6 @@ export async function deleteDoctorOffering(id: string, deps: { db: PrismaClient;
       deps.db.appointment.count({ where: { offeringId } }),
       deps.db.doctorAvailabilityRule.count({ where: { offeringId } }),
     ]);
-    const decision = referencedDeleteDecision({ appointments, rules }, "offering");
-    if (!decision.allowed) return { ok: false, message: decision.message };
     const existing = await deps.db.doctorOffering.findUnique({ where: { id: offeringId }, select: { id: true } });
     if (!existing) return { ok: false, message: "That offering was not found." };
     await deps.db.$transaction(async (tx) => {
@@ -425,11 +422,18 @@ export async function deleteDoctorOffering(id: string, deps: { db: PrismaClient;
           action: "offering.deleted",
           entityType: "DoctorOffering",
           entityId: offeringId,
+          metadata: { appointments, rules },
         },
       });
     }, writeOptions);
+    const used = appointments + rules > 0;
+    return {
+      ok: true,
+      message: used
+        ? "The offering was deleted. Appointments already booked stay."
+        : "The offering was deleted.",
+    };
   } catch (error) {
-    return { ok: false, message: catalogFailure(error, "This offering is already used. Deactivate it instead of deleting it.") };
+    return { ok: false, message: catalogFailure(error, "The offering could not be deleted.") };
   }
-  return { ok: true, message: "The unused offering was deleted." };
 }

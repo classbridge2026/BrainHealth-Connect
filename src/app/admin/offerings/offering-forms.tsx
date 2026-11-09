@@ -243,7 +243,7 @@ export function OfferingsBoard({
         />
       ) : null}
       {panel?.kind === "edit" ? <EditDialog offering={panel.offering} onClose={close} /> : null}
-      {panel?.kind === "delete" ? <DeleteDialog offering={panel.offering} onClose={close} onEdit={(offering) => setPanel({ kind: "edit", offering })} /> : null}
+      {panel?.kind === "delete" ? <DeleteDialog offering={panel.offering} onClose={close} /> : null}
     </>
   );
 }
@@ -730,7 +730,7 @@ function EditDialog({ offering, onClose }: { offering: OfferingRecord; onClose: 
   );
 }
 
-function DeleteDialog({ offering, onClose, onEdit }: { offering: OfferingRecord; onClose: () => void; onEdit: (offering: OfferingRecord) => void }) {
+function DeleteDialog({ offering, onClose }: { offering: OfferingRecord; onClose: () => void }) {
   const [state, action, pending] = useActionState(deleteOfferingAction, initial);
   useEffect(() => {
     if (state.tone === "ok") onClose();
@@ -741,23 +741,17 @@ function DeleteDialog({ offering, onClose, onEdit }: { offering: OfferingRecord;
         <input type="hidden" name="id" value={offering.id} />
         <p className="user-form-note">
           {offering.referenced
-            ? `${offering.doctorName}’s ${offering.serviceName} offering is already used (${usageLabel(offering)}). Deactivate it so existing appointments stay unchanged.`
-            : `Delete ${offering.doctorName}’s ${offering.serviceName} offering? Booked appointment fees are not affected because this offering is unused.`}
+            ? `Delete ${offering.doctorName}’s ${offering.serviceName} offering? It is already used (${usageLabel(offering)}). Appointments already booked stay, including their fee.`
+            : `Delete ${offering.doctorName}’s ${offering.serviceName} offering?`}
         </p>
         <FormMessage state={state} />
         <div className="user-form-actions">
           <button type="button" className="users-cancel" onClick={onClose}>
             Cancel
           </button>
-          {offering.referenced ? (
-            <button type="button" className="users-add" onClick={() => onEdit(offering)}>
-              Edit offering
-            </button>
-          ) : (
-            <button type="submit" className="users-delete" disabled={pending}>
-              {pending ? "Deleting…" : "Delete offering"}
-            </button>
-          )}
+          <button type="submit" className="users-delete" disabled={pending}>
+            {pending ? "Deleting…" : "Delete offering"}
+          </button>
         </div>
       </form>
     </Modal>

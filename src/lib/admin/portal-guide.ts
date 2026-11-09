@@ -185,7 +185,7 @@ const TOPICS: GuideTopic[] = [
       { verbs: ["add", "create", "assign", "new"], text: "Choose Assign service, pick the doctor, select one or more services, and choose Online, In person, or Online or in person. The fee comes from Fees and pricing." },
       { verbs: ["myself", "to me", "my account"], text: "Choose Assign service. In the Doctor list, choose Super administrator (you) or your own name. Enter the name patients should see if this account is not already a doctor, choose the specialty and service, set the fee, then save. Publish weekly hours on Availability so patients can choose a time." },
       { verbs: ["edit", "update", "price", "fee"], text: "Change the amount on Fees and pricing. That amount is used for every doctor who offers the service. Booked appointments keep their stored fee." },
-      { verbs: ["delete", "remove"], text: "Delete the offering to stop new bookings for that doctor and service." },
+      { verbs: ["delete", "remove"], text: "Delete removes that doctor’s service even when appointments already use it. Those appointments stay, including the fee stored when they were booked." },
     ],
     prompts: ["How do I assign a service to a doctor?", "Why can't I assign a service?"],
   },
