@@ -874,6 +874,29 @@ export function CareChat({
   }, []);
 
   useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const onChange = () => {
+      const node = logRef.current;
+      if (!node) return;
+      const nearEnd = node.scrollHeight - node.scrollTop - node.clientHeight < 140;
+      const typing = document.activeElement?.id === "care-chat-draft";
+      if (!nearEnd && !typing) return;
+      quietScroll.current = true;
+      node.scrollTop = node.scrollHeight;
+      window.requestAnimationFrame(() => {
+        quietScroll.current = false;
+      });
+    };
+    viewport.addEventListener("resize", onChange);
+    viewport.addEventListener("scroll", onChange);
+    return () => {
+      viewport.removeEventListener("resize", onChange);
+      viewport.removeEventListener("scroll", onChange);
+    };
+  }, [active?.id]);
+
+  useEffect(() => {
     const node = logRef.current;
     if (!node) return;
     quietScroll.current = true;

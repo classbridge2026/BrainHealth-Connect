@@ -3931,6 +3931,60 @@ button.users-email {
     padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
   }
 
+  .admin-app.is-chat {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - var(--keyboard-inset, 0px));
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .admin-app.is-chat .admin-navbar {
+    flex-shrink: 0;
+  }
+
+  .admin-app.is-chat .admin-frame {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .admin-app.is-chat .admin-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .admin-app.is-chat .care-chat {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+    padding-bottom: max(0px, calc(4.15rem + env(safe-area-inset-bottom, 0px) - var(--keyboard-inset, 0px)));
+  }
+
+  .admin-app.is-chat .care-chat-list,
+  .admin-app.is-chat .care-chat-thread {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .admin-app.is-chat .care-chat-list header,
+  .admin-app.is-chat .care-chat-thread header,
+  .admin-app.is-chat .care-chat-thread form {
+    flex-shrink: 0;
+  }
+
+  .admin-app.is-chat .care-chat-list ul {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .admin-app.is-chat .guide {
+    display: none;
+  }
+
   .admin-sidebar,
   .admin-backdrop {
     bottom: calc(4.15rem + env(safe-area-inset-bottom, 0px));
@@ -3939,6 +3993,50 @@ button.users-email {
   .guide {
     bottom: calc(4.9rem + env(safe-area-inset-bottom, 0px));
     z-index: 35;
+  }
+}
+
+@media (min-width: 1024px) {
+  .admin-app.is-chat {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .admin-app.is-chat .admin-navbar {
+    flex-shrink: 0;
+  }
+
+  .admin-app.is-chat .admin-frame {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .admin-app.is-chat .admin-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .admin-app.is-chat .care-chat {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+
+  .admin-app.is-chat .care-chat-list ul {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .admin-app.is-chat .care-chat-list header,
+  .admin-app.is-chat .care-chat-thread header,
+  .admin-app.is-chat .care-chat-thread form {
+    flex-shrink: 0;
   }
 }
 

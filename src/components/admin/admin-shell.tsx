@@ -176,6 +176,7 @@ export function AdminShell({
   const accountOpen = accountPath === pathname;
   const title = currentTitle(pathname);
   const tabCurrent = mobileTabs.some((tab) => matches(pathname, tab.href, tab.exact));
+  const chat = pathname.startsWith("/admin/messages");
 
   useEffect(() => {
     setSearchOpen(false);
@@ -271,6 +272,25 @@ export function AdminShell({
     };
   }, []);
 
+  useEffect(() => {
+    if (!chat) return;
+    const root = document.querySelector<HTMLElement>(".admin-app");
+    const viewport = window.visualViewport;
+    if (!root || !viewport) return;
+    const apply = () => {
+      const covered = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      root.style.setProperty("--keyboard-inset", `${Math.round(covered)}px`);
+    };
+    apply();
+    viewport.addEventListener("resize", apply);
+    viewport.addEventListener("scroll", apply);
+    return () => {
+      viewport.removeEventListener("resize", apply);
+      viewport.removeEventListener("scroll", apply);
+      root.style.removeProperty("--keyboard-inset");
+    };
+  }, [chat]);
+
   function toggleNavigation() {
     if (window.matchMedia("(min-width: 1024px)").matches) {
       setCollapsed((value) => !value);
@@ -281,7 +301,7 @@ export function AdminShell({
 
   return (
     <AdminNoticesContext.Provider value={{ unread: unreadNotifications ?? 0, notices }}>
-    <div className="admin-app">
+    <div className={`admin-app${chat ? " is-chat" : ""}`}>
       <header className="admin-navbar">
         <div className="admin-navbar-start">
           <button
