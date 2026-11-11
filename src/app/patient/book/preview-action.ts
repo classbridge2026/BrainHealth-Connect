@@ -3,7 +3,7 @@
 import { PATIENT_ROLE_CODE } from "@/lib/auth/constants";
 import { requireStoredRoles } from "@/lib/auth/require-role";
 import { parseVisitChannel } from "@/lib/appointments/channel";
-import { loadOfferingSlots } from "@/lib/appointments/queries";
+import { loadOfferingRange, loadOfferingSlots } from "@/lib/appointments/queries";
 import { addDays, freetownDate, parseCalendarDate } from "@/lib/appointments/time";
 import { prisma } from "@/lib/db/prisma";
 import type { BookingOffering, BookingSlot } from "./[offeringId]/booking-details";
@@ -56,9 +56,7 @@ export async function bookingRange(offeringId: string): Promise<Array<{ day: str
   const start = parseCalendarDate(today);
   if (!start) return null;
   const days = Array.from({ length: 14 }, (_, index) => addDays(start, index).toISOString().slice(0, 10));
-  const rows = await Promise.all(days.map(async (day) => {
-    const result = await loadOfferingSlots(prisma, { offeringId, day });
-    return { day, slots: result.ok ? result.slots : [] };
-  }));
-  return rows;
+  const result = await loadOfferingRange(prisma, { offeringId, days });
+  if (!result.ok) return days.map((day) => ({ day, slots: [] }));
+  return result.days;
 }

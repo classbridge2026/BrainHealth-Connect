@@ -291,6 +291,92 @@ export async function loadOfferingSlots(
   }
 }
 
+/** One offering, one rule list, and one block list for every day in the booking window. */
+export async function loadOfferingRange(
+  db: PrismaClient,
+  input: { offeringId: string; days: string[]; now?: Date },
+): Promise<{ ok: true; days: Array<{ day: string; slots: Array<{ startsAt: string; label: string }> }> } | QueryFailure> {
+  if (!parseUuid(input.offeringId) || input.days.length === 0) return { ok: false, code: "NOT_FOUND" };
+  const now = input.now ?? new Date();
+  const today = freetownDate(now);
+  const horizon = addDays(parseCalendarDate(today) ?? now, HORIZON_DAYS - 1).toISOString().slice(0, 10);
+  const days = input.days.filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(day) && day >= today && day <= horizon);
+  if (days.length === 0) return { ok: false, code: "NOT_FOUND" };
+  try {
+    const offering = await db.doctorOffering.findUnique({
+      where: { id: input.offeringId },
+      select: {
+        id: true,
+        isActive: true,
+        mode: true,
+        durationMinutes: true,
+        price: true,
+        priceAmountMinor: true,
+        currency: true,
+        doctorProfileId: true,
+        specialtyId: true,
+        specialty: { select: { name: true, isActive: true } },
+        consultationService: { select: { name: true, isActive: true, defaultFee: true, currency: true } },
+        doctor: { select: { verificationStatus: true, user: { select: { status: true, deletedAt: true } } } },
+      },
+    });
+    if (!offering || !offering.isActive || !offering.consultationService.isActive || !offering.specialty.isActive) {
+      return { ok: false, code: "NOT_FOUND" };
+    }
+    const rangeStart = parseCalendarDate(days[0]);
+    const rangeEnd = parseCalendarDate(days[days.length - 1]);
+    if (!rangeStart || !rangeEnd) return { ok: false, code: "NOT_FOUND" };
+    const [specialtyClaim, , rules] = await Promise.all([
+      db.doctorSpecialty.findFirst({
+        where: { doctorProfileId: offering.doctorProfileId, specialtyId: offering.specialtyId },
+        select: { claimStatus: true, specialty: { select: { isActive: true } } },
+      }),
+      expireOverdueHolds(db, offering.doctorProfileId),
+      loadDoctorRules(db, offering.doctorProfileId),
+    ]);
+    if (
+      !canReceiveNewAppointment({
+        verificationStatus: offering.doctor.verificationStatus,
+        userStatus: offering.doctor.user.status,
+        deletedAt: offering.doctor.user.deletedAt,
+        specialtyClaim: specialtyClaim?.claimStatus ?? null,
+        specialtyActive: specialtyClaim?.specialty.isActive ?? false,
+      })
+    ) {
+      return { ok: false, code: "NOT_FOUND" };
+    }
+    const blocks = await loadBlockingIntervals(db, {
+      doctorProfileId: offering.doctorProfileId,
+      rangeStart,
+      rangeEnd: addDays(rangeEnd, 1),
+      now,
+    });
+    return {
+      ok: true,
+      days: days.map((day) => ({
+        day,
+        slots: describeDaySlots({
+          day,
+          durationMinutes: offering.durationMinutes,
+          mode: offering.mode,
+          locationId: null,
+          offeringId: offering.id,
+          rules,
+          blocks,
+          now,
+        })
+          .filter((slot) => slot.availability === "open")
+          .map((slot) => ({
+            startsAt: slot.startsAt.toISOString(),
+            label: formatNormalClock(minutesFromClock(slot.startsAt)),
+          })),
+      })),
+    };
+  } catch (error) {
+    return failed(error);
+  }
+}
+
 export function resumePaymentHref(row: { id: string; offeringId: string | null }) {
   return row.offeringId
     ? `/patient/book/${row.offeringId}?step=payment&appointment=${row.id}`

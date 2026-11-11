@@ -245,7 +245,7 @@ async function ConfirmationStep({ offeringId, appointmentId }: { offeringId: str
       ) : !paid && visit.status === "PENDING_PAYMENT" && !waiting ? (
         <Link className="mbk-continue" href={`/patient/book/${offeringId}?step=payment&appointment=${visit.id}`}>Continue to payment</Link>
       ) : (
-        <Link className="mbk-continue" href={`/patient/appointments/${visit.id}`}>View appointment</Link>
+        <Link className="mbk-continue" href="/patient">Go to home</Link>
       )}
     </section>
   );

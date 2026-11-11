@@ -29,7 +29,10 @@ export default async function PatientPage() {
   const first = name.split(" ")[0] ?? name;
   const photoSrc = account.ok && account.profile?.imageVersion ? profileImageSrc(user.id, account.profile.imageVersion) : "/default-avatar.svg";
   const upcoming = appointments.ok ? [...appointments.upcoming].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime()) : [];
-  const unpaid = appointments.ok ? appointments.pending.filter((row) => row.status === "PENDING_PAYMENT") : [];
+  const paymentSent = (row: { status: string; paymentStatuses: string[] }) =>
+    row.status === "PENDING_PAYMENT" && row.paymentStatuses.some((status) => status === "REQUIRES_ACTION" || status === "PENDING");
+  const unpaid = appointments.ok ? appointments.pending.filter((row) => row.status === "PENDING_PAYMENT" && !paymentSent(row)) : [];
+  const waiting = appointments.ok ? appointments.pending.filter((row) => row.status === "PENDING_APPROVAL" || paymentSent(row)) : [];
   const next = upcoming[0] ?? null;
   const dueFollows = (follows.ok ? [...follows.today, ...follows.overdue, ...follows.upcoming] : []).sort(
     (a, b) => a.startsAt.getTime() - b.startsAt.getTime(),
@@ -84,16 +87,20 @@ export default async function PatientPage() {
           {!appointments.ok ? (
             <RecordsUnavailable code={appointments.code} />
           ) : !next ? (
-            unpaid[0] ? (
-              <OpenPayment doctor={unpaid[0].doctor} href={resumePaymentHref(unpaid[0])} expiresAt={unpaid[0].paymentHoldExpiresAt?.toISOString() ?? null} />
-            ) : appointments.pending.length > 0 ? (
-              <p className="pat-empty">You have a booking waiting for the doctor. <Link href="/patient/appointments?view=pending">Open Pending</Link></p>
-            ) : (
-              <div className="pat-empty-guide">
-                <p className="pat-empty">You have no upcoming appointment.</p>
-                <BookingGuideVideo label="Watch how to book" />
-              </div>
-            )
+            <>
+              {waiting.length > 0 ? (
+                <p className="pat-empty">{waiting.some(paymentSent) ? "Your payment is with the clinic. This visit stays held until they confirm it." : "You have a booking waiting for the doctor."} <Link href="/patient/appointments?view=pending">Open Pending</Link></p>
+              ) : null}
+              {unpaid[0] ? (
+                <OpenPayment doctor={unpaid[0].doctor} href={resumePaymentHref(unpaid[0])} expiresAt={unpaid[0].paymentHoldExpiresAt?.toISOString() ?? null} />
+              ) : null}
+              {waiting.length === 0 && !unpaid[0] ? (
+                <div className="pat-empty-guide">
+                  <p className="pat-empty">You have no upcoming appointment.</p>
+                  <BookingGuideVideo label="Watch how to book" />
+                </div>
+              ) : null}
+            </>
           ) : (
             <div className="pat-next">
               <ProfilePhoto userId={next.doctorUserId} name={next.doctor} version={next.doctorImageVersion} size={56} alt="" />
@@ -114,8 +121,8 @@ export default async function PatientPage() {
           )}
           {next && unpaid[0] ? (
             <OpenPayment doctor={unpaid[0].doctor} href={resumePaymentHref(unpaid[0])} expiresAt={unpaid[0].paymentHoldExpiresAt?.toISOString() ?? null} />
-          ) : appointments.ok && next && appointments.pending.length > 0 ? (
-            <p className="pat-empty"><Link href="/patient/appointments?view=pending">A booking is still waiting for the doctor under Pending.</Link></p>
+          ) : appointments.ok && next && waiting.length > 0 ? (
+            <p className="pat-empty"><Link href="/patient/appointments?view=pending">{waiting.some(paymentSent) ? "A payment is still with the clinic under Pending." : "A booking is still waiting for the doctor under Pending."}</Link></p>
           ) : null}
         </article>
         <article className="pat-card pat-card-actions">
