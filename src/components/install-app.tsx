@@ -2,8 +2,8 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { installGuide } from "@/lib/install/prompt";
-import { promptInstall, useInstallState } from "@/lib/install/store";
+import { installGuide, isIosSafari } from "@/lib/install/prompt";
+import { promptInstall, shareInstall, useInstallState } from "@/lib/install/store";
 
 function DownloadIcon() {
   return (
@@ -42,12 +42,17 @@ export function InstallApp({ systemName, placement = "portal" }: { systemName: s
 
   if (!install.ready || install.standalone) return null;
 
-  const guide = installGuide(install.ios ? "ios" : "browser", systemName);
+  const safari = install.ios && isIosSafari(navigator.userAgent, navigator.maxTouchPoints, navigator.platform);
+  const guide = installGuide(install.ios ? (safari ? "ios" : "ios-other") : "browser", systemName);
 
   async function onInstall() {
     if (install.canPrompt) {
       await promptInstall();
       return;
+    }
+    if (safari) {
+      const shared = await shareInstall(systemName);
+      if (shared === "shared") return;
     }
     setOpen(true);
   }

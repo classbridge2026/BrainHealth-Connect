@@ -89,6 +89,17 @@ export function bindInstallPrompt() {
   }
 }
 
+export async function shareInstall(title: string) {
+  if (typeof navigator.share !== "function") return "unavailable" as const;
+  try {
+    await navigator.share({ title, url: `${window.location.origin}/` });
+    return "shared" as const;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return "dismissed" as const;
+    return "unavailable" as const;
+  }
+}
+
 export async function promptInstall() {
   const event = deferred;
   if (!event) return "unavailable" as const;

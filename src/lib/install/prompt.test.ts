@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { installGuide, installShortName, isIosInstallTarget, isStandaloneDisplay } from "./prompt";
+import { installGuide, installShortName, isIosInstallTarget, isIosSafari, isStandaloneDisplay } from "./prompt";
 
 describe("install prompt", () => {
   it("keeps a short name that fits a home screen", () => {
@@ -18,6 +18,8 @@ describe("install prompt", () => {
     expect(isIosInstallTarget("Mozilla/5.0", 5, "MacIntel")).toBe(true);
     expect(isIosInstallTarget("Mozilla/5.0 (Linux; Android 14)")).toBe(false);
     expect(isIosInstallTarget("Mozilla/5.0 (Windows NT 10.0)")).toBe(false);
+    expect(isIosSafari("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1")).toBe(true);
+    expect(isIosSafari("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.6099.119 Mobile/15E148 Safari/604.1")).toBe(false);
   });
 
   it("explains Safari and other browsers without sending the person off the site", () => {

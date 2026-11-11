@@ -12,6 +12,7 @@ const { state, prompt } = vi.hoisted(() => ({
 vi.mock("@/lib/install/store", () => ({
   useInstallState: () => state,
   promptInstall: () => prompt(),
+  shareInstall: async () => "unavailable" as const,
 }));
 
 describe("install control", () => {
