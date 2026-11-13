@@ -142,6 +142,18 @@
   font-size: 0.88rem;
 }
 
+.doctor-offer .doctor-offer-fee {
+  margin-top: 0.45rem;
+  color: #0f766e;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.doctor-offer.is-on {
+  border-color: #0f766e;
+  box-shadow: inset 0 0 0 1px #0f766e;
+}
+
 .doctor-offer .doctor-offer-note {
   margin-top: 0.55rem;
   color: #0c2b45;
@@ -169,6 +181,176 @@
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.doctor-service {
+  margin-top: 0.9rem;
+}
+
+.doctor-service label,
+.dm-service label {
+  display: grid;
+}
+
+.service-field {
+  position: relative;
+}
+
+.service-box {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 4.6rem;
+  padding: 0.75rem 2.5rem 0.75rem 0.9rem;
+  border: 1px solid #c5d5e4;
+  border-radius: 0.85rem;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2310233c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7.5 10 12.5 15 7.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  background-size: 1rem;
+  color: #111;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 750;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.service-box.is-set {
+  min-height: 3rem;
+}
+
+.service-box:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+
+.service-list {
+  z-index: 8;
+  max-height: 16rem;
+  margin: 0.4rem 0 0;
+  padding: 0.35rem;
+  overflow: auto;
+  list-style: none;
+  border: 1px solid #c5d5e4;
+  border-radius: 0.85rem;
+  background: #fff;
+  box-shadow: 0 0.6rem 1.4rem rgba(16, 35, 60, 0.14);
+}
+
+.service-list button {
+  display: block;
+  width: 100%;
+  padding: 0.7rem 0.75rem;
+  border: 0;
+  border-radius: 0.65rem;
+  background: #fff;
+  color: #111;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 750;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.service-list button[aria-selected="true"],
+.service-list button:hover {
+  background: #f3fbf8;
+  color: #111;
+}
+
+.doctor-service select,
+.dm-service select {
+  width: 100%;
+  height: 3rem;
+  padding: 0 2.5rem 0 0.85rem;
+  border: 1px solid #c5d5e4;
+  border-radius: 0.85rem;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%230c2b45' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7.5 10 12.5 15 7.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  background-size: 1rem;
+  color: #10233c;
+  font: inherit;
+  font-weight: 750;
+  color-scheme: light;
+  appearance: none;
+}
+
+.doctor-service select option,
+.dm-service select option {
+  color: #10233c;
+  background-color: #fff;
+}
+
+.doctor-service select.is-empty,
+.dm-service select.is-empty {
+  height: 4.6rem;
+}
+
+.doctor-service select:focus-visible,
+.dm-service select:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+
+.service-picked {
+  margin-top: 0.75rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #d7efe6;
+  border-radius: 0.9rem;
+  background: #f3fbf8;
+}
+
+.doctor-about .service-picked p,
+.dm-service .service-picked p {
+  margin: 0;
+  color: #3d5166;
+}
+
+.doctor-about .service-fee,
+.dm-service .service-fee {
+  margin-top: 0.3rem;
+  color: #0f766e;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.doctor-about .service-note,
+.dm-service .service-note {
+  margin-top: 0.4rem;
+  color: #0c2b45;
+}
+
+.doctor-about .doctor-pay {
+  margin: 0.85rem 0 0;
+  color: #5b6b7c;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.doctor-book {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  height: 2.75rem;
+  margin-top: 0.75rem;
+  padding: 0 1rem;
+  border-radius: 0.8rem;
+  background: #0f766e;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.doctor-book:hover {
+  background: #0c655e;
 }
 
 .doctor-mobile {
@@ -411,8 +593,7 @@
     padding: 0 1.15rem 1.15rem;
   }
 
-  .dm-chips,
-  .dm-services {
+  .dm-chips {
     display: flex;
     flex-wrap: wrap;
     gap: 0.45rem;
@@ -421,31 +602,83 @@
     list-style: none;
   }
 
-  .dm-chips li,
-  .dm-services a {
+  .dm-chips li {
     border-radius: 999px;
     background: #f3f4f6;
     color: #374151;
     font-size: 0.8rem;
     font-weight: 700;
     text-decoration: none;
+    padding: 0.4rem 0.8rem;
   }
 
-  .dm-chips li {
-    padding: 0.4rem 0.8rem;
+  .dm-service {
+    padding: 0.85rem 1.15rem 1.15rem;
+  }
+
+  .dm-service .service-box,
+  .dm-service .service-list button {
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+
+  .dm-service .service-list {
+    max-height: var(--service-room, min(22rem, 52dvh));
+  }
+
+  .dm-service .service-list button {
+    min-height: 3rem;
+    color: #111;
+  }
+
+  .dm-service .dm-pay {
+    margin: 0.85rem 0 0;
+  }
+
+  .dm-service .dm-book {
+    margin: 0.7rem 0 0;
   }
 
   .dm-services {
-    padding: 0.95rem 1.15rem 0;
+    display: grid;
+    gap: 0.55rem;
+    margin: 0;
+    padding: 0.85rem 1.15rem 0;
+    list-style: none;
   }
 
   .dm-services a {
-    padding: 0.4rem 0.8rem;
+    display: grid;
+    gap: 0.15rem;
+    padding: 0.8rem 0.9rem;
+    border: 1px solid #e6ebf0;
+    border-radius: 0.95rem;
+    background: #fff;
+    color: #172033;
+    text-align: left;
+    text-decoration: none;
+  }
+
+  .dm-services a strong {
+    font-size: 0.95rem;
+    font-weight: 800;
+  }
+
+  .dm-services a span {
+    color: #6b7280;
+    font-size: 0.78rem;
+    font-weight: 650;
+  }
+
+  .dm-services a b {
+    color: #0f766e;
+    font-size: 0.95rem;
   }
 
   .dm-services a.is-on {
-    background: #e7f6ee;
-    color: #0f766e;
+    border-color: #0f766e;
+    background: #f3fbf8;
+    box-shadow: inset 0 0 0 1px #0f766e;
   }
 
   .dm-days {

@@ -80,6 +80,7 @@ export async function MobileBooking({
         </Link>
         <h1>Book Appointment</h1>
         <p className="mbk-lead">{subtitle}</p>
+        {step === "details" ? <p className="mbk-service">{offering.service}<b>{offering.fee}</b></p> : null}
         <ol className="mbk-steps" aria-label="Booking steps">
           {STEPS.map((item, index) => {
             const current = STEPS.findIndex((row) => row.id === step);

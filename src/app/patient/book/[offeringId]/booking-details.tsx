@@ -57,6 +57,7 @@ export function BookingDetailsPage({
           </Link>
           <h1>Book Appointment</h1>
           <p className="mbk-lead">Choose your preferred date, time and consultation type to continue.</p>
+          <p className="mbk-service">{offering.service}<b>{offering.fee}</b></p>
           <ol className="mbk-steps" aria-label="Booking steps">
             <li className="is-on"><b>1</b><span>Details</span></li>
             <li><b>2</b><span>Payment</span></li>

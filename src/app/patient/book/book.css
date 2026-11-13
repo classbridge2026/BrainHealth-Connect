@@ -465,6 +465,26 @@
   line-height: 1.45;
 }
 
+.mbk-service {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.75rem 0 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid #d7efe6;
+  border-radius: 0.85rem;
+  background: #f3fbf8;
+  color: #0c2b45;
+  font-weight: 750;
+}
+
+.mbk-service b {
+  color: #0f766e;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .mbk-steps {
   display: flex;
   margin: 1.15rem 0 0.35rem;

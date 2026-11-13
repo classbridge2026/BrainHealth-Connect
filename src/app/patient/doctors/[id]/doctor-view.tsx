@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { ArrowRight, Building2, ChevronLeft, Phone, ShieldCheck, Star, Video } from "lucide-react";
+import { ChevronLeft, ShieldCheck, Star } from "lucide-react";
 import { ProfilePhoto } from "@/components/profile-photo";
-import { WarmBooking } from "@/app/patient/book/warm-booking";
+import { ServiceMenu } from "./service-menu";
 import "./doctor-profile.css";
 
 const QUALIFICATION_KIND: Record<string, string> = {
@@ -37,9 +37,6 @@ export type DoctorProfileData = {
 };
 
 export function DoctorProfileView({ doctor, visit, offer }: { doctor: DoctorProfileData; visit: string; offer: string }) {
-  const onlineOfferings = doctor.offerings.filter((offering) => offering.mode === "ONLINE");
-  const clinicOfferings = doctor.offerings.filter((offering) => offering.mode === "IN_PERSON");
-  const chosen = visit === "video" || visit === "audio" ? onlineOfferings : visit === "in-person" ? clinicOfferings : [];
   const kind = doctor.qualificationKind ? QUALIFICATION_KIND[doctor.qualificationKind] : null;
   const qualification = [kind, doctor.qualificationTitle].filter(Boolean).join(" · ");
   const awarded = [doctor.qualificationInstitution, doctor.qualificationYear].filter(Boolean).join(", ");
@@ -51,16 +48,6 @@ export function DoctorProfileView({ doctor, visit, offer }: { doctor: DoctorProf
     doctor.languages.length > 0 ? { label: "Languages", value: doctor.languages.join(", ") } : null,
   ].filter((fact): fact is { label: string; value: string } => fact !== null);
 
-  const modeChoices = [
-    onlineOfferings.length > 0 ? { id: "video" as const, label: "Video Call", icon: Video } : null,
-    clinicOfferings.length > 0 ? { id: "in-person" as const, label: "In-Person", icon: Building2 } : null,
-    onlineOfferings.length > 0 ? { id: "audio" as const, label: "Audio", icon: Phone } : null,
-  ].filter((mode): mode is { id: "video" | "audio" | "in-person"; label: string; icon: typeof Video } => mode !== null);
-  const selectedMode = modeChoices.some((mode) => mode.id === visit) ? (visit as "video" | "audio" | "in-person") : modeChoices[0]?.id;
-  const modeOfferings = selectedMode === "in-person" ? clinicOfferings : selectedMode ? onlineOfferings : [];
-  const selectedOffering = modeOfferings.find((offering) => offering.id === offer) ?? modeOfferings[0] ?? null;
-  const bookOffering = onlineOfferings[0] ?? clinicOfferings[0] ?? null;
-  const bookChannel = onlineOfferings.length > 0 ? "video" : "in-person";
   const mobileStats = [
     doctor.languages.length > 0
       ? { value: doctor.languages.join(", "), label: doctor.languages.length === 1 ? "Language" : "Languages" }
@@ -97,31 +84,19 @@ export function DoctorProfileView({ doctor, visit, offer }: { doctor: DoctorProf
           <p className="doctor-about">This doctor has no bookable consultation at the moment.</p>
         ) : (
           <section className="doctor-about">
-            <h2>Visit type</h2>
-            <p>Choose video, audio, or in person before the times appear. Payment is self-pay.</p>
-            <div className="doctor-visits">
-              {onlineOfferings.length > 0 ? <Link className={visit === "video" ? "is-on" : ""} href={`/patient/doctors/${doctor.id}?visit=video`}>Video</Link> : null}
-              {onlineOfferings.length > 0 ? <Link className={visit === "audio" ? "is-on" : ""} href={`/patient/doctors/${doctor.id}?visit=audio`}>Audio</Link> : null}
-              {clinicOfferings.length > 0 ? <Link className={visit === "in-person" ? "is-on" : ""} href={`/patient/doctors/${doctor.id}?visit=in-person`}>In person</Link> : null}
-            </div>
+            <h2>Services</h2>
+            <ServiceMenu
+              doctorId={doctor.id}
+              doctorUserId={doctor.userId}
+              doctorImageVersion={doctor.imageVersion}
+              doctorName={doctor.displayName}
+              visit={visit}
+              offer={offer}
+              offerings={doctor.offerings}
+              layout="desk"
+            />
           </section>
         )}
-        {chosen.length > 0 ? (
-          <ul className="doctor-offers">
-            {chosen.map((offering) => (
-              <li key={offering.id} className="doctor-offer">
-                <h2>{offering.service}</h2>
-                <p className="doctor-offer-meta">
-                  {offering.specialty} · {visit === "audio" ? "Audio" : visit === "video" ? "Video" : "In person"} · {offering.durationMinutes} minutes · {offering.fee}
-                </p>
-                {offering.description ? <p className="doctor-offer-note">{offering.description}</p> : null}
-                <Link href={`/patient/book/${offering.id}?channel=${visit}`}>View available times</Link>
-              </li>
-            ))}
-          </ul>
-        ) : doctor.offerings.length > 0 ? (
-          <p className="doctor-about">Choose a visit type to see the consultations and open times.</p>
-        ) : null}
       </div>
       <article className="doctor-mobile">
         <div className="dm-card">
@@ -146,19 +121,6 @@ export function DoctorProfileView({ doctor, visit, offer }: { doctor: DoctorProf
               ))}
             </div>
           ) : null}
-          {modeChoices.length > 0 ? (
-            <div className="dm-modes">
-              {modeChoices.map((mode) => {
-                const Icon = mode.icon;
-                return (
-                  <span key={mode.id} className={mode.id === bookChannel ? "dm-mode is-on" : "dm-mode"}>
-                    <i><Icon size={22} aria-hidden="true" /></i>
-                    {mode.label}
-                  </span>
-                );
-              })}
-            </div>
-          ) : null}
           <section className="dm-section">
             <h2>About Doctor</h2>
             <p>{doctor.biography ?? "No biography has been published."}</p>
@@ -171,36 +133,21 @@ export function DoctorProfileView({ doctor, visit, offer }: { doctor: DoctorProf
               </ul>
             </section>
           ) : null}
-          {selectedOffering && selectedMode ? (
+          {doctor.offerings.length > 0 ? (
             <>
-              {modeOfferings.length > 1 ? (
-                <div className="dm-services" aria-label="Consultation">
-                  {modeOfferings.map((offering) => (
-                    <Link key={offering.id} className={offering.id === selectedOffering.id ? "is-on" : ""} href={mobileHref(doctor.id, selectedMode, offering.id)} aria-current={offering.id === selectedOffering.id ? "true" : undefined}>
-                      {offering.service}
-                    </Link>
-                  ))}
-                </div>
-              ) : null}
-              {bookOffering ? (
-                <WarmBooking
-                  offeringId={bookOffering.id}
-                  doctorId={doctor.id}
-                  doctorUserId={doctor.userId}
-                  doctorImageVersion={doctor.imageVersion}
-                  doctorName={doctor.displayName}
-                  specialty={bookOffering.specialty}
-                  service={bookOffering.service}
-                  mode={bookOffering.mode}
-                  durationMinutes={bookOffering.durationMinutes}
-                  fee={bookOffering.fee}
-                  channel={bookChannel}
-                />
-              ) : null}
-              <p className="dm-pay">{selectedOffering.service} · {selectedOffering.fee}</p>
-              <Link className="dm-book" href={`/patient/book/${bookOffering?.id ?? selectedOffering.id}?channel=${bookChannel}`} prefetch={true}>
-                Book Appointment <ArrowRight size={18} aria-hidden="true" />
-              </Link>
+              <section className="dm-section">
+                <h2>Services</h2>
+              </section>
+              <ServiceMenu
+                doctorId={doctor.id}
+                doctorUserId={doctor.userId}
+                doctorImageVersion={doctor.imageVersion}
+                doctorName={doctor.displayName}
+                visit={visit}
+                offer={offer}
+                offerings={doctor.offerings}
+                layout="mobile"
+              />
             </>
           ) : (
             <p className="dm-empty">This doctor has no bookable consultation at the moment.</p>
@@ -211,10 +158,3 @@ export function DoctorProfileView({ doctor, visit, offer }: { doctor: DoctorProf
   );
 }
 
-function mobileHref(doctorId: string, visit: string, offer: string) {
-  const params = new URLSearchParams();
-  if (visit) params.set("visit", visit);
-  if (offer) params.set("offer", offer);
-  const query = params.toString();
-  return query ? `/patient/doctors/${doctorId}?${query}` : `/patient/doctors/${doctorId}`;
-}
